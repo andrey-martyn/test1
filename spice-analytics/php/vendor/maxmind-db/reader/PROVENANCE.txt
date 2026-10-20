@@ -1,0 +1,4 @@
+maxmind-db/reader v1.14.0
+Source commit: f3c92f68b3bec42a9aa780368399e03dc6b91e89
+Retrieved over verified HTTPS from https://codeload.github.com/maxmind/MaxMind-DB-Reader-php/zip/f3c92f68b3bec42a9aa780368399e03dc6b91e89
+Archive SHA256: 9e61323bb77e7ea896515442121016791ca8e59fded79e233cd92b026a4ff0b6

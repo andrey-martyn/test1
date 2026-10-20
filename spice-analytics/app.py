@@ -1,15 +1,12 @@
 from __future__ import annotations
 import argparse
-import hashlib
-import hmac
 import json
 import os
 from pathlib import Path
-import secrets
 import sqlite3
 import threading
-import time
 from datetime import date, datetime
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException, Request
@@ -17,72 +14,91 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from analytics import Analytics
+from auth import Auth, LIFETIME, set_password as write_password
+from db_state import bump_revision, local_revision
 
 ROOT = Path(__file__).parent
 DATA = Path(os.environ.get('ANALYTICS_DATA_DIR',str(ROOT/'data')))
 DATABASE = DATA/'analytics.sqlite3'
 AUTH_FILE = DATA/'access.json'
+PUBLIC_URL = os.environ.get('ANALYTICS_PUBLIC_URL', '').rstrip('/')
+if PUBLIC_URL:
+    parsed_url = urlsplit(PUBLIC_URL)
+    if (parsed_url.scheme != 'https' or not parsed_url.hostname or parsed_url.username
+            or parsed_url.password or parsed_url.path or parsed_url.query or parsed_url.fragment):
+        raise RuntimeError('ANALYTICS_PUBLIC_URL должен быть HTTPS-адресом кабинета без пути')
 
 def set_password(password):
-    if len(password) < 12:
-        raise ValueError('Пароль должен содержать минимум 12 символов')
-    DATA.mkdir(parents=True,exist_ok=True)
-    salt = secrets.token_bytes(16)
-    hashed = hashlib.scrypt(password.encode(),salt=salt,n=16384,r=8,p=1).hex()
-    payload = {'salt':salt.hex(),'hash':hashed,'secret':secrets.token_hex(32)}
-    fd = os.open(AUTH_FILE,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
-    with os.fdopen(fd,'w') as f:
-        json.dump(payload,f)
-    AUTH_FILE.chmod(0o600)
+    write_password(AUTH_FILE, password)
 
 def check_password(password):
-    if not AUTH_FILE.exists():
-        return False
-    payload = json.loads(AUTH_FILE.read_text())
-    hashed = hashlib.scrypt(password.encode(),salt=bytes.fromhex(payload['salt']),n=16384,r=8,p=1).hex()
-    return hmac.compare_digest(hashed,payload['hash'])
+    return Auth(DATA, AUTH_FILE).check_password(password)
 
 app = FastAPI(title='Лавка · Аналитика',docs_url=None,redoc_url=None,openapi_url=None)
 app.mount('/static',StaticFiles(directory=ROOT/'static'),name='static')
-sessions = {}
-attempts = {}
 lock = threading.RLock()
 store = None
+store_revision = None
+
+def database_revision():
+    if not DATABASE.exists():
+        raise HTTPException(503,'Сначала загрузите данные магазина')
+    with sqlite3.connect(DATABASE, timeout=15) as con:
+        try:
+            revision = con.execute('SELECT max(id) FROM imports').fetchone()[0]
+            if revision is None:
+                raise HTTPException(503,'Первое обновление магазина ещё не завершено')
+            return revision, local_revision(con)
+        except sqlite3.OperationalError:
+            raise HTTPException(503,'Сначала загрузите данные магазина') from None
 
 def get_store():
-    global store
+    global store, store_revision
     with lock:
-        if store is None:
-            if not DATABASE.exists():
-                raise HTTPException(503,'Сначала импортируйте SQL-выгрузку')
+        revision = database_revision()
+        if store is None or revision != store_revision:
             store = Analytics(DATABASE)
+            store_revision = revision
         return store
 
 @app.middleware('http')
 async def security(request,call_next):
+    if PUBLIC_URL:
+        expected = urlsplit(PUBLIC_URL)
+        if request.headers.get('host', '').lower() != expected.netloc.lower():
+            return JSONResponse({'detail':'Недопустимый адрес кабинета'}, status_code=400)
+        if request.url.scheme != 'https':
+            return RedirectResponse(PUBLIC_URL + request.url.path, status_code=307)
     # Same-origin mutations only, including login; no permissive CORS.
     if request.method not in ('GET','HEAD','OPTIONS'):
         origin = request.headers.get('origin')
-        if origin and origin.rstrip('/') != str(request.base_url).rstrip('/'):
+        if (request.headers.get('sec-fetch-site') == 'cross-site'
+                or origin and origin.rstrip('/') != (PUBLIC_URL or str(request.base_url).rstrip('/'))):
             return JSONResponse({'detail':'Недопустимый источник запроса'},status_code=403)
     public = request.url.path in ('/login','/api/login','/health') or request.url.path.startswith('/static/')
     if not public:
-        session = sessions.get(request.cookies.get('session',''))
-        if not session or session < time.time():
+        if not Auth(DATA, AUTH_FILE).valid(request.cookies.get('session','')):
             if request.url.path.startswith('/api/'):
                 return JSONResponse({'detail':'Войдите в кабинет'},status_code=401)
             return RedirectResponse('/login',status_code=303)
+    return await call_next(request)
+
+@app.middleware('http')
+async def response_headers(request, call_next):
     response = await call_next(request)
     response.headers['Cache-Control'] = 'no-store' if not request.url.path.startswith('/static/') else 'private, max-age=60'
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['Referrer-Policy'] = 'same-origin'
+    if PUBLIC_URL:
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000'
+    response.headers['X-Robots-Tag'] = 'noindex, nofollow, noarchive'
     response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
     return response
 
 @app.get('/health')
 def health():
-    return {'status':'ok','database_present':DATABASE.exists()}
+    return {'status':'ok'}
 
 @app.get('/login')
 def login_page():
@@ -97,31 +113,30 @@ class Login(BaseModel):
 
 @app.post('/api/login')
 def login(body: Login,request: Request):
-    ip = request.client.host
-    with lock:
-        recent = [t for t in attempts.get(ip,[]) if t > time.time()-300]
-        if len(recent) >= 10:
+    if not AUTH_FILE.exists():
+        raise HTTPException(503,'Сначала настройте пароль кабинета')
+    try:
+        token = Auth(DATA, AUTH_FILE).login(body.password, request.client.host if request.client else 'unknown')
+    except PermissionError as exc:
+        if str(exc) == 'rate_limit':
             raise HTTPException(429,'Слишком много попыток. Подождите пять минут.')
-        if not check_password(body.password):
-            attempts[ip] = recent+[time.time()]
-            raise HTTPException(401,'Неверный пароль')
-        attempts.pop(ip,None)
-        token = secrets.token_urlsafe(32)
-        sessions[token] = time.time()+12*3600
+        raise HTTPException(401,'Неверный пароль') from None
     response = JSONResponse({'ok':True})
-    response.set_cookie('session',token,httponly=True,samesite='strict',max_age=12*3600,secure=request.url.scheme=='https')
+    response.set_cookie('session',token,httponly=True,samesite='strict',max_age=LIFETIME,secure=bool(PUBLIC_URL) or request.url.scheme=='https')
     return response
 
 @app.post('/api/logout')
 def logout(request: Request):
-    sessions.pop(request.cookies.get('session',''),None)
+    Auth(DATA, AUTH_FILE).logout(request.cookies.get('session',''))
     response = JSONResponse({'ok':True})
     response.delete_cookie('session')
     return response
 
 @app.get('/api/meta')
 def meta():
-    return {**get_store().metadata(),'today':datetime.now(ZoneInfo('Europe/Kyiv')).date().isoformat()}
+    from sync_mysql import sync_status
+    return {**get_store().metadata(),'today':datetime.now(ZoneInfo('Europe/Kyiv')).date().isoformat(),
+            'production':bool(PUBLIC_URL),'names_visible':bool(PUBLIC_URL), 'sync':sync_status(DATABASE)}
 
 @app.get('/api/report')
 def report(year:int,as_of:date,currency:str='UAH'):
@@ -165,6 +180,7 @@ def save_settings(body:Settings):
             raise HTTPException(422,'Выберите хотя бы один известный статус')
         with sqlite3.connect(DATABASE) as con:
             con.execute("INSERT OR REPLACE INTO settings VALUES ('report',?)",(body.model_dump_json(),))
+            bump_revision(con)
         store = Analytics(DATABASE)
     return {'ok':True}
 
@@ -185,6 +201,7 @@ def save_action(cid:str,body:CustomerAction):
             payload['contact_date']=datetime.now(ZoneInfo('Europe/Kyiv')).date().isoformat()
         with sqlite3.connect(DATABASE) as con:
             con.execute('INSERT OR REPLACE INTO customer_actions VALUES (?,?)',(cid,json.dumps(payload,ensure_ascii=False)))
+            bump_revision(con)
         store=Analytics(DATABASE)
     return {'ok':True}
 
@@ -221,6 +238,7 @@ def merge(body:Merge):
             for other in body.ids[1:]:
                 a,b = sorted((body.ids[0],other),key=int)
                 con.execute('INSERT OR IGNORE INTO manual_links VALUES (?,?,?)',(a,b,datetime.now().isoformat()))
+            bump_revision(con)
         store = Analytics(DATABASE)
     return {'ok':True}
 
@@ -243,6 +261,7 @@ def unmerge(body:Unmerge):
             for a,b in s.manual_links:
                 if a in ids or b in ids:
                     con.execute('DELETE FROM manual_links WHERE a=? AND b=?',(a,b))
+            bump_revision(con)
         store = Analytics(DATABASE)
     return {'ok':True}
 

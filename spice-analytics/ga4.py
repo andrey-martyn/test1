@@ -85,6 +85,8 @@ def import_csv(database,text,kind,currency):
         con.execute('CREATE TABLE IF NOT EXISTS ga4_records (kind TEXT, record_key TEXT, payload TEXT, PRIMARY KEY(kind,record_key))')
         con.execute('DELETE FROM ga4_records WHERE kind=?',(kind,))
         con.executemany('INSERT INTO ga4_records VALUES (?,?,?)',[(kind,json.dumps(k),json.dumps(v,ensure_ascii=False)) for k,v in records.items()])
+        from db_state import bump_revision
+        bump_revision(con)
     return {'kind':kind,'rows':len(records),'skipped_totals_or_missing_ids':skipped}
 
 def report(database,year,as_of,currency,orders):

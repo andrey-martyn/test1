@@ -1,0 +1,6 @@
+data/
+*.sqlite3*
+source.json
+access-php.json
+.env
+test-results/

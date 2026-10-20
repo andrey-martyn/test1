@@ -31,7 +31,7 @@ def build(output):
         for total in o['totals']:
             total['title']={'sub_total':'Товары','shipping':'Доставка','total':'Всего','coupon':'Скидка','voucher':'Сертификат','tax':'Налог'}.get(total['code'],'Корректировка')
         orders[oid]=o
-    meta['today']=asof;meta['years']=[year]
+    meta['today']=asof;meta['years']=[year];meta['names_visible']=False;meta['production']=False;meta['sync']={'configured':False}
     payload={'meta':meta,'report':report,'orders':orders,'geography':{
         'ukraine':json.loads((ROOT/'static/ukraine.geojson').read_text()),
         'countries':json.loads((ROOT/'static/countries.geojson').read_text())}}

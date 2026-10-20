@@ -23,14 +23,33 @@ async function load(){
 async function init(){
   try{
     state.meta=await api('/api/meta');const m=state.meta;
+    state.privacy=!m.names_visible;
     $('#year').innerHTML=m.years.map(y=>`<option value="${y}">${y} год</option>`).join('');
     $('#currency').innerHTML=m.currencies.map(c=>`<option>${esc(c)}</option>`).join('');
     $('#as-of').value=m.today;
-    $('#data-stamp').textContent='Выгрузка по '+fmtDate(m.date_max)+' · '+num(m.counts.oc_order)+' заказов';
+    updateSourceStamp(m);
     $('#footer-range').textContent=fmtDate(m.date_min)+' — '+fmtDate(m.date_max);
     await load();
   }catch(e){$('#content').innerHTML='<div class="notice">'+esc(e.message)+'</div>';}
 }
+function updateSourceStamp(m){
+  const s=m.sync||{};
+  $('#data-stamp').textContent=s.configured?(s.state==='error'?'Ошибка обновления · ':s.state==='running'?'Обновляем · ':'Обновлено · ')+(s.last_success?new Date(s.last_success).toLocaleString('ru-RU'):'первая загрузка'):'Выгрузка по '+fmtDate(m.date_max)+' · '+num(m.counts.oc_order)+' заказов';
+  if(m.production){$('.local-pill').textContent='Закрытый кабинет';$('.sidebar-bottom p').textContent=s.configured?'ocStore · синхронизация MySQL':'ocStore · загруженная копия';}
+}
+async function refreshSource(force=false){
+  if(!state.meta||(!force&&!state.meta.sync?.configured)||$('#drawer').open||document.hidden)return;
+  try{
+    const m=await api('/api/meta'),previous=state.meta;state.meta=m;updateSourceStamp(m);
+    if($('#as-of').value===previous.today)$('#as-of').value=m.today;
+    if(force||m.imported_at!==previous.imported_at||m.today!==previous.today){
+      const year=$('#year').value;$('#year').innerHTML=m.years.map(y=>`<option value="${y}">${y} год</option>`).join('');if(m.years.includes(Number(year)))$('#year').value=year;
+      const currency=$('#currency').value;$('#currency').innerHTML=m.currencies.map(c=>`<option>${esc(c)}</option>`).join('');if(m.currencies.includes(currency))$('#currency').value=currency;
+      $('#footer-range').textContent=fmtDate(m.date_min)+' — '+fmtDate(m.date_max);await load();
+    }
+  }catch(e){if(force)toast(e.message);}
+}
+function sourceSettings(m){const s=m.sync||{};return `<section class="panel">${panelHeading('Источник и обновление',s.configured?'Копия магазина обновляется по расписанию cron.':'Пока используется загруженная SQL-копия.')}<div class="settings-grid"><div class="settings-note"><strong>${num(m.counts.oc_order)} заказов в закрытой копии</strong><br>История: ${fmtDate(m.date_min)} — ${fmtDate(m.date_max)}.<br>${s.configured?'Последняя успешная проверка: '+(s.last_success?esc(new Date(s.last_success).toLocaleString('ru-RU')):'ещё не завершена')+'.<br>Состояние: '+esc({ok:'актуально',running:'идёт проверка',error:'ошибка; сохранены предыдущие данные'}[s.state]||'ожидание')+(s.error?'<br>'+esc(s.error):''):'Полную выгрузку можно импортировать через import_dump.py; отчёты подхватят её автоматически.'}<br><button class="button" data-action="refresh-source">Обновить отчёт</button></div><div class="settings-note"><strong>Подключение только на чтение</strong><br>Кабинет читает шесть таблиц заказов. Изменения в магазине не выполняются. CRM-отметки, правила и объединения сохраняются в отдельной базе.<br>Для MyISAM сверяются два чтения; это проверка стабильности, а не транзакционный снимок. IP-география требует локальную GeoIP-базу.</div></div></section>`;}
 function metric(label,value,foot,action=''){return `<article class="metric"><div class="metric-label">${label}<span>↗</span></div><div class="metric-value">${value}</div><div class="metric-foot">${foot}</div>${action?`<button class="metric-link" data-action="${action}" aria-label="${label}"></button>`:''}</article>`;}
 function render(){
   if(!state.report)return;
@@ -135,7 +154,7 @@ function duplicatesView(){
   const rows=state.report.duplicates,pagination=pages(rows.length);
   return `<section class="panel">${panelHeading('Возможные дубликаты','Автоматически связаны одинаковые customer_id и пары «email + телефон». Одиночные совпадения проверяются вручную.')}<div class="responsive-note">Совпадение имени не доказывает, что это один человек. Служебные email вида nomail исключены. Ручное объединение можно отменить в карточке покупателя.</div><div class="candidate-grid">${rows.slice((state.page-1)*PAGE,state.page*PAGE).map((c,i)=>`<article class="candidate"><div class="candidate-title"><strong>${esc(c.reason)}</strong><span class="badge neutral">${c.members.length} записи</span></div><div class="candidate-value">${state.privacy?'Значение скрыто':esc(c.value)}</div>${c.members.map(p=>`<div class="candidate-person"><button class="identity-button" data-action="customer" data-id="${p.id}">${name(p)}</button><small>${contact(p)}<br>${state.privacy?'Телефон скрыт':esc(p.phone)} · ${p.lifetime_count} заказов · ${esc(p.city)}</small></div>`).join('')}<button class="button" data-action="merge" data-ids="${c.members.map(p=>p.id).join(',')}">Связать историю покупок →</button></article>`).join('')||'<div class="empty">Совпадений для ручной проверки нет.</div>'}</div>${pagination}</section>`;
 }
-function settingsView(){const m=state.meta,s=m.settings;return `<section class="panel">${panelHeading('Правила расчёта','Изменения сохраняются в локальной базе и применяются ко всему отчёту.')}<form id="settings-form"><div class="settings-grid"><div><h3 class="section-caption">Напоминания о повторной покупке</h3><label class="field">Базовый интервал, дней<input name="interval_days" type="number" min="1" max="730" value="${s.interval_days}" required><small>Используется, пока у покупателя мало истории.</small></label><label class="field">Допустимая задержка, дней<input name="grace_days" type="number" min="0" max="365" value="${s.grace_days}" required><small>После этой задержки покупатель попадёт в «Просрочено».</small></label><label class="field">Минимум дат покупок для личного интервала<input name="minimum_orders" type="number" min="3" max="30" value="${s.minimum_orders}" required><small>Личный интервал — медиана последних шести промежутков между разными датами покупок. Заказы в один день не сокращают интервал.</small></label>${followupSettings(s)}<button class="button primary" type="submit">Сохранить настройки</button></div><div><h3 class="section-caption">Учитываемые статусы заказов</h3>${m.statuses.map(sx=>`<label class="status-option"><input type="checkbox" name="status_ids" value="${sx.id}" ${s.status_ids.includes(sx.id)?'checked':''}>${esc(sx.name)}<small>${num(sx.count)}</small></label>`).join('')}</div></div></form></section><section class="panel">${panelHeading('Источник и ограничения','Текущий режим — локальная копия магазина.')}<div class="settings-grid"><div class="settings-note"><strong>Загружено ${num(m.counts.oc_order)} заказов</strong><br>История: ${fmtDate(m.date_min)} — ${fmtDate(m.date_max)}.<br>Полная выгрузка импортируется командой:<br><code>python import_dump.py /путь/к/выгрузке.sql</code><br>После импорта перезапустите приложение. SQL-команды из файла не выполняются. Повторный импорт заменяет копию, настройки и ручные связи сохраняются.</div><div class="settings-note"><strong>Что ещё не подключено</strong><br>Автоматическая загрузка из магазина — нужен доступ только на чтение или HTTPS-экспортёр.<br>Определение города по IP — нужна GeoIP-база.<br>Отправка сообщений — сейчас кабинет только показывает, кому пора напомнить.<br>Интерфейс защищён паролем. Для размещения в сети потребуется HTTPS.</div></div></section>`;}
+function settingsView(){const m=state.meta,s=m.settings;return `<section class="panel">${panelHeading('Правила расчёта','Изменения сохраняются в локальной базе и применяются ко всему отчёту.')}<form id="settings-form"><div class="settings-grid"><div><h3 class="section-caption">Напоминания о повторной покупке</h3><label class="field">Базовый интервал, дней<input name="interval_days" type="number" min="1" max="730" value="${s.interval_days}" required><small>Используется, пока у покупателя мало истории.</small></label><label class="field">Допустимая задержка, дней<input name="grace_days" type="number" min="0" max="365" value="${s.grace_days}" required><small>После этой задержки покупатель попадёт в «Просрочено».</small></label><label class="field">Минимум дат покупок для личного интервала<input name="minimum_orders" type="number" min="3" max="30" value="${s.minimum_orders}" required><small>Личный интервал — медиана последних шести промежутков между разными датами покупок. Заказы в один день не сокращают интервал.</small></label>${followupSettings(s)}<button class="button primary" type="submit">Сохранить настройки</button></div><div><h3 class="section-caption">Учитываемые статусы заказов</h3>${m.statuses.map(sx=>`<label class="status-option"><input type="checkbox" name="status_ids" value="${sx.id}" ${s.status_ids.includes(sx.id)?'checked':''}>${esc(sx.name)}<small>${num(sx.count)}</small></label>`).join('')}</div></div></form></section>${sourceSettings(m)}`;}
 function orderHTML(o,open=false){return `<details class="order-detail" ${open?'open':''}><summary><span>№${esc(o.id)}</span><span class="muted">${fmtDate(o.date)}</span><strong>${num(o.amount,2)} ${esc(o.currency)}</strong></summary><div class="order-body"><div class="order-meta">${esc(o.status)} · ${esc(o.city)}, ${esc(o.country)}<br>${esc(o.shipping_method)}<br>${esc(o.payment_method)}</div><div class="table-scroll"><table><thead><tr><th>Товар / фасовка</th><th>Кол-во</th><th>Сумма</th></tr></thead><tbody>${o.lines.map(l=>`<tr><td>${esc(l.name)}<span class="identity-meta">${esc(l.pack.label)} · ${esc(l.model)}</span></td><td>${l.quantity}</td><td>${num(l.total,2)} ${esc(o.currency)}</td></tr>`).join('')}</tbody></table></div><div style="margin-top:13px">${o.totals.map(t=>`<div class="order-total"><span>${esc(t.title)}</span><span>${num(t.value,2)} ${esc(o.currency)}</span></div>`).join('')}</div>${o.history.length?`<div class="section-caption">История статусов</div><div class="order-meta">${o.history.map(h=>fmtDate(h.date)+' · '+esc(h.status)).join('<br>')}</div>`:''}</div></details>`;}
 function openDrawer(label){$('#drawer-label').textContent=label;$('#drawer-content').innerHTML='<div class="loading">Загружаем…</div>';if(!$('#drawer').open)$('#drawer').showModal();}
 async function openCustomer(id){
@@ -174,6 +193,7 @@ document.addEventListener('click',async e=>{
   const b=e.target.closest('[data-action]');if(!b)return;
   try{
     switch(b.dataset.action){
+      case 'refresh-source':await refreshSource(true);toast('Отчёт обновлён из последней успешной копии магазина.');break;
       case 'customer':await openCustomer(b.dataset.id);break;
       case 'week':await openWeek(b.dataset.ids.split(','));break;
       case 'close-dialog':$('#drawer').close();state.customer=null;break;
@@ -190,3 +210,4 @@ document.addEventListener('click',async e=>{
 });
 $('#drawer').addEventListener('click',e=>{if(e.target===$('#drawer')){const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right)$('#drawer').close();}});
 init();
+setInterval(()=>refreshSource(),60000);

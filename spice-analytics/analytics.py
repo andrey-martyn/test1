@@ -76,6 +76,7 @@ class Analytics:
         self.database = Path(database)
         con = sqlite3.connect(self.database)
         con.execute('CREATE TABLE IF NOT EXISTS customer_actions (customer_id TEXT PRIMARY KEY, payload TEXT)')
+        con.execute('BEGIN')
         self.actions={cid:json.loads(payload) for cid,payload in con.execute('SELECT customer_id,payload FROM customer_actions')}
         self.geo=GeoResolver(self.database.parent)
         raw = defaultdict(list)
@@ -118,7 +119,8 @@ class Analytics:
                 'settings':self.settings,'imported_at':self.imported_at,'geoip':self.geo.metadata(),
                 'warnings':['Статус «В обработке» не подтверждает оплату. Показаны суммы заказов.',
                             'География: адрес и отдельная приблизительная оценка по локальной GeoIP-базе, если она установлена.',
-                            'Импорт полной выгрузки вручную. Автоматическое подключение к магазину ещё не настроено.']}
+                            'Автоматическая копия из MySQL.' if self.import_meta.get('source') == 'mysql' else
+                            'Импорт SQL-выгрузки вручную. Подключение к магазину ещё не настроено.']}
 
     def identity(self, orders):
         dsu = DSU([o['order_id'] for o in orders])

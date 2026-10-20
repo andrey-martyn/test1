@@ -4,3 +4,7 @@ __pycache__/
 *.sql
 *.sqlite3*
 test-results/
+*.key
+source.json
+access.json
+.env

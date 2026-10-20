@@ -5,10 +5,14 @@ import zipfile
 from build_demo import build
 
 ROOT=Path(__file__).parent
-PATTERNS=['*.py','README.md','requirements.txt','.gitignore','static/*.html','static/*.js','static/*.css','static/*.geojson','tests/*.py','tests/fixtures/GeoIP2-City-Test.mmdb']
+PATTERNS=['*.py','*.md','hosting_bootstrap.sh','requirements.txt','.gitignore','static/*.html','static/*.js','static/*.css','static/*.geojson','tests/*.py','tests/fixtures/GeoIP2-City-Test.mmdb']
 
 def source_files():
-    return sorted({p for pattern in PATTERNS for p in ROOT.glob(pattern) if p.is_file()})
+    from package_php_delivery import php_runtime_files
+    files={p for pattern in PATTERNS for p in ROOT.glob(pattern) if p.is_file()}
+    files.update(php_runtime_files())
+    files.update(p for p in (ROOT/'php/tests').iterdir() if p.is_file() and (p.suffix in ('.php','.py') or p.name=='Dockerfile'))
+    return sorted(files)
 
 if __name__=='__main__':
     out=ROOT.parent
