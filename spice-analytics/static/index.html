@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Лавка · Аналитика</title><link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="/static/marketing.css"><script defer src="/static/marketing.js"></script><script defer src="/static/app.js"></script></head>
+<body>
+<aside class="sidebar">
+  <a class="brand" href="/" aria-label="Лавка аналитика"><span class="brand-mark">л.</span><span>Лавка<span class="brand-sub">аналитика магазина</span></span></a>
+  <div class="workspace-label">РАБОЧЕЕ ПРОСТРАНСТВО</div>
+  <nav id="navigation">
+    <button data-view="overview"><span class="nav-icon">◫</span>Обзор</button>
+    <button data-view="customers" class="active"><span class="nav-icon">♙</span>Покупатели</button>
+    <button data-view="actions"><span class="nav-icon">☷</span>Очередь контактов</button>
+    <button data-view="retention"><span class="nav-icon">↻</span>Удержание и когорты</button>
+    <button data-view="segments"><span class="nav-icon">◩</span>Сегменты и RFM</button>
+    <button data-view="opportunities"><span class="nav-icon">✧</span>Повторные продажи</button>
+    <button data-view="products"><span class="nav-icon">▦</span>Товары и фасовки</button>
+    <button data-view="seasonality"><span class="nav-icon">▥</span>Сезонность</button>
+    <button data-view="geography"><span class="nav-icon">◎</span>География</button>
+    <button data-view="ga4"><span class="nav-icon">↗</span>GA4 и каналы</button>
+    <button data-view="duplicates"><span class="nav-icon">⇄</span>Объединение<span id="duplicate-badge" class="nav-badge"></span></button>
+    <button data-view="settings"><span class="nav-icon">⚙</span>Настройки</button>
+  </nav>
+  <div class="sidebar-bottom"><div class="local-pill"><i></i> Локальный прототип</div><p>ocStore 3.0.2.0<br>Данные из SQL-выгрузки</p><button class="logout" id="logout">Выйти из кабинета ↗</button></div>
+</aside>
+<main>
+  <header><div><div class="eyebrow">ЛАВКА СПЕЦИЙ / АНАЛИТИКА</div><h1 id="page-title">Покупатели</h1><p id="page-description">История покупок и подходящий момент для нового заказа.</p></div><button id="privacy" class="button secondary" aria-pressed="true">◉ Имена скрыты</button></header>
+  <div class="report-controls"><label>Период<select id="year" aria-label="Год отчёта"></select></label><label>Дата проверки<input id="as-of" type="date" aria-label="Дата проверки отчёта"></label><label>Валюта<select id="currency" aria-label="Валюта"></select></label><div class="data-stamp"><span class="status-dot"></span><span id="data-stamp">Загружаем данные…</span></div></div>
+  <div id="notice" class="notice hidden"></div>
+  <section id="metrics" class="metrics" aria-label="Основные показатели"></section>
+  <section id="content" aria-live="polite"><div class="loading">Загружаем историю заказов…</div></section>
+  <footer>Суммы заказов ≠ подтверждённые оплаты <span>Часовой пояс отчёта: Europe/Kyiv · <span id="footer-range"></span></span></footer>
+</main>
+<dialog id="drawer"><div class="drawer-heading"><span class="eyebrow" id="drawer-label">ПОКУПАТЕЛЬ</span><button class="icon-button" data-action="close-dialog" aria-label="Закрыть">✕</button></div><div id="drawer-content"></div></dialog>
+<div id="toast" class="toast hidden" role="status"></div>
+</body></html>
