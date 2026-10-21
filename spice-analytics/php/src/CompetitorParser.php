@@ -147,7 +147,8 @@ function competitor_absolute_url(string $link, string $base): ?string
     elseif (!preg_match('~^[a-z][a-z0-9+.-]*:~i', $link)) {
         if ($link[0] === '#') return null;
         $path = $origin['path'] ?? '/';
-        $link = 'https://' . $origin['host'] . ($link[0] === '/' ? '' : rtrim(dirname($path), '/\\') . '/') . $link;
+        $directory = substr($path, -1) === '/' ? $path : rtrim(dirname($path), '/\\') . '/';
+        $link = 'https://' . $origin['host'] . ($link[0] === '/' ? '' : $directory) . $link;
     }
     $url = parse_url($link);
     if (!$url || ($url['scheme'] ?? '') !== 'https' || isset($url['user']) || isset($url['pass']) || isset($url['port']) && $url['port'] !== 443) return null;
@@ -291,11 +292,25 @@ function competitor_product_json(array $nodes, string $title, string $url): arra
 
 function competitor_main_node(\DOMXPath $xpath): \DOMNode
 {
-    return competitor_first_node($xpath, [
+    $heading = null;
+    $root = $xpath->query('/*')->item(0);
+    foreach ($xpath->query('//h1') as $candidate) {
+        if (!competitor_catalog_navigation($candidate, $root)) { $heading = $candidate; break; }
+    }
+    foreach ([
         '//main', '//*[@id="content"]', '//article',
         '//*[contains(concat(" ",normalize-space(@class)," ")," page-content ")]',
-        '//*[contains(concat(" ",normalize-space(@class)," ")," main-content ")]', '//body'
-    ]) ?: $xpath->query('/*')->item(0);
+        '//*[contains(concat(" ",normalize-space(@class)," ")," main-content ")]'
+    ] as $path) {
+        foreach ($xpath->query($path) as $candidate) {
+            if (!$heading && strtolower($candidate->nodeName) !== 'article') return $candidate;
+            // A review/article above the real content is not the page's main scope.
+            for ($node = $heading; $node; $node = $node->parentNode) {
+                if ($node->isSameNode($candidate)) return $candidate;
+            }
+        }
+    }
+    return competitor_first_node($xpath, ['//body']) ?: $xpath->query('/*')->item(0);
 }
 
 function competitor_clean_scope(\DOMXPath $xpath, \DOMNode $scope): \DOMNode
@@ -442,6 +457,50 @@ function competitor_dom_offers(\DOMXPath $xpath, \DOMNode $scope, string $title,
         $ambiguous ? ['variant_prices_unavailable'] : []];
 }
 
+function competitor_catalog_navigation(\DOMNode $node, \DOMNode $scope): bool
+{
+    for ($parent = $node; $parent instanceof \DOMElement; $parent = $parent->parentNode) {
+        if (in_array(strtolower($parent->nodeName), ['nav', 'header', 'footer', 'aside'], true)
+            || preg_match('/(?:^|[\s_-])(?:menu|navigation|sidebar|breadcrumb|reviews?|comments?|filters?|category[-_](?:card|item|name|title))(?:[\s_-]|$)/i', $parent->getAttribute('class') . ' ' . $parent->getAttribute('id'))) return true;
+        if ($parent->isSameNode($scope)) break;
+    }
+    return false;
+}
+
+/** Bounded semantic card evidence for Banka's flat product/category URL space. */
+function competitor_banka_card(\DOMXPath $xpath, \DOMElement $anchor, \DOMNode $scope, string $url): bool
+{
+    if (preg_replace('/^www\./i', '', parse_url($url, PHP_URL_HOST) ?: '') !== 'banka-speciy.in.ua') return false;
+    $wanted = competitor_absolute_url($anchor->getAttribute('href'), $url);
+    $depth = 0;
+    for ($card = $anchor->parentNode; $card instanceof \DOMElement && !$card->isSameNode($scope) && $depth++ < 5; $card = $card->parentNode) {
+        if (in_array(strtolower($card->nodeName), ['main', 'body'], true)) break;
+        $text = competitor_text($card->textContent);
+        if (mb_strlen($text) > 2000) continue;
+        $urls = [];
+        foreach ($xpath->query('.//a[@href]', $card) as $link) {
+            $href = competitor_absolute_url($link->getAttribute('href'), $url);
+            if ($href) $urls[$href] = true;
+            if (count($urls) > 2) break;
+        }
+        if (count($urls) !== 1 || !isset($urls[$wanted])) continue;
+        $productId = $xpath->query('.//input[@name="product_id"]|.//*[@data-product-id]', $card)->length > 0;
+        $heading = $xpath->query('.//h2|.//h3|.//h4', $card)->length > 0;
+        $price = preg_match('/\d[\d\s.,]*\s*(?:грн\.?|UAH|₴)(?![\p{L}])/iu', $text);
+        $orderControl = false;
+        foreach ($xpath->query('.//select/option|.//button', $card) as $control) {
+            $label = competitor_text($control->textContent);
+            if (competitor_weight($label) !== null
+                || preg_match('/(?:\d\s*шт\.?|купити|купить|у кошик|в кошик|в корзину)/iu', $label)) {
+                $orderControl = true;
+                break;
+            }
+        }
+        if ($productId || ($heading && $price && $orderControl)) return true;
+    }
+    return false;
+}
+
 function competitor_catalog_links(\DOMXPath $xpath, \DOMNode $scope, array $jsonNodes, string $url): array
 {
     $links = [];
@@ -450,9 +509,10 @@ function competitor_catalog_links(\DOMXPath $xpath, \DOMNode $scope, array $json
         $href = competitor_absolute_url($href, $url);
         $title = mb_substr(competitor_text((string) $title), 0, 300);
         if (!$href || $title === '' || $href === $url || count($links) >= 250) return;
+        if (preg_match('/^(?:купить|купити|в корзину|в кошик|детальніше|подробнее|повідомити.*|сообщить.*)$/iu', $title)) return;
         $path = parse_url($href, PHP_URL_PATH) ?: '/';
         if (preg_match('~/(?:account|login|cart|checkout|search|contact|about|news|faq|cooperation)(?:/|$)~i', $path)) return;
-        $links[$href] = ['url' => $href, 'title' => $title];
+        if (!isset($links[$href])) $links[$href] = ['url' => $href, 'title' => $title];
     };
     foreach ($jsonNodes as $node) {
         if (in_array('Product', competitor_types($node), true)) $add($node['url'] ?? '', $node['name'] ?? '');
@@ -464,7 +524,10 @@ function competitor_catalog_links(\DOMXPath $xpath, \DOMNode $scope, array $json
         }
     }
     $anchors = $xpath->query('.//a[@href]', $scope);
+    $remaining = 3000;
     foreach ($anchors as $anchor) {
+        if (--$remaining < 0 || count($links) >= 250) break;
+        if (competitor_catalog_navigation($anchor, $scope)) continue;
         $href = $anchor->getAttribute('href');
         $title = competitor_text($anchor->textContent);
         if ($title === '') $title = $anchor->getAttribute('title');
@@ -472,12 +535,18 @@ function competitor_catalog_links(\DOMXPath $xpath, \DOMNode $scope, array $json
         if (!$absolute) continue;
         $path = parse_url($absolute, PHP_URL_PATH) ?: '';
         $knownProductPath = preg_match('~/(?:catalog/[^?#]+\.html|content/products/[^/?#]+)~', $path);
+        $category = parse_url($url, PHP_URL_PATH) ?: '/';
+        if (preg_replace('/^www\./i', '', parse_url($url, PHP_URL_HOST) ?: '') === 'specii.in.ua'
+            && preg_match('~^/ua/catalog/(?:tselye-pryanosti|natural-spices-in-glass)/$~D', $category)
+            && preg_match('~^' . preg_quote($category, '~') . '[^/]+/$~D', $path) && parse_url($absolute, PHP_URL_QUERY) === null) {
+            $knownProductPath = true;
+        }
         $inCard = false;
         for ($node = $anchor; $node instanceof \DOMElement && $node !== $scope; $node = $node->parentNode) {
             if (preg_match('/(?:^|\s)(?:product-thumb|product-layout|product-card|product-item|product-name|product-title|product__name|product__title|catalog-item|item-title)(?:\s|$)/', $node->getAttribute('class'))
                 || preg_match('~/Product$~', $node->getAttribute('itemtype'))) { $inCard = true; break; }
         }
-        if ($knownProductPath || $inCard) $add($absolute, $title);
+        if ($knownProductPath || $inCard || competitor_banka_card($xpath, $anchor, $scope, $url)) $add($absolute, $title);
     }
     ksort($links, SORT_STRING);
     return array_values($links);
@@ -486,10 +555,14 @@ function competitor_catalog_links(\DOMXPath $xpath, \DOMNode $scope, array $json
 function competitors_parse_document(array $target, string $html, string $finalUrl): array
 {
     list($doc, $xpath) = competitor_dom($html);
-    $title = competitor_first_text($xpath, ['//h1', '//meta[@property="og:title"]', '//title']);
-    $title = mb_substr($title, 0, 300);
     $kind = $target['kind'] ?? 'product';
     $scope = competitor_main_node($xpath);
+    $title = '';
+    foreach ($xpath->query('.//h1', $scope) as $heading) {
+        if (!competitor_catalog_navigation($heading, $scope)) { $title = competitor_text($heading->textContent); break; }
+    }
+    if ($title === '') $title = competitor_first_text($xpath, ['//meta[@property="og:title"]', '//title']);
+    $title = mb_substr($title, 0, 300);
     $json = competitor_json_nodes($xpath);
     $base = ['kind' => $kind, 'title' => $title, 'offers' => [], 'text' => '', 'links' => [], 'warnings' => [], 'method' => ''];
     if ($kind === 'terms') {

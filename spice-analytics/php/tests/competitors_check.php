@@ -15,6 +15,88 @@ function text_observation(string $text): array { return ['kind' => 'terms', 'tit
 function catalog_observation(array $links): array { return ['kind' => 'catalog', 'title' => 'Каталог', 'offers' => [], 'text' => '', 'links' => array_map(function ($name) { return ['url' => 'https://deluxe.com.ua/fixture-' . $name . '.html', 'title' => 'Товар ' . $name]; }, $links), 'warnings' => [], 'method' => 'fixture']; }
 function change_count(PDO $db): int { return (int) $db->query('SELECT count(*) FROM competitor_changes')->fetchColumn(); }
 
+function competitor_legacy_specii_db(string $directory, array $overrides = []): PDO {
+    \Lavka\private_dir($directory);
+    $db = \Lavka\competitors_db($directory);
+    $db->exec("DELETE FROM competitor_targets WHERE seed_key='specii-whole-spices-catalog'; DROP TABLE competitor_migrations");
+    $row = array_merge(['seed_key' => 'specii-catalog', 'source_id' => 'specii', 'kind' => 'catalog', 'url' => 'https://www.specii.in.ua/ua/',
+        'label' => 'Позиции на главной странице', 'enabled' => 1, 'grams_override' => null, 'pack_label' => '', 'match_group' => '', 'match_confirmed' => 0,
+        'created_at' => '2026-09-01T10:00:00Z', 'updated_at' => '2026-09-01T10:00:00Z', 'next_check_at' => '2026-09-01T10:00:00Z'], $overrides);
+    $stmt = $db->prepare('INSERT INTO competitor_targets(' . implode(',', array_keys($row)) . ') VALUES(' . implode(',', array_fill(0, count($row), '?')) . ')');
+    $stmt->execute(array_values($row));
+    return $db;
+}
+
+function competitor_specii_source_migration_check(string $directory): void {
+    $legacyDirectory = $directory . '/legacy-specii'; $db = null;
+    try {
+        $db = competitor_legacy_specii_db($legacyDirectory);
+        $oldId = (int) $db->lastInsertId();
+        cck((int) $db->query('SELECT count(*) FROM competitor_targets')->fetchColumn() === 90, 'Legacy fixture has original target count');
+        $observation = catalog_observation([]);
+        $observation['links'] = [['url' => 'https://www.specii.in.ua/ua/catalog/tselye-pryanosti/anis/', 'title' => 'Анис']];
+        \Lavka\competitors_record_attempt($db, $oldId, $observation, null, '2026-10-01T10:00:00Z', 200);
+        $observation['links'][] = ['url' => 'https://www.specii.in.ua/ua/catalog/tselye-pryanosti/gvozdika-tselaya/', 'title' => 'Гвоздика'];
+        \Lavka\competitors_record_attempt($db, $oldId, $observation, null, '2026-10-02T10:00:00Z', 200);
+        \Lavka\competitors_record_attempt($db, $oldId, null, 'catalog_unrecognized', '2026-10-03T10:00:00Z', 200);
+        \Lavka\competitors_queue($db, $oldId);
+        $history = \Lavka\competitors_history($db, $oldId);
+        $discoveries = $db->query('SELECT * FROM competitor_discoveries ORDER BY target_id,url')->fetchAll();
+        $changes = $db->query('SELECT * FROM competitor_changes ORDER BY id')->fetchAll();
+        $db = null; $db = \Lavka\competitors_db($legacyDirectory);
+        $old = \Lavka\competitors_target($db, $oldId);
+        cck(!$old['enabled'] && !$old['queued'] && $old['url'] === 'https://www.specii.in.ua/ua/', 'Migration archives exact factory homepage without reattributing URL');
+        $after = \Lavka\competitors_history($db, $oldId);
+        cck($after['observations'] === $history['observations'] && $after['attempts'] === $history['attempts']
+            && $old['observation'] === $history['target']['observation'] && $old['last_attempt'] === $history['target']['last_attempt'], 'Legacy observations, failed attempts and current snapshot survive migration');
+        cck($discoveries === $db->query('SELECT * FROM competitor_discoveries ORDER BY target_id,url')->fetchAll()
+            && $changes === $db->query('SELECT * FROM competitor_changes ORDER BY id')->fetchAll(), 'Legacy discoveries and change evidence survive migration');
+        cck((int) $db->query('SELECT count(*) FROM competitor_targets')->fetchColumn() === 91
+            && (int) $db->query('SELECT count(*) FROM competitor_targets WHERE enabled=1')->fetchColumn() === 90, 'Upgrade adds separate source and retains one archived target');
+        $newId = (int) $db->query("SELECT id FROM competitor_targets WHERE seed_key='specii-whole-spices-catalog'")->fetchColumn();
+        $new = \Lavka\competitors_target($db, $newId);
+        cck($newId !== $oldId && $new['enabled'] && $new['observation'] === null && $new['last_success'] === null, 'Replacement category starts without borrowed homepage history');
+        \Lavka\competitors_record_attempt($db, $newId, $observation, null, '2026-10-04T10:00:00Z', 200);
+        cck((int) $db->query('SELECT count(*) FROM competitor_discoveries WHERE target_id=' . $newId . ' AND baseline=0')->fetchColumn() === 0
+            && change_count($db) === count($changes), 'Replacement category creates its own baseline without false discoveries');
+        \Lavka\competitors_save_target($db, ['enabled' => true], $oldId);
+        \Lavka\competitors_save_target($db, ['enabled' => false, 'label' => 'Мой архив раздела'], $newId);
+        $db = null; $db = \Lavka\competitors_db($legacyDirectory);
+        cck(\Lavka\competitors_target($db, $oldId)['enabled'] && !\Lavka\competitors_target($db, $newId)['enabled']
+            && \Lavka\competitors_target($db, $newId)['label'] === 'Мой архив раздела'
+            && (int) $db->query('SELECT count(*) FROM competitor_targets')->fetchColumn() === 91, 'One-time migration respects explicit re-enable and replacement customization');
+    } finally {
+        $db = null;
+        foreach (glob($legacyDirectory . '/*') as $file) if (is_file($file)) unlink($file);
+        if (is_dir($legacyDirectory)) rmdir($legacyDirectory);
+    }
+    $exceptions = [
+        ['label' => 'Моя страница ассортимента'],
+        ['pack_label' => 'Моя заметка'],
+        ['updated_at' => '2026-09-02T10:00:00Z'],
+        ['url' => 'https://www.specii.in.ua/ua/catalog/molotye-pryanosti/'],
+        ['enabled' => 0],
+        ['seed_key' => null],
+        ['kind' => 'terms'],
+    ];
+    foreach ($exceptions as $i => $overrides) {
+        $caseDirectory = $directory . '/custom-specii-' . $i; $db = null;
+        try {
+            $db = competitor_legacy_specii_db($caseDirectory, $overrides);
+            $id = (int) $db->lastInsertId();
+            $before = $db->query('SELECT * FROM competitor_targets WHERE id=' . $id)->fetch();
+            $db = null; $db = \Lavka\competitors_db($caseDirectory);
+            cck($db->query('SELECT * FROM competitor_targets WHERE id=' . $id)->fetch() === $before, 'Migration preserves customized or archived legacy target case ' . $i);
+            $db = null; $db = \Lavka\competitors_db($caseDirectory);
+            cck($db->query('SELECT * FROM competitor_targets WHERE id=' . $id)->fetch() === $before, 'Skipped migration remains idempotent case ' . $i);
+        } finally {
+            $db = null;
+            foreach (glob($caseDirectory . '/*') as $file) if (is_file($file)) unlink($file);
+            if (is_dir($caseDirectory)) rmdir($caseDirectory);
+        }
+    }
+}
+
 function competitor_http_test_request(string $base, string $route, string $method = 'GET', ?array $body = null, string $cookie = '', string $origin = ''): array {
     $headers = ['Content-Type: application/json'];
     if ($cookie !== '') $headers[] = 'Cookie: ' . $cookie;
@@ -99,6 +181,8 @@ try {
     cck(count(array_filter($overview['targets'], function ($t) { return $t['source_id'] === 'lavka'; })) === 56, 'Priority seed is deduplicated by product id');
     cck(count(array_filter($overview['targets'], function ($t) { return $t['source_id'] !== 'lavka' && $t['kind'] === 'product'; })) === 22, 'Initial competitor candidates are included without claiming equivalence');
     cck(count($overview['targets']) === 90, 'Seed includes all56 own22 competitor and12 commercial/catalog watchers');
+    cck((int) $db->query("SELECT count(*) FROM competitor_targets WHERE seed_key='specii-whole-spices-catalog' AND url='https://www.specii.in.ua/ua/catalog/tselye-pryanosti/' AND enabled=1")->fetchColumn() === 1
+        && (int) $db->query("SELECT count(*) FROM competitor_targets WHERE seed_key='specii-catalog'")->fetchColumn() === 0, 'Fresh seed watches actual Specii category without unsuitable homepage');
     cck(count(array_filter($overview['targets'], function ($t) { return $t['source_id'] === 'spicery' && $t['enabled'] && $t['kind'] === 'terms'; })) === 2, 'Verified Spicery delivery and discount page URLs are enabled');
     cck(!array_filter($overview['targets'], function ($t) { return $t['last_success'] !== null || $t['observation'] !== null || $t['match_confirmed']; }), 'No invented prices, checks or equivalence in seed');
     $count = count($overview['targets']); $db = null; $db = \Lavka\competitors_db($directory);
@@ -168,8 +252,9 @@ try {
     for ($i = 0; $i < 55; ++$i) \Lavka\competitors_run_status($db, ['started_at' => '2026-10-01T10:00:00Z', 'processed' => $i]);
     cck((int) $db->query('SELECT count(*) FROM competitor_runs')->fetchColumn() === 50 && count(\Lavka\competitors_overview($db)['runs']) === 10, 'Run summary history bounded');
     cck(\Lavka\revision($orders) === $ordersRevision && $orders->query('SELECT payload FROM customer_actions')->fetchColumn() === '{"note":"preserve"}', 'Monitor never modifies orders CRM or report revision');
+    competitor_specii_source_migration_check($directory);
     competitor_http_routes_check($directory);
-    echo \Lavka\encode(['php' => PHP_VERSION, 'seed_and_validation' => 'passed', 'error_preservation_and_backoff' => 'passed', 'price_stock_and_terms_history' => 'passed', 'catalog_baseline_and_discoveries' => 'passed', 'queue_archive_and_order_isolation' => 'passed', 'http_auth_origin_and_no_crawl' => 'passed']), "\n";
+    echo \Lavka\encode(['php' => PHP_VERSION, 'seed_and_validation' => 'passed', 'specii_source_migration' => 'passed', 'error_preservation_and_backoff' => 'passed', 'price_stock_and_terms_history' => 'passed', 'catalog_baseline_and_discoveries' => 'passed', 'queue_archive_and_order_isolation' => 'passed', 'http_auth_origin_and_no_crawl' => 'passed']), "\n";
 } finally {
     $db = null; $orders = null;
     foreach (glob($directory . '/*') as $file) if (is_file($file)) unlink($file);

@@ -88,7 +88,7 @@ function competitors_default_targets(): array
         ['seed_key' => 'banka-catalog', 'source_id' => 'banka', 'kind' => 'catalog', 'url' => 'https://banka-speciy.in.ua/ua/novi-nadhodzhennja', 'label' => 'Новые поступления'],
         ['seed_key' => 'specii-discounts', 'source_id' => 'specii', 'kind' => 'terms', 'url' => 'https://www.specii.in.ua/ua/about/skidki-i-aktsii/', 'label' => 'Скидки и условия применения'],
         ['seed_key' => 'specii-delivery', 'source_id' => 'specii', 'kind' => 'terms', 'url' => 'https://www.specii.in.ua/ua/about/dostavka-oplata/', 'label' => 'Доставка и минимальный заказ'],
-        ['seed_key' => 'specii-catalog', 'source_id' => 'specii', 'kind' => 'catalog', 'url' => 'https://www.specii.in.ua/ua/', 'label' => 'Позиции на главной странице'],
+        ['seed_key' => 'specii-whole-spices-catalog', 'source_id' => 'specii', 'kind' => 'catalog', 'url' => 'https://www.specii.in.ua/ua/catalog/tselye-pryanosti/', 'label' => 'Цілі прянощі — наблюдаемый раздел'],
     ];
 }
 
@@ -116,6 +116,7 @@ function competitors_db(string $directory): \PDO
             CREATE TABLE IF NOT EXISTS competitor_changes(id INTEGER PRIMARY KEY,target_id INTEGER NOT NULL REFERENCES competitor_targets(id),source_id TEXT NOT NULL,kind TEXT NOT NULL,message TEXT NOT NULL,occurred_at TEXT NOT NULL,before_payload TEXT,after_payload TEXT);
             CREATE TABLE IF NOT EXISTS competitor_discoveries(target_id INTEGER NOT NULL REFERENCES competitor_targets(id),source_id TEXT NOT NULL,url TEXT NOT NULL,title TEXT NOT NULL,first_seen TEXT NOT NULL,baseline INTEGER NOT NULL,PRIMARY KEY(target_id,url));
             CREATE TABLE IF NOT EXISTS competitor_runs(id INTEGER PRIMARY KEY,started_at TEXT NOT NULL,payload TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS competitor_migrations(name TEXT PRIMARY KEY,applied_at TEXT NOT NULL);
             PRAGMA user_version=1;');
         $seeds = competitors_default_targets();
         if (is_file(__DIR__ . '/CompetitorSeed.php')) {
@@ -127,6 +128,20 @@ function competitors_db(string $directory): \PDO
         $now = utc_now();
         foreach ($seeds as $seed) {
             $stmt->execute([$seed['seed_key'], $seed['source_id'], $seed['kind'], competitors_validate_url($seed['url'], $seed['source_id']), $seed['label'], (int) ($seed['enabled'] ?? true), $seed['grams_override'] ?? null, $seed['pack_label'] ?? '', $seed['match_group'] ?? '', (int) ($seed['match_confirmed'] ?? false), $now, $now, $now]);
+        }
+        // The homepage has no product cards. Keep its identity and history, and
+        // retire only the untouched factory target once; later user edits win.
+        $migration = 'specii-catalog-source-v1';
+        $applied = $db->prepare('SELECT 1 FROM competitor_migrations WHERE name=?');
+        $applied->execute([$migration]);
+        if (!$applied->fetchColumn()) {
+            $archive = $db->prepare("UPDATE competitor_targets SET enabled=0,queued=0,updated_at=?
+                WHERE seed_key='specii-catalog' AND source_id='specii' AND kind='catalog'
+                AND url='https://www.specii.in.ua/ua/' AND label='Позиции на главной странице'
+                AND enabled=1 AND grams_override IS NULL AND pack_label='' AND match_group='' AND match_confirmed=0
+                AND created_at=updated_at");
+            $archive->execute([$now]);
+            $db->prepare('INSERT INTO competitor_migrations(name,applied_at) VALUES(?,?)')->execute([$migration, $now]);
         }
         $db->commit();
     } catch (\Throwable $e) {

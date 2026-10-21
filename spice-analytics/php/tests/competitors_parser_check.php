@@ -143,6 +143,41 @@ $result = \Lavka\competitors_parse(['kind' => 'catalog'], $listing, 'https://ban
 parser_expect(count($result['links']) === 1 && $result['links'][0]['url'] === 'https://banka-speciy.in.ua/ua/paprika', 'Only local product-card links');
 parser_expect(in_array('watched_page_only_not_full_catalog', $result['warnings'], true), 'Coverage explicit');
 
+// Synthetic structural regressions, not captured HTML from the live stores.
+$bankaUrl = 'https://banka-speciy.in.ua/ua/novi-nadhodzhennja';
+$semanticListing = '<html><head><meta charset="utf-8"></head><body><article class="review"><h1>Отзывы</h1><a href="/ua/review">Отзыв</a></article>' .
+    '<h1>Нові надходження</h1><div class="tiles"><div class="tile"><h3><a href="/ua/test-laurel">Тестовий лавровий лист</a></h3>' .
+    '<strong>45 грн</strong><button>100 г</button><a href="/ua/test-laurel">Повідомити про наявність</a></div>' .
+    '<div class="tile"><h3><a href="/ua/test-pepper">Тестовий перець</a></h3><span>70 грн</span><select><option>50 г</option></select></div></div>' .
+    '<div class="filters"><h3><a href="/ua/spices">Категория</a></h3><span>від 20 грн</span><button>100 г</button></div>' .
+    '<div><h3><a href="/ua/tea">Чай: категория</a></h3><span>від 10 грн</span><input type="range"><button>Фильтровать</button></div>' .
+    '<aside><div class="product-thumb"><a href="/ua/sidebar-product">Боковой товар</a></div></aside>' .
+    '<nav><a href="/ua/menu-product">Меню</a></nav></body></html>';
+$result = \Lavka\competitors_parse(['kind' => 'catalog'], $semanticListing, $bankaUrl);
+parser_expect(array_column($result['links'], 'url') === ['https://banka-speciy.in.ua/ua/test-laurel', 'https://banka-speciy.in.ua/ua/test-pepper'], 'Banka flat links need local card evidence; unrelated first article, menus and price filters are excluded');
+parser_expect($result['links'][0]['title'] === 'Тестовий лавровий лист', 'Notify action cannot overwrite the product title');
+parser_expect($result['title'] === 'Нові надходження', 'Review heading cannot replace the page title');
+parser_rejects('catalog_unrecognized', function () use ($semanticListing) {
+    \Lavka\competitors_parse(['kind' => 'catalog'], $semanticListing, 'https://spiceryshop.com.ua/ru/catalog/new');
+});
+$speciiUrl = 'https://www.specii.in.ua/ua/catalog/tselye-pryanosti/';
+$speciiListing = '<html><head><meta charset="utf-8"></head><body><nav><a href="' . $speciiUrl . 'menu/">Меню</a></nav>' .
+    '<main><h1>Цілі прянощі</h1><a href="anis/">Аніс</a><a href="/ua/catalog/tselye-pryanosti/gvozdika-tselaya/">Гвоздика</a>' .
+    '<a href="/ua/catalog/tselye-pryanosti/">Категория</a><a href="/ua/catalog/">Каталог</a>' .
+    '<a href="?page=2">Далі</a><a href="' . $speciiUrl . 'anis/?sort=price">Сортировка</a>' .
+    '<div class="category-card"><a href="' . $speciiUrl . 'organic/">Підкатегорія</a></div>' .
+    '<div class="breadcrumb"><a href="' . $speciiUrl . 'breadcrumb/">Навигация</a></div>' .
+    '<a href="https://evil.invalid/ua/catalog/tselye-pryanosti/evil/">Чужой сайт</a></main></body></html>';
+$result = \Lavka\competitors_parse(['kind' => 'catalog'], $speciiListing, $speciiUrl);
+parser_expect(array_column($result['links'], 'url') === [$speciiUrl . 'anis/', $speciiUrl . 'gvozdika-tselaya/'], 'Specii category leaf paths include correctly resolved relative product links');
+// Absolute root paths identify the same product URLs.
+$speciiListing = str_replace('href="anis/"', 'href="/ua/catalog/tselye-pryanosti/anis/"', $speciiListing);
+$result = \Lavka\competitors_parse(['kind' => 'catalog'], $speciiListing, $speciiUrl);
+parser_expect(array_column($result['links'], 'url') === [$speciiUrl . 'anis/', $speciiUrl . 'gvozdika-tselaya/'], 'Specii category product paths work without generic product CSS classes');
+parser_rejects('catalog_unrecognized', function () {
+    \Lavka\competitors_parse(['kind' => 'catalog'], '<html><h1>Магазин</h1><nav><a href="/ua/catalog/tselye-pryanosti/anis/">Аніс</a></nav><a href="/ua/catalog/tselye-pryanosti/">Цілі прянощі</a></html>', 'https://www.specii.in.ua/ua/');
+});
+
 parser_rejects('captcha', function () use ($target, $url) { \Lavka\competitors_parse($target, '<html><title>Just a moment...</title></html>', $url); });
 foreach (['product', 'terms', 'catalog'] as $kind) {
     parser_rejects('upstream_error', function () use ($kind, $url) { \Lavka\competitors_parse(['kind' => $kind], '<html><h1>Bitrix</h1>Mysql connect error (2002)</html>', $url); });
