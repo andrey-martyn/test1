@@ -14,7 +14,7 @@ name='lavka-history-browser-'+secrets.token_hex(5)
 with tempfile.TemporaryDirectory() as temporary:
     data=Path(temporary);base_rows=snapshot();rows={t:{} for t in base_rows};rows['oc_order_status']=base_rows['oc_order_status']
     for oid,date,account,group in [('101','2021-01-01','101','A'),('102','2022-07-01','102','A'),('103','2025-12-31','103','B'),('104','2026-01-01','104','B'),('105','2025-01-01','101','A')]:
-        order=deepcopy(base_rows['oc_order']['1']);order.update(order_id=oid,customer_id=account,date_added=date+' 12:00:00',date_modified=date+' 12:00:00',email='pair'+group+'@example.invalid',telephone='+38096'+account.zfill(7),firstname='Контакт',lastname='Пара'+group)
+        order=deepcopy(base_rows['oc_order']['1']);order.update(order_id=oid,customer_id=account,date_added=date+' 12:00:00',date_modified=date+' 12:00:00',email='synthetic.very.long.email.address.for.mobile.comparison.pair'+group+'@example.invalid',telephone='+38096'+account.zfill(7),firstname='Синтетический',lastname='ПроверкаПереносаДлинногоИмениПара'+group)
         rows['oc_order'][oid]=order
         line=deepcopy(base_rows['oc_order_product']['1']);line.update(order_product_id=oid,order_id=oid);rows['oc_order_product'][oid]=line
         option=deepcopy(base_rows['oc_order_option']['1']);option.update(order_option_id=oid,order_id=oid,order_product_id=oid);rows['oc_order_option'][oid]=option
@@ -61,13 +61,54 @@ with tempfile.TemporaryDirectory() as temporary:
             page.screenshot(path=str(ROOT/'test-results/history-seasonality.png'),full_page=True)
             help_button.focus();page.keyboard.press('Escape');assert page.locator('#help-popup').is_hidden()
             page.click('[data-view=duplicates]');assert page.locator('.pair-checkbox').count()==2
+            page.click('#privacy');assert page.evaluate('!state.privacy')
             page.select_option('#duplicate-kind','email');assert page.locator('.pair-checkbox').count()==2
             page.click('[data-action=duplicate-sort][data-key=left]');assert page.locator('th[aria-sort=ascending]').count()==1
             page.click('[data-action=duplicate-sort][data-key=left]');assert page.locator('th[aria-sort=descending]').count()==1
             page.check('#duplicate-select-all');assert page.evaluate('state.duplicateSelected.size')==2
             assert page.evaluate('duplicateSelectionInfo(selectedDuplicateRows()).groups')==2
             page.screenshot(path=str(ROOT/'test-results/history-duplicates.png'),full_page=True)
-            page.click('[data-action=merge-selected]');page.wait_for_function('() => state.report.customers.length===2 && !state.mergeBusy')
+            assert page.locator('.merge-toolbar-bottom').is_hidden()
+            for width in [390,375,320,432]:
+                page.set_viewport_size({'width':width,'height':844})
+                layout=page.locator('.duplicate-scroll').evaluate('el=>{const cells=[...el.querySelectorAll("tbody tr:first-child td")].slice(0,3).map(c=>{const r=c.getBoundingClientRect();return {left:r.left,right:r.right,width:r.width}}),r=el.getBoundingClientRect();return {left:r.left,right:r.right,clientWidth:el.clientWidth,scrollWidth:el.scrollWidth,cells}}')
+                assert layout['cells'][0]['left']>=layout['left']-.5,layout
+                assert layout['cells'][2]['right']<=layout['right']+1,layout
+                assert layout['cells'][0]['width']>=44,layout
+                assert abs(layout['cells'][1]['width']-layout['cells'][2]['width'])<1,layout
+                assert layout['scrollWidth']>layout['clientWidth'],layout
+                assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
+                assert page.locator('.duplicate-person').evaluate_all('els=>els.every(e=>e.scrollWidth<=e.clientWidth+1)'),width
+                assert page.locator('.pair-checkbox').first.locator('..').bounding_box()['height']>=44
+                bottom=page.locator('.merge-toolbar-bottom [data-action=merge-selected]')
+                assert bottom.is_visible() and bottom.is_enabled() and '(2)' in bottom.inner_text()
+                assert bottom.bounding_box()['height']>=44
+            page.set_viewport_size({'width':390,'height':844})
+            page.locator('.merge-toolbar-bottom [data-action=clear-pairs]').tap()
+            assert page.evaluate('state.duplicateSelected.size')==0
+            assert page.locator('[data-action=merge-selected]').evaluate_all('els=>els.every(e=>e.disabled)')
+            for i in range(2):
+                page.locator('.pair-checkbox').nth(i).locator('..').tap(position={'x':3,'y':22})
+                assert page.evaluate('state.duplicateSelected.size')==i+1
+                assert page.locator('[data-action=merge-selected]').evaluate_all('(els,count)=>els.every(e=>e.textContent.includes("("+count+")"))',i+1)
+            page.locator('.duplicate-scroll').scroll_into_view_if_needed()
+            page.screenshot(path=str(ROOT/'test-results/history-duplicates-iphone13.png'),full_page=True)
+            page.locator('.duplicate-scroll').evaluate('el=>el.scrollLeft=el.scrollWidth')
+            extra=page.locator('.duplicate-table th').nth(4).bounding_box();scrollbox=page.locator('.duplicate-scroll').bounding_box()
+            assert extra['x']+extra['width']<=scrollbox['x']+scrollbox['width']+1
+            page.locator('.duplicate-scroll').evaluate('el=>el.scrollLeft=0')
+            page.locator('.merge-toolbar-bottom').scroll_into_view_if_needed()
+            page.screenshot(path=str(ROOT/'test-results/history-duplicates-bottom-iphone13.png'))
+            pending=[];merge_pattern='**/index.php?route=%2Fapi%2Fidentity%2Fmerge-pairs'
+            page.route(merge_pattern,lambda route:pending.append(route))
+            page.locator('.merge-toolbar-bottom [data-action=merge-selected]').tap()
+            page.wait_for_function('() => state.mergeBusy')
+            assert page.locator('[data-action=merge-selected]').evaluate_all('els=>els.every(e=>e.disabled)')
+            assert page.locator('.pair-checkbox').evaluate_all('els=>els.every(e=>e.disabled)')
+            assert len(pending)==1
+            pending[0].continue_();page.unroute(merge_pattern)
+            page.wait_for_function('() => state.report.customers.length===2 && !state.mergeBusy')
+            page.set_viewport_size({'width':1536,'height':1000})
             assert page.evaluate('state.report.metrics.amount')==500
             assert page.locator('.pair-checkbox').count()==0
             page.click('[data-view=customers]');assert page.evaluate('state.report.history_totals.customer_count')==2
@@ -87,6 +128,6 @@ with tempfile.TemporaryDirectory() as temporary:
             assert not errors,errors
             assert not misplaced,misplaced
             browser.close()
-        print(json.dumps({'php_image':IMAGE,'all_time_calendar_and_year_drilldown':'passed','monthly_vertical_and_year_comparison':'passed','hover_keyboard_touch_help':'passed','independent_row_merges_and_undo':'passed','mobile_and_mount':'passed'}))
+        print(json.dumps({'php_image':IMAGE,'all_time_calendar_and_year_drilldown':'passed','monthly_vertical_and_year_comparison':'passed','hover_keyboard_touch_help':'passed','independent_row_merges_and_undo':'passed','mobile_and_mount':'passed','iphone13_two_contacts_and_touch_targets':'passed','mobile_bottom_merge_and_busy_lock':'passed'}))
     finally:
         subprocess.run(['docker','rm','-f',name],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);server.wait(timeout=15)

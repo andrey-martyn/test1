@@ -13,3 +13,32 @@
 .entity-history{margin-top:10px;font-size:10px}.entity-history>summary{cursor:pointer;color:#32724b}.entity-history table{min-width:380px;margin-top:10px}.entity-history .table-scroll{max-width:500px}.entity-history th,.entity-history td{padding:9px!important;font-size:10px!important;white-space:nowrap}
 
 .segment-shell{position:relative}.segment-shell>.segment-card{height:100%;width:100%;padding-right:35px}.segment-shell>.help-trigger{position:absolute;top:15px;right:12px}
+
+.duplicate-check-target{display:inline-flex;align-items:center;justify-content:center;vertical-align:top}
+.duplicate-person{min-width:0}
+.duplicate-mobile-hint,.merge-toolbar-bottom{display:none}
+@media(max-width:720px){
+  .duplicate-panel .toolbar .search,.duplicate-panel .toolbar select{font-size:16px;min-height:44px}
+  .duplicate-scroll{container-type:inline-size;-webkit-overflow-scrolling:touch}
+  .duplicate-table{--duplicate-pair-width:calc(100vw - 32px);--duplicate-contact-width:calc((var(--duplicate-pair-width) - 44px)/2);width:calc(var(--duplicate-pair-width) + 290px);min-width:0;table-layout:fixed}
+  .duplicate-table .duplicate-select-column{width:44px}
+  .duplicate-table .duplicate-person-column{width:var(--duplicate-contact-width)}
+  .duplicate-table .duplicate-match-column{width:190px}
+  .duplicate-table .duplicate-orders-column{width:100px}
+  .duplicate-table th,.duplicate-table td{padding:12px 6px;white-space:normal;overflow-wrap:anywhere}
+  .duplicate-table th:first-child,.duplicate-table td:first-child{width:44px;padding:6px 0}
+  .duplicate-table td:nth-child(2),.duplicate-table td:nth-child(3){min-width:0;max-width:none}
+  .duplicate-table th:nth-child(2),.duplicate-table th:nth-child(3){padding:12px 6px;font-size:10px}
+  .duplicate-table .sort-heading{min-height:32px;line-height:1.6}
+  .duplicate-table .identity-button{min-height:44px;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+  .duplicate-table .identity-meta{font-size:11px;line-height:1.65;overflow-wrap:anywhere}
+  .duplicate-table .help-trigger{margin-left:4px}
+  .duplicate-table .duplicate-check-target{width:44px;min-height:44px}
+  .duplicate-table input[type=checkbox]{width:20px;height:20px;margin:0;flex-shrink:0}
+  .duplicate-mobile-hint{display:block;margin:0;padding:0 18px 12px;font-size:10px;line-height:1.7;color:var(--muted)}
+  .merge-toolbar-bottom{display:flex;padding:16px 18px 18px;border-top:1px solid var(--line);background:#f7faf4}
+  .merge-toolbar-bottom>.muted{width:100%;line-height:1.8}
+  .merge-toolbar-bottom>.button{min-height:44px}
+  .merge-toolbar-bottom .merge-overlap{width:100%;margin:0!important}
+}
+@supports(width:1cqw){@media(max-width:720px){.duplicate-table{--duplicate-pair-width:100cqw}}}
