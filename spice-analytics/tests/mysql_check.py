@@ -43,6 +43,17 @@ def run_sync(config_file,database):
             'require "php/src/Sync.php"; try {\\Lavka\\source_connect(\\Lavka\\source_config("/test-data/source.json")); echo "connected";} catch (PDOException $e) {echo json_encode(["sqlstate"=>$e->getCode(),"driver_code"=>$e->errorInfo[1]??null]);}'],capture_output=True,text=True)
         raise RuntimeError('PHP MySQL sync failed: '+result.stderr[:200]+'; diagnostic='+diagnostic.stdout[:200])
     return json.loads(result.stdout)
+def diagnose(config_file, expected_reason=None):
+    result=subprocess.run(['docker','run','--rm','--network','host','--user',f'{os.getuid()}:{os.getgid()}',
+                           '-v',str(ROOT)+':/app:ro','-v',str(config_file.parent)+':/test-data',PHP_IMAGE,
+                           'php','php/bin/check_source.php','--config','/test-data/source.json'],capture_output=True,text=True,timeout=45)
+    assert reader_password not in result.stdout+result.stderr, 'Diagnostic exposed credentials'
+    diagnostic=json.loads(result.stdout)
+    if expected_reason:
+        assert result.returncode==1 and diagnostic['reason']==expected_reason, diagnostic
+    else:
+        assert result.returncode==0 and diagnostic['state']=='ok' and diagnostic['tables_checked']==6, diagnostic
+    return diagnostic
 with tempfile.TemporaryDirectory() as t:
     directory=Path(t);environment=directory/'mysql.env'
     environment.write_text('MYSQL_ROOT_PASSWORD='+root_password+'\nMYSQL_ROOT_HOST=%\nMYSQL_DATABASE=store_test\n')
@@ -80,6 +91,13 @@ with tempfile.TemporaryDirectory() as t:
         database=directory/'analytics.sqlite3'
         state=run_sync(config_file,database)
         assert state['state']=='ok' and state['consistency']=='verified_two_reads'
+        if runtime=='php':
+            before=(config_file.read_bytes(),config_file.stat().st_mtime_ns,database.stat().st_mtime_ns)
+            diagnose(config_file)
+            assert before==(config_file.read_bytes(),config_file.stat().st_mtime_ns,database.stat().st_mtime_ns), 'Diagnostic modified settings or local analytics'
+            config_file.write_text(json.dumps({**config,'password':reader_password+'-incorrect'}))
+            diagnose(config_file,'authentication')
+            config_file.write_text(json.dumps(config))
         reader=sync.connect_source(config)
         try:
             with reader.cursor() as cursor:
@@ -129,6 +147,10 @@ with tempfile.TemporaryDirectory() as t:
             path=directory/filename;path.write_bytes(contents);path.chmod(0o600)
             subprocess.run(['docker','cp',str(path),name+':/var/lib/mysql/'+filename],check=True,stdout=subprocess.DEVNULL)
             subprocess.run(['docker','exec',name,'chown','mysql:mysql','/var/lib/mysql/'+filename],check=True,stdout=subprocess.DEVNULL)
+        # Valid PEM, wrong issuer: the diagnostic must report a certificate error,
+        # without falling back to an unencrypted connection or revealing a secret.
+        (directory/'wrong-ca.pem').write_bytes(certificate.public_bytes(serialization.Encoding.PEM))
+        (directory/'wrong-ca.pem').chmod(0o600)
         with admin.cursor() as cursor:cursor.execute('ALTER INSTANCE RELOAD TLS')
         encrypted=sync.connect_source({**config,'ssl_ca':str(directory/'ca.pem')})
         try:
@@ -141,10 +163,14 @@ with tempfile.TemporaryDirectory() as t:
         if runtime=='php':
             config_file.write_text(json.dumps({**config,'ssl_ca':'/test-data/ca.pem'}))
             assert run_sync(config_file,database)['state']=='ok'
+            diagnose(config_file)
+            config_file.write_text(json.dumps({**config,'ssl_ca':'/test-data/wrong-ca.pem'}))
+            diagnose(config_file,'tls_certificate')
         admin.close()
         print(json.dumps({'runtime':runtime,'real_mysql_8_4':'passed','reader_cannot_write':'passed',
                           'myisam_two_reads':'passed','innodb_snapshot':'passed',
                           'edits_without_date_modified':'passed','source_deletions':'passed','crm_survival':'passed',
-                          'verified_tls_with_server_identity':'passed'}))
+                          'verified_tls_with_server_identity':'passed',
+                          'safe_source_diagnostics':'passed' if runtime=='php' else 'not_run'}))
     finally:
         subprocess.run(['docker','rm','-f',name],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
