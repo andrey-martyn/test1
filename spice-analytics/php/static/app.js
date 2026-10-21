@@ -1,4 +1,11 @@
 const $=s=>document.querySelector(s);
+const appBase=document.querySelector('meta[name="analytics-base"]').content;
+const appUrl=path=>{
+  if(!appBase)return path;
+  const target=new URL(path,location.origin),params=new URLSearchParams(target.search);
+  params.set('route',target.pathname);
+  return appBase+'/index.php?'+params.toString();
+};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const num=(n,d=0)=>Number(n||0).toLocaleString('ru-RU',{maximumFractionDigits:d});
 const fmtDate=d=>d?new Date(d.slice(0,10)+'T12:00:00').toLocaleDateString('ru-RU'):'—';
@@ -11,7 +18,7 @@ Object.assign(titles,{retention:['Удержание и когорты','От п
 const name=c=>state.privacy?'Покупатель '+c.id:esc(c.name);
 const contact=c=>state.privacy?'Контакты скрыты':esc(c.email||c.phone||'Без контактов');
 const toast=text=>{const el=$('#toast');el.textContent=text;el.classList.remove('hidden');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.add('hidden'),4500);};
-async function api(path,options={}){const r=await fetch(path,options);if(r.status===401){location.href='/login';throw Error('Нужен вход');}const data=await r.json();if(!r.ok)throw Error(typeof data.detail==='string'?data.detail:'Не удалось выполнить запрос');return data;}
+async function api(path,options={}){const r=await fetch(appUrl(path),options);if(r.status===401){location.href=appUrl('/login');throw Error('Нужен вход');}const data=await r.json();if(!r.ok)throw Error(typeof data.detail==='string'?data.detail:'Не удалось выполнить запрос');return data;}
 const query=()=>new URLSearchParams({year:$('#year').value,as_of:$('#as-of').value,currency:$('#currency').value});
 let loadSequence=0;
 async function load(){
@@ -125,7 +132,7 @@ const norm=s=>String(s||'').toLowerCase().replace(/[’'`]/g,'').replace(/\s+/g,
 async function drawMap(){
   const mode=state.mapMode,metric=state.geoMetric;
   try{
-    if(!geoCache[mode])geoCache[mode]=await (await fetch('/static/'+(mode==='ukraine'?'ukraine':'countries')+'.geojson')).json();
+    if(!geoCache[mode])geoCache[mode]=await (await fetch(appBase+'/static/'+(mode==='ukraine'?'ukraine':'countries')+'.geojson')).json();
     if(state.view!=='geography'||state.mapMode!==mode)return;
     const features=geoCache[mode].features,bounds=mode==='ukraine'?[21.5,41.5,44,53]:[-14,45,33,72];
     const project=([lon,lat])=>[(lon-bounds[0])/(bounds[1]-bounds[0])*720,(bounds[3]-lat)/(bounds[3]-bounds[2])*410];
@@ -175,7 +182,7 @@ function exportCSV(){
 $('#navigation').addEventListener('click',e=>{const b=e.target.closest('[data-view]');if(b)navigate(b.dataset.view);});
 ['#year','#as-of','#currency'].forEach(s=>$(s).addEventListener('change',()=>{if($('#as-of').value)load();}));
 $('#privacy').addEventListener('click',()=>{state.privacy=!state.privacy;render();if($('#drawer').open&&state.customer)openCustomer(state.customer.customer.id);});
-$('#logout').addEventListener('click',async()=>{await api('/api/logout',{method:'POST'});location.href='/login';});
+$('#logout').addEventListener('click',async()=>{await api('/api/logout',{method:'POST'});location.href=appUrl('/login');});
 let searchTimer;
 document.addEventListener('input',e=>{if(e.target.id==='search'){state.search=e.target.value;clearTimeout(searchTimer);searchTimer=setTimeout(()=>{const value=state.search,pos=e.target.selectionStart;state.page=1;render();const input=$('#search');input.focus();input.setSelectionRange(pos,pos);},150);}});
 document.addEventListener('change',e=>{

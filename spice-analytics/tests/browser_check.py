@@ -25,10 +25,11 @@ application.set_password(password)
 with socket.socket() as listener:
     listener.bind(('127.0.0.1',0));port=listener.getsockname()[1]
 runtime=os.environ.get('ANALYTICS_TEST_RUNTIME','python')
+mount=os.environ.get('ANALYTICS_TEST_BASE','') if runtime=='php' else ''
 container=None
 if runtime=='php':
     container='lavka-php-browser-'+secrets.token_hex(5)
-    docker=['docker','run','--rm','--user',f'{os.getuid()}:{os.getgid()}','-v',str(ROOT)+':/app:ro','-v',str(directory)+':/test-data','-e','ANALYTICS_DATA_DIR=/test-data']
+    docker=['docker','run','--rm','--user',f'{os.getuid()}:{os.getgid()}','-v',str(ROOT)+':/app:ro','-v',str(directory)+':/test-data','-e','ANALYTICS_DATA_DIR=/test-data','-e','ANALYTICS_BASE_PATH='+mount]
     subprocess.run(docker+['-i','lavka-php-dev','php','-r','require "php/src/Auth.php"; \\Lavka\\Auth::setPassword(getenv("ANALYTICS_DATA_DIR"), stream_get_contents(STDIN));'],input=password.encode(),check=True,stdout=subprocess.DEVNULL)
     command=docker+['--name',container,'-p',f'127.0.0.1:{port}:8000','lavka-php-dev','php','-d','memory_limit=256M','-S','0.0.0.0:8000','-t','php/public','php/public/index.php']
 else:
@@ -39,10 +40,11 @@ def cleanup():
     else:server.terminate()
     server.wait(timeout=10);temporary.cleanup()
 atexit.register(cleanup)
-base=f'http://127.0.0.1:{port}'
+base=f'http://127.0.0.1:{port}'+mount
+def route(path):return '/index.php?route='+path if mount else path
 for attempt in range(100):
     try:
-        if httpx.get(base+'/health').status_code==200:break
+        if httpx.get(base+route('/health')).status_code==200:break
     except httpx.TransportError:
         pass
     time.sleep(.1)
@@ -55,8 +57,10 @@ with sync_playwright() as p:
     browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox'])
     context=browser.new_context(viewport={'width':1536,'height':1000},locale='ru-RU')
     page=context.new_page();page.on('pageerror',lambda e:errors.append(str(e)))
+    misplaced=[]
+    if mount:page.on('request',lambda r: misplaced.append(r.url) if r.url.startswith(f'http://127.0.0.1:{port}/') and not r.url.startswith(base+'/') else None)
     page.goto(base+'/')
-    assert page.url.endswith('/login')
+    assert '/login' in page.url or 'route=%2Flogin' in page.url
     page.fill('#password',password);page.click('button[type=submit]')
     page.wait_for_selector('.customer-table tbody .identity-name')
     checks.append('password login and weekly customer table')
@@ -161,7 +165,8 @@ with sync_playwright() as p:
     assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
     checks.append('mobile layout without horizontal page overflow')
     page.set_viewport_size({'width':1536,'height':1000})
-    page.click('[data-view=settings]');page.click('#logout');page.wait_for_url('**/login')
+    page.click('[data-view=settings]');page.click('#logout');page.wait_for_url(lambda u:'/login' in u or 'route=%2Flogin' in u)
+    assert not misplaced,misplaced
     checks.append('logout')
     browser.close()
 assert not errors,errors

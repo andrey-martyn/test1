@@ -5,6 +5,9 @@ function expect(bool $value,string $message): void {if(!$value)throw new Runtime
 function rejects(callable $fn): void {try{$fn();}catch(Throwable $e){return;}throw new RuntimeException('Expected rejection');}
 $dir=sys_get_temp_dir().'/lavka-php-test-'.bin2hex(random_bytes(6));\Lavka\private_dir($dir);
 try{
+    expect(\Lavka\public_address('https://shop.example.invalid/analytics/')['base']==='/analytics','Folder URL');
+    expect(\Lavka\public_address('https://shop.example.invalid')['base']==='','Subdomain URL');
+    foreach(['https://shop.example.invalid/../store','https://shop.example.invalid/a%2fb','https://shop.example.invalid/?x=1','http://shop.example.invalid/analytics','https://user:pass@shop.example.invalid'] as $bad)rejects(fn()=>\Lavka\public_address($bad));
     expect(\Lavka\money(\Lavka\times('100.1234','1.5'))===150.19,'Exact decimal currency conversion');
     expect(\Lavka\money('-0.005')===-0.01,'Negative half-up');
     expect(\Lavka\package([['name'=>'Фасовка','value'=>'0,5 кг']])['grams']===500.0,'Weight option');

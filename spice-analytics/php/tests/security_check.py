@@ -42,7 +42,7 @@ with tempfile.TemporaryDirectory() as t:
             response=client.post('/api/login',json={'password':password},headers={'Origin':'https://analytics.example.invalid'})
             assert response.status_code==200
             cookie=response.headers['set-cookie'];assert 'secure' in cookie.lower() and 'httponly' in cookie.lower() and 'samesite=strict' in cookie.lower()
-            parsed=SimpleCookie();parsed.load(cookie);client.headers['Cookie']='session='+parsed['session'].value
+            parsed=SimpleCookie();parsed.load(cookie);client.headers['Cookie']='lavka_analytics_session='+parsed['lavka_analytics_session'].value
             meta=client.get('/api/meta');assert meta.status_code==200 and meta.json()['names_visible']
             report=client.get('/api/report',params={'year':2026,'as_of':'2026-10-20','currency':'UAH'}).json()
             assert report['customers'][0]['name']=='Тест Покупатель'

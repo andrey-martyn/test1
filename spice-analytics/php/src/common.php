@@ -5,6 +5,30 @@ namespace Lavka;
 date_default_timezone_set('Europe/Kyiv');
 const TABLES = ['oc_order'=>'order_id','oc_order_product'=>'order_product_id','oc_order_option'=>'order_option_id','oc_order_total'=>'order_total_id','oc_order_history'=>'order_history_id','oc_order_status'=>null];
 
+function mount_path(string $path): string {
+    $path=rtrim($path,'/');
+    if(!preg_match('~^(?:/[A-Za-z0-9_-]+)*$~D',$path))throw new \InvalidArgumentException('Неверный путь кабинета');
+    return $path;
+}
+function public_address(string $address): array {
+    $url=parse_url(rtrim($address,'/'));
+    if(!$url||($url['scheme']??'')!=='https'||empty($url['host'])||isset($url['user'])||isset($url['pass'])||isset($url['query'])||isset($url['fragment'])||!preg_match('~^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$~iD',$url['host']))throw new \InvalidArgumentException('Нужен HTTPS-адрес кабинета без пароля, параметров и якоря');
+    $base=mount_path($url['path']??'');$host=strtolower($url['host']).(isset($url['port'])?':'.$url['port']:'');
+    return ['host'=>$host,'origin'=>'https://'.$host,'base'=>$base,'url'=>'https://'.$host.$base];
+}
+function route_address(string $base,string $route): string {
+    // An existing index.php bypasses the parent shop's SEO rewrite rules.
+    return $base===''?$route:$base.'/index.php?route='.rawurlencode($route);
+}
+function canonical_path(string $path): string {
+    if(!str_starts_with($path,'/'))$path=getcwd().'/'.$path;
+    $parts=[];foreach(explode('/',$path) as $part){if($part===''||$part==='.')continue;if($part==='..')array_pop($parts);else $parts[]=$part;}
+    $existing='/'.implode('/',$parts);$suffix=[];
+    while(!file_exists($existing)&&$existing!=='/'){array_unshift($suffix,basename($existing));$existing=dirname($existing);}
+    $resolved=realpath($existing);if($resolved===false)throw new \InvalidArgumentException('Не удалось определить настоящий путь');
+    return rtrim($resolved,'/').($suffix?'/'.implode('/',$suffix):'')?:'/';
+}
+
 function private_dir(string $path): void {
     if (!is_dir($path) && !mkdir($path,0700,true) && !is_dir($path)) throw new \RuntimeException('Не удалось создать закрытый каталог');
     chmod($path,0700);
