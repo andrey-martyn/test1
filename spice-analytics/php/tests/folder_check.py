@@ -9,6 +9,7 @@ PHP_IMAGE = os.environ.get('ANALYTICS_PHP_IMAGE', 'lavka-php-dev')
 from pathlib import Path
 import secrets
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -39,11 +40,20 @@ with tempfile.TemporaryDirectory() as private, tempfile.TemporaryDirectory() as 
     subprocess.run(docker + ['-i', PHP_IMAGE, 'php', '-r',
         'require "php/src/Auth.php"; \\Lavka\\Auth::setPassword("/test-data",stream_get_contents(STDIN));'],
         input=password.encode(), capture_output=True, check=True)
-    deploy = docker + [PHP_IMAGE, 'php', 'php/bin/deploy.php',
+    deploy = docker + [PHP_IMAGE, 'sh', '-c', 'umask 077; exec "$@"', 'sh', 'php', 'php/bin/deploy.php',
                       '--webroot', '/test-site/shop/analytics', '--data', '/test-data',
                       '--url', 'https://www.shop.example.invalid/analytics',
                       '--shop-root', '/test-site/shop']
     subprocess.run(deploy, capture_output=True, check=True)
+    for folder in [shop / 'analytics', shop / 'analytics/static']:
+        assert stat.S_IMODE(folder.stat().st_mode) == 0o755, 'Public directory must be traversable despite umask 077'
+    assert stat.S_IMODE(data.stat().st_mode) == 0o700
+    assert stat.S_IMODE((data / 'access-php.json').stat().st_mode) == 0o600
+    frontend = ['docker', 'run', '--rm', '--user', '65534:65534',
+                '-v', str(shop / 'analytics') + ':/published:ro', '-v', private + ':/private-data:ro',
+                PHP_IMAGE, 'php', '-r',
+                'exit(is_readable("/published/index.php") && is_readable("/published/.htaccess") && is_readable("/published/static/style.css") && !is_readable("/private-data/access-php.json") ? 0 : 1);']
+    assert subprocess.run(frontend, capture_output=True).returncode == 0
     assert subprocess.run(deploy, capture_output=True).returncode == 1
     assert all(p.read_bytes() == contents for p, contents in originals.items())
     assert set(p.name for p in (shop / 'analytics').iterdir()) == {'index.php', '.htaccess', 'static'}

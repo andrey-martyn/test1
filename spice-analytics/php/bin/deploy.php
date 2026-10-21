@@ -14,11 +14,23 @@ function inside(string $path, string $parent): bool
 {
     return $path === $parent || \Lavka\str_starts_with($path, rtrim($parent, '/') . '/');
 }
+function public_dir(string $path): void
+{
+    if (!is_dir($path)) {
+        // A restrictive SSH umask protects private files, but web server
+        // workers still need to traverse these deliberately public directories.
+        $previous = umask(0);
+        try {
+            if (!mkdir($path, 0755, true) && !is_dir($path)) throw new RuntimeException('Не удалось создать публичную папку');
+        } finally {
+            umask($previous);
+        }
+    }
+    if (!chmod($path, 0755)) throw new RuntimeException('Не удалось назначить права публичной папки');
+}
 function copy_tree(string $from, string $to): void
 {
-    if (!is_dir($to) && !mkdir($to, 0755, true)) {
-        throw new RuntimeException('Не удалось создать static');
-    }
+    public_dir($to);
     foreach (new DirectoryIterator($from) as $entry) {
         if ($entry->isDot()) {
             continue;
@@ -78,9 +90,7 @@ try {
         throw new InvalidArgumentException('Публичная папка не пуста. Файлы магазина не изменены.');
     }
     \Lavka\private_dir($data);
-    if (!is_dir($webroot) && !mkdir($webroot, 0755, true)) {
-        throw new RuntimeException('Не удалось создать публичную папку');
-    }
+    public_dir($webroot);
     $launcher = "<?php\ndeclare(strict_types=1);\nif (PHP_VERSION_ID < 70300) { http_response_code(503); header('Content-Type: text/plain; charset=utf-8'); header('Cache-Control: no-store'); exit('Для кабинета нужен PHP 7.3+ и проверка расширений. Версию PHP магазина менять не требуется.'); }\nputenv('ANALYTICS_DATA_DIR='." . var_export($data, true) . ");\nputenv('ANALYTICS_PUBLIC_URL='." . var_export($url, true) . ");\nrequire " . var_export($root . '/public/index.php', true) . ";\n";
     file_put_contents($webroot . '/index.php', $launcher);
     chmod($webroot . '/index.php', 0644);
