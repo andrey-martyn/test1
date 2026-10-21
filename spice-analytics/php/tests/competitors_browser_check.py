@@ -69,6 +69,7 @@ $termsObs=["kind"=>"terms","title"=>"Условия","offers"=>[],"text"=>"Ми�
 \Lavka\competitors_record_attempt($db,$terms["id"],$termsObs,null,$prior,200);
 $termsObs["text"]="Минимальный заказ 200 грн. Доставка от 100 грн.";
 \Lavka\competitors_record_attempt($db,$terms["id"],$termsObs,null,$now,200);
+\Lavka\competitors_record_attempt($db,$terms["id"],null,"blocked",$now,403);
 $catalog = target($db,"deluxe","catalog","Синтетическая страница новинок","catalog");
 $catalogObs=["kind"=>"catalog","title"=>"Каталог","offers"=>[],"text"=>"",
     "links"=>[["url"=>"https://deluxe.com.ua/synthetic-old-product","title"=>"Синтетический прежний товар"]],
@@ -76,8 +77,16 @@ $catalogObs=["kind"=>"catalog","title"=>"Каталог","offers"=>[],"text"=>""
 \Lavka\competitors_record_attempt($db,$catalog["id"],$catalogObs,null,$prior,200);
 $catalogObs["links"][]=["url"=>"https://deluxe.com.ua/synthetic-new-product","title"=>"Синтетический новый товар"];
 \Lavka\competitors_record_attempt($db,$catalog["id"],$catalogObs,null,$now,200);
+\Lavka\competitors_record_attempt($db,$catalog["id"],null,"catalog_unrecognized",$now,200);
+$archivedError = target($db,"deluxe","archived-error","Архивная ошибка");
+\Lavka\competitors_record_attempt($db,$archivedError["id"],null,"not_found",$now,404);
+\Lavka\competitors_save_target($db,[
+    "source_id"=>"deluxe","kind"=>"product","url"=>$archivedError["url"],"label"=>$archivedError["label"],
+    "match_group"=>"synthetic-coriander","match_confirmed"=>true,"enabled"=>false
+],$archivedError["id"]);
 echo json_encode(["own"=>$own["id"],"valid"=>$valid["id"],"unknown"=>$unknown["id"],"stale"=>$old["id"],
-    "error"=>$error["id"],"currency"=>$currency["id"],"missing"=>$missing["id"],"terms"=>$terms["id"],"catalog"=>$catalog["id"]]);
+    "error"=>$error["id"],"currency"=>$currency["id"],"missing"=>$missing["id"],"terms"=>$terms["id"],
+    "catalog"=>$catalog["id"],"archived_error"=>$archivedError["id"]]);
 '''
 
 with tempfile.TemporaryDirectory() as temporary:
@@ -153,8 +162,82 @@ with tempfile.TemporaryDirectory() as temporary:
                 has=page.locator("h3", has_text="Синтетический товар неизвестная цена"))
             assert "Цена неизвестна" in missing.inner_text()
             assert "0 UAH" not in missing.inner_text()
+
+            # The error tile opens every active failed page, even when current
+            # product filters hide its source or kind. Native button activation
+            # must work from the keyboard as well as on a touch screen.
+            page.select_option("#competitor-source", "lavka")
+            page.fill("#competitor-search", "Фильтр скрывает все карточки")
+            assert page.locator(".competitor-product-card").count() == 0
+            attention = page.locator("[data-comp-action=show-errors]")
+            assert attention.count() == 1
+            assert attention.evaluate("el=>el.tagName") == "BUTTON"
+            attention.focus()
+            page.keyboard.press("Enter")
+            assert page.locator("#competitor-tab-errors").get_attribute("aria-selected") == "true"
+            error_cards = page.locator(".competitor-errors-list .competitor-error-card")
+            assert error_cards.count() == 3
+            assert page.evaluate("competitorState.source") == "all"
+            assert page.evaluate("competitorState.search") == ""
+            error_text = page.locator("#competitor-tabpanel").inner_text()
+            for label in ["Синтетический товар ошибка сайта", "Синтетические условия доставки",
+                          "Синтетическая страница новинок", "Карточка товара",
+                          "Доставка и скидки", "Страница ассортимента", "HTTP 403"]:
+                assert label in error_text, label
+            assert "Архивная ошибка" not in error_text
+            assert "Синтетический товар устаревшая цена" not in error_text
+            assert "Сайт запросил CAPTCHA" in error_text
+            assert "Ссылки на товары не распознаны" in error_text
+            assert error_cards.locator("a[href^='https://deluxe.com.ua/']").count() >= 3
+            terms_error = error_cards.filter(has_text="Синтетические условия доставки")
+            assert terms_error.locator("[data-comp-action=history]").count() == 1
+            assert terms_error.locator("[data-comp-action=queue]").count() == 1
+            terms_error.locator("[data-comp-action=history]").click()
+            page.wait_for_selector(".competitor-attempt-list")
+            assert "HTTP 403" in page.locator(".competitor-attempt-list").inner_text()
+            assert page.locator(".competitor-history-snapshot").count() == 2
+            page.click("[data-action=close-dialog]")
+            catalog_error = error_cards.filter(has_text="Синтетическая страница новинок")
+            catalog_error.locator("[data-comp-action=queue]").click()
+            page.wait_for_function("() => !competitorState.queueing")
+            assert page.evaluate("(id)=>competitorState.data.targets.find(t=>t.id===id).queued", ids["catalog"])
+            assert error_cards.count() == 3  # A queued retry is still an unresolved error.
+            for width in [390, 320]:
+                page.set_viewport_size({"width": width, "height": 844})
+                assert page.evaluate("document.documentElement.scrollWidth<=innerWidth")
+                assert error_cards.first.locator("[data-comp-action=history]").bounding_box()["height"] >= 44
+                assert error_cards.first.locator("[data-comp-action=queue]").bounding_box()["height"] >= 44
+            page.set_viewport_size({"width": 390, "height": 844})
+            page.screenshot(path=str(ARTIFACTS / "competitors-errors-iphone13.png"), full_page=True)
+
+            # Clearing the last errors produces an explicit empty state. Refresh
+            # changes only the controlled response; successful page history stays
+            # intact in the synthetic database for the remaining checks.
+            saved_overview = page.request.get(base + "/index.php?route=/api/competitors").json()
+            clean_overview = deepcopy(saved_overview)
+            for target_row in clean_overview["targets"]:
+                if (target_row.get("last_attempt") or {}).get("state") == "error":
+                    target_row["last_attempt"] = {"state": "ok", "error_code": None, "http_status": 200,
+                                                  "checked_at": target_row["last_attempt"]["checked_at"]}
+            overview_pattern = "**/index.php?route=%2Fapi%2Fcompetitors"
+            page.route(overview_pattern, lambda route: route.fulfill(
+                status=200, content_type="application/json", body=json.dumps(clean_overview)))
+            page.click("[data-comp-action=refresh]")
+            page.wait_for_function("() => !competitorState.loading")
+            assert page.locator(".competitor-error-card").count() == 0
+            assert page.locator("#competitor-tabpanel .competitor-empty").is_visible()
+            page.unroute(overview_pattern)
+            page.click("[data-comp-action=refresh]")
+            page.wait_for_function("() => !competitorState.loading")
+            assert error_cards.count() == 3
+            page.click("#competitor-tab-products")
+            page.fill("#competitor-search", "Синтетический")
+            page.set_viewport_size({"width": 1440, "height": 1000})
+
             # Keyboard tab navigation and stable display of all history types.
             page.click("#competitor-tab-products")
+            page.keyboard.press("ArrowRight")
+            assert page.locator("#competitor-tab-errors").get_attribute("aria-selected") == "true"
             page.keyboard.press("ArrowRight")
             assert page.locator("#competitor-tab-changes").get_attribute("aria-selected") == "true"
             assert page.locator(".competitor-changes article").count() >= 2
@@ -269,6 +352,7 @@ with tempfile.TemporaryDirectory() as temporary:
         print(json.dumps({"php_image": IMAGE, "mobile_390_and_320": "passed",
                           "crud_archive_queue": "passed", "comparison_exclusions": "passed",
                           "history_terms_discoveries": "passed", "draft_and_order_preservation": "passed",
+                          "clickable_attention_and_all_page_errors": "passed",
                           "api_error_preservation_and_no_external_requests": "passed"}))
     finally:
         subprocess.run(["docker", "rm", "-f", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
