@@ -221,6 +221,10 @@ function add_days(string $s, int $days): string
 {
     return day($s)->modify(($days >= 0 ? '+' : '') . $days . ' days')->format('Y-m-d');
 }
+function calendar_year(string $date): int
+{
+    return (int) substr($date, 0, 4);
+}
 function iso_year(string $s): int
 {
     return (int) day($s)->format('o');
@@ -289,6 +293,8 @@ function init_schema(\PDO $db): void
         CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT);
         CREATE TABLE IF NOT EXISTS manual_links(a TEXT,b TEXT,created_at TEXT,PRIMARY KEY(a,b));
         CREATE TABLE IF NOT EXISTS customer_actions(customer_id TEXT PRIMARY KEY,payload TEXT);
+        CREATE TABLE IF NOT EXISTS crm_events(id TEXT PRIMARY KEY,customer_id TEXT NOT NULL,currency TEXT NOT NULL,occurred_at TEXT NOT NULL,created_at TEXT NOT NULL,payload TEXT NOT NULL,voided_at TEXT,void_reason TEXT);
+        CREATE INDEX IF NOT EXISTS crm_events_customer ON crm_events(customer_id,currency,occurred_at);
         CREATE TABLE IF NOT EXISTS ga4_records(kind TEXT,record_key TEXT,payload TEXT,PRIMARY KEY(kind,record_key));
         CREATE TABLE IF NOT EXISTS app_revision(id INTEGER PRIMARY KEY CHECK(id=1),value INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS sync_status(id INTEGER PRIMARY KEY CHECK(id=1),payload TEXT);');

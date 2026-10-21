@@ -113,7 +113,7 @@ class Analytics:
         dates = [o['date_added'][:10] for o in self.orders.values()]
         status_counts = Counter(o['order_status_id'] for o in self.orders.values())
         return {'counts':self.import_meta['counts'], 'date_min':min(dates), 'date_max':max(dates),
-                'years':sorted({date.fromisoformat(d).isocalendar().year for d in dates},reverse=True),
+                'years':sorted({date.fromisoformat(d).year for d in dates},reverse=True),
                 'currencies':sorted({o['currency_code'] for o in self.orders.values()}),
                 'statuses':[{'id':k,'name':v,'count':status_counts[k]} for k,v in sorted(self.statuses.items(),key=lambda x:int(x[0]))],
                 'settings':self.settings,'imported_at':self.imported_at,'geoip':self.geo.metadata(),
@@ -154,7 +154,7 @@ class Analytics:
         before = [o for o in self.orders.values() if o['date_added'][:10] <= as_of.isoformat()]
         dsu = self.identity(before)
         valid = [o for o in before if o['order_status_id'] in self.settings['status_ids'] and o['currency_code'] == currency]
-        period = [o for o in valid if date.fromisoformat(o['date_added'][:10]).isocalendar().year == year]
+        period = [o for o in valid if date.fromisoformat(o['date_added'][:10]).year == year]
         period_ids = {o['order_id'] for o in period}
         groups = defaultdict(list)
         for o in valid:

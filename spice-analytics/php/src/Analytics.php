@@ -8,6 +8,8 @@ require_once __DIR__ . '/Geo.php';
 require_once __DIR__ . '/Marketing.php';
 require_once __DIR__ . '/GA4.php';
 require_once __DIR__ . '/Sync.php';
+require_once __DIR__ . '/History.php';
+require_once __DIR__ . '/CRM.php';
 final class Analytics
 {
     public $db;
@@ -92,7 +94,7 @@ final class Analytics
         foreach ($this->orders as $o) {
             $d = substr($o['date_added'], 0, 10);
             $dates[] = $d;
-            $years[iso_year($d)] = true;
+            $years[calendar_year($d)] = true;
             $currencies[$o['currency_code']] = true;
             $statusCounts[$o['order_status_id']] = ($statusCounts[$o['order_status_id']] ?? 0) + 1;
         }
@@ -149,8 +151,13 @@ final class Analytics
             return in_array($o['order_status_id'], $this->settings['status_ids'], true) && $o['currency_code'] === $currency;
         }));
         $period = array_values(array_filter($valid, function ($o) use ($year) {
-            return iso_year($o['date_added']) === $year;
+            return $year === 0 || calendar_year($o['date_added']) === $year;
         }));
+        $observedYears = [];
+        foreach ($before as $o) if ($o['currency_code'] === $currency) $observedYears[calendar_year($o['date_added'])] = true;
+        $historyYears = $observedYears ? range(min(array_keys($observedYears)), max(array_keys($observedYears))) : [];
+        $columns = history_columns($year, $asof, $historyYears);
+        $activity = [];
         $periodIds = array_fill_keys(array_column($period, 'order_id'), true);
         $groups = [];
         foreach ($valid as $o) {
@@ -179,13 +186,22 @@ final class Analytics
             $overdue = $since - $interval;
             $reminder = $overdue > $this->settings['grace_days'] ? 'overdue' : ($overdue >= 0 ? 'due' : 'ok');
             $weeks = [];
+            $customerActivity = [];
             foreach ($selected as $o) {
-                $w = week($o['date_added']);
+                $key = activity_key($o['date_added'], $year);
+                $customerActivity[$key] = $customerActivity[$key] ?? ['amount' => '0', 'count' => 0, 'order_ids' => []];
+                $customerActivity[$key]['amount'] = plus($customerActivity[$key]['amount'], order_value($o));
+                ++$customerActivity[$key]['count'];
+                $customerActivity[$key]['order_ids'][] = $o['order_id'];
+                $weeksKey = week($o['date_added']);
+                $w = $year === 0 ? $key : $weeksKey;
                 $weeks[$w] = $weeks[$w] ?? ['amount' => '0', 'count' => 0, 'order_ids' => []];
                 $weeks[$w]['amount'] = plus($weeks[$w]['amount'], order_value($o));
                 $weeks[$w]['count']++;
                 $weeks[$w]['order_ids'][] = $o['order_id'];
             }
+            foreach ($customerActivity as &$cell) $cell['amount'] = money($cell['amount']);
+            unset($cell);
             foreach ($weeks as &$w) {
                 $w['amount'] = money($w['amount']);
             }
@@ -221,7 +237,7 @@ final class Analytics
                 }
             }
             $suppression = ($action['stage'] ?? '') === 'do_not_contact' ? 'Не контактировать' : (($action['stage'] ?? '') === 'declined' ? 'Отказ' : ($snoozed ? 'Отложено' : ($cooling ? 'Недавний контакт' : (count($orders) < $this->settings['followup_min_orders'] ? 'Мало покупок' : ''))));
-            $customers[] = ['id' => (string) $cid, 'name' => trim($latest['firstname'] . ' ' . $latest['lastname']) ?: 'Гость', 'email' => $latest['email'], 'phone' => $latest['telephone'], 'emails' => $emails, 'phones' => $phones, 'city' => $latest['shipping_city'] ?: $latest['payment_city'], 'country' => $latest['shipping_country'] ?: $latest['payment_country'], 'order_count' => count($selected), 'lifetime_count' => count($orders), 'amount' => money(sum_orders($selected)), 'lifetime_amount' => money(sum_orders($orders)), 'average' => $selected ? money(bcdiv(sum_orders($selected), (string) count($selected), 12)) : 0, 'last_order' => end($dates), 'days_since' => $since, 'interval_days' => $interval, 'personal_interval' => $personal, 'due_on' => add_days(end($dates), $interval), 'overdue_days' => max(0, $overdue), 'reminder' => $reminder, 'followup_eligible' => $eligible, 'action' => $action ?: new \stdClass(), 'suppression' => $suppression, 'account_count' => count($accounts), 'manual' => $manual, 'weeks' => (object) $weeks, 'order_ids' => $ids];
+            $customers[] = ['id' => (string) $cid, 'name' => trim($latest['firstname'] . ' ' . $latest['lastname']) ?: 'Гость', 'email' => $latest['email'], 'phone' => $latest['telephone'], 'emails' => $emails, 'phones' => $phones, 'city' => $latest['shipping_city'] ?: $latest['payment_city'], 'country' => $latest['shipping_country'] ?: $latest['payment_country'], 'order_count' => count($selected), 'lifetime_count' => count($orders), 'amount' => money(sum_orders($selected)), 'lifetime_amount' => money(sum_orders($orders)), 'average' => $selected ? money(bcdiv(sum_orders($selected), (string) count($selected), 12)) : 0, 'last_order' => end($dates), 'days_since' => $since, 'interval_days' => $interval, 'personal_interval' => $personal, 'due_on' => add_days(end($dates), $interval), 'overdue_days' => max(0, $overdue), 'reminder' => $reminder, 'followup_eligible' => $eligible, 'action' => $action ?: new \stdClass(), 'suppression' => $suppression, 'account_count' => count($accounts), 'manual' => $manual, 'activity' => (object) $customerActivity, 'weeks' => (object) $weeks, 'order_ids' => $ids];
         }
         unset($orders);
         usort($customers, function ($a, $b) {
@@ -231,7 +247,13 @@ final class Analytics
         $weekly = [];
         $periodCustomers = [];
         foreach ($period as $o) {
-            $w = week($o['date_added']);
+            $key = activity_key($o['date_added'], $year);
+            $first = $groups[$dsu->find($o['order_id'])][0]['order_id'] === $o['order_id'];
+            $activity[$key] = $activity[$key] ?? ['amount' => '0', 'count' => 0, 'first_count' => 0, 'repeat_count' => 0];
+            $activity[$key]['amount'] = plus($activity[$key]['amount'], order_value($o));
+            ++$activity[$key]['count'];
+            ++$activity[$key][$first ? 'first_count' : 'repeat_count'];
+            $w = $year === 0 ? $key : week($o['date_added']);
             $weekly[$w] = $weekly[$w] ?? ['amount' => '0', 'count' => 0];
             $weekly[$w]['amount'] = plus($weekly[$w]['amount'], order_value($o));
             $weekly[$w]['count']++;
@@ -239,8 +261,13 @@ final class Analytics
             $periodCustomers[$cid] = true;
             foreach ($this->lines[$o['order_id']] ?? [] as $line) {
                 $key = encode([$line['product_id'], $line['pack']['label']]);
-                $products[$key] = $products[$key] ?? ['product_id' => $line['product_id'], 'name' => $line['name'], 'model' => $line['model'], 'pack' => $line['pack'], 'quantity' => 0, 'amount' => '0', 'grams' => 0, 'orders' => [], 'pairs' => []];
+                $products[$key] = $products[$key] ?? ['product_id' => $line['product_id'], 'name' => $line['name'], 'model' => $line['model'], 'pack' => $line['pack'], 'quantity' => 0, 'amount' => '0', 'grams' => 0, 'years' => [], 'orders' => [], 'pairs' => []];
                 $p =& $products[$key];
+                $y = calendar_year($o['date_added']);
+                $p['years'][$y] = $p['years'][$y] ?? ['quantity' => 0, 'amount' => '0', 'grams' => 0];
+                $p['years'][$y]['quantity'] += (int) $line['quantity'];
+                $p['years'][$y]['amount'] = plus($p['years'][$y]['amount'], times($line['total'], $o['currency_value']));
+                if ($line['pack']['grams'] !== null) $p['years'][$y]['grams'] += $line['pack']['grams'] * (int) $line['quantity'];
                 $p['quantity'] += (int) $line['quantity'];
                 $p['amount'] = plus($p['amount'], times($line['total'], $o['currency_value']));
                 if ($line['pack']['grams'] !== null) {
@@ -253,6 +280,8 @@ final class Analytics
         }
         $productRows = [];
         foreach ($products as $p) {
+            foreach ($p['years'] as &$y) $y['amount'] = money($y['amount']);
+            unset($y);
             $p['amount'] = money($p['amount']);
             $p['order_count'] = count($p['orders']);
             $p['customers'] = count($p['pairs']);
@@ -274,7 +303,7 @@ final class Analytics
         foreach (['mixed', 'address', 'ip'] as $mode) {
             $locations[$mode] = $this->geography($period, $dsu, $mode);
         }
-        $marketing = marketing($this, $customers, $groups, $period, $asof);
+        $marketing = marketing($this, $customers, $groups, $period, $asof, $year);
         $overdue = 0;
         $repeat = 0;
         $withoutRegion = 0;
@@ -299,8 +328,13 @@ final class Analytics
                 $resolved++;
             }
         }
+        foreach ($activity as &$cell) $cell['amount'] = money($cell['amount']);
+        unset($cell);
+        $annual = history_summary($this, $valid, $groups, $dsu, $historyYears);
+        $historyTotals = ['amount' => money(sum_orders($valid)), 'order_count' => count($valid), 'customer_count' => count($groups), 'quantity' => array_sum(array_column($annual, 'quantity')), 'kilograms' => even_round(array_sum(array_column($annual, 'kilograms')), 3)];
         $total = sum_orders($period);
-        return ['year' => $year, 'as_of' => $asof, 'currency' => $currency, 'week_count' => week($year . '-12-28'), 'customers' => $customers, 'products' => $productRows, 'locations' => $locations['mixed'], 'location_modes' => $locations, 'geoip' => $this->geo->metadata(), 'marketing' => $marketing, 'ga4' => ga4_report($this->db, $year, $asof, $currency, $period), 'geo_quality' => ['orders' => count($period), 'public_ip' => $ips, 'address_without_region' => $withoutRegion, 'ip_resolved' => $resolved], 'weekly' => (object) $weekly, 'metrics' => ['amount' => money($total), 'order_count' => count($period), 'customer_count' => count($periodCustomers), 'average' => $period ? money(bcdiv($total, (string) count($period), 12)) : 0, 'overdue' => $overdue, 'repeat_customers' => $repeat, 'quantity' => array_sum(array_column($productRows, 'quantity')), 'kilograms' => even_round(array_sum(array_column($productRows, 'grams')) / 1000, 3)], 'duplicates' => $this->duplicates($customers)];
+        $crm = crm_build($this, $customers, $groups, $dsu, $asof, $currency);
+        return ['year' => $year, 'as_of' => $asof, 'currency' => $currency, 'week_count' => $year ? week($year . '-12-28') : 0, 'scope' => $year ? 'year' : 'all', 'crm' => $crm, 'annual' => $annual, 'history_totals' => $historyTotals, 'calendar' => $columns, 'activity' => (object) $activity, 'duplicate_pairs' => identity_pairs($customers), 'customers' => $customers, 'products' => $productRows, 'locations' => $locations['mixed'], 'location_modes' => $locations, 'geoip' => $this->geo->metadata(), 'marketing' => $marketing, 'ga4' => ga4_report($this->db, $year, $asof, $currency, $period), 'geo_quality' => ['orders' => count($period), 'public_ip' => $ips, 'address_without_region' => $withoutRegion, 'ip_resolved' => $resolved], 'weekly' => (object) $weekly, 'metrics' => ['amount' => money($total), 'order_count' => count($period), 'customer_count' => count($periodCustomers), 'average' => $period ? money(bcdiv($total, (string) count($period), 12)) : 0, 'overdue' => $overdue, 'repeat_customers' => $repeat, 'quantity' => array_sum(array_column($productRows, 'quantity')), 'kilograms' => even_round(array_sum(array_column($productRows, 'grams')) / 1000, 3)], 'duplicates' => $this->duplicates($customers)];
     }
     public function geography(array $orders, DSU $dsu, string $mode): array
     {
@@ -308,8 +342,13 @@ final class Analytics
         foreach ($orders as $o) {
             $loc = $this->geo->resolve($o, $mode);
             $key = encode([normalize($loc['country']), normalize($loc['zone']), normalize($loc['city']), $loc['source']]);
-            $locations[$key] = $locations[$key] ?? array_merge($loc, ['count' => 0, 'amount' => '0', 'customers' => []]);
+            $locations[$key] = $locations[$key] ?? array_merge($loc, ['count' => 0, 'amount' => '0', 'customers' => [], 'years' => []]);
             $loc =& $locations[$key];
+            $y = calendar_year($o['date_added']);
+            $loc['years'][$y] = $loc['years'][$y] ?? ['count' => 0, 'amount' => '0', 'customers' => []];
+            ++$loc['years'][$y]['count'];
+            $loc['years'][$y]['amount'] = plus($loc['years'][$y]['amount'], order_value($o));
+            $loc['years'][$y]['customers'][$dsu->find($o['order_id'])] = true;
             $loc['count']++;
             $loc['amount'] = plus($loc['amount'], order_value($o));
             $loc['customers'][$dsu->find($o['order_id'])] = true;
@@ -317,6 +356,8 @@ final class Analytics
         }
         $rows = [];
         foreach ($locations as $r) {
+            foreach ($r['years'] as &$y) { $y['amount'] = money($y['amount']); $y['customers'] = count($y['customers']); }
+            unset($y);
             $r['amount'] = money($r['amount']);
             $r['customers'] = count($r['customers']);
             $rows[] = $r;
@@ -411,7 +452,7 @@ function fast_metadata(\PDO $db, string $directory): array
         $d = substr($o['date_added'], 0, 10);
         $min = $min === null || $d < $min ? $d : $min;
         $max = $max === null || $d > $max ? $d : $max;
-        $years[iso_year($d)] = true;
+        $years[calendar_year($d)] = true;
         $currencies[$o['currency_code']] = true;
         $counts[$o['order_status_id']] = ($counts[$o['order_status_id']] ?? 0) + 1;
     }

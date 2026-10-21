@@ -4,7 +4,7 @@ declare (strict_types=1);
 namespace Lavka;
 
 const SEGMENTS = ['new' => ['Новые покупатели', 'Помочь сделать второй заказ, предложить знакомые фасовки.'], 'second' => ['Ждём вторую покупку', 'Уточнить впечатления от первого заказа; предложить пополнение.'], 'loyal' => ['Лояльные и активные', 'Личное предложение, новинки, доступ к большим фасовкам.'], 'growing' => ['Развивающиеся', 'Закрепить привычку: повтор любимых товаров и полезное дополнение.'], 'vip_risk' => ['Ценные под риском', 'Приоритетный личный контакт: выяснить причину паузы.'], 'return' => ['Пора возвращать', 'Напомнить о знакомых товарах и удобном повторном заказе.'], 'sleeping' => ['Уснувшие постоянные', 'Отдельная реактивация с понятным поводом вернуться.'], 'oneoff' => ['Разовые и давно ушедшие', 'Редкая реактивация; отделить от постоянной очереди контактов.']];
-function marketing(Analytics $s, array &$customers, array $groups, array $period, string $asof): array
+function marketing(Analytics $s, array &$customers, array $groups, array $period, string $asof, int $year = 0): array
 {
     $segments = [];
     foreach (SEGMENTS as $key => [$name, $suggestion]) {
@@ -166,7 +166,7 @@ function marketing(Analytics $s, array &$customers, array $groups, array $period
         $months[$m - 1]['count']++;
         $months[$m - 1]['amount'] = plus($months[$m - 1]['amount'], order_value($o));
         $hours[(int) $d->format('N') - 1][(int) $d->format('G')]++;
-        $week = week($o['date_added']);
+        $week = $year === 0 ? substr($o['date_added'], 0, 4) : week($o['date_added']);
         $kind = isset($firstIds[$o['order_id']]) ? 'first' : 'repeat';
         $timeline[$week] = $timeline[$week] ?? ['first_count' => 0, 'repeat_count' => 0, 'first_amount' => '0', 'repeat_amount' => '0'];
         $timeline[$week][$kind . '_count']++;

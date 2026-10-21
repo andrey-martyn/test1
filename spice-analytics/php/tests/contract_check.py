@@ -45,6 +45,13 @@ with tempfile.TemporaryDirectory(prefix='php-contract-',dir=ROOT/'test-results')
         if result.returncode:raise RuntimeError('PHP report failed: '+result.stderr[:600])
         performance=json.loads(result.stdout)
         actual=json.loads(output.read_text());expected=reference.report(year,asof,'UAH')
+        # The v2 contract adds history/calendar/pair fields; compare every legacy field.
+        for field in ('scope','annual','history_totals','calendar','activity','duplicate_pairs','crm'): actual.pop(field)
+        for customer in actual['customers']: customer.pop('activity')
+        for product in actual['products']: product.pop('years')
+        for location in actual['locations']: location.pop('years')
+        for mode in actual['location_modes'].values():
+            for location in mode: location.pop('years')
         differences=compare(expected,actual)
         if differences:
             print(json.dumps({'year':year,'mismatches':len(differences),'paths':differences[:40]},ensure_ascii=False))

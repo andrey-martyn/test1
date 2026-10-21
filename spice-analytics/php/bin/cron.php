@@ -15,7 +15,7 @@ try {
     $db = \Lavka\database($directory . '/analytics.sqlite3');
     $meta = \Lavka\fast_metadata($db, $directory);
     $count = 0;
-    foreach (array_slice($meta['years'], 0, 2) as $year) {
+    foreach (array_unique(array_merge([0], array_slice($meta['years'], 0, 2))) as $year) {
         foreach ($meta['currencies'] as $currency) {
             \Lavka\cached_report($db, $directory, $year, date('Y-m-d'), $currency);
             $count++;

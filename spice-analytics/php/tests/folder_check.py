@@ -55,6 +55,19 @@ with tempfile.TemporaryDirectory() as private, tempfile.TemporaryDirectory() as 
                 'exit(is_readable("/published/index.php") && is_readable("/published/.htaccess") && is_readable("/published/static/style.css") && !is_readable("/private-data/access-php.json") ? 0 : 1);']
     assert subprocess.run(frontend, capture_output=True).returncode == 0
     assert subprocess.run(deploy, capture_output=True).returncode == 1
+    # The explicit updater refreshes only assets of this exact installation.
+    protected = {p: p.read_bytes() for p in [shop / 'analytics/index.php', shop / 'analytics/.htaccess', data / 'access-php.json', data / 'analytics.sqlite3', data / 'deployment-php.json']}
+    (shop / 'analytics/static/style.css').write_text('OLD TEST ASSET')
+    refresh = deploy + ['--refresh-assets']
+    subprocess.run(refresh, capture_output=True, check=True)
+    assert (shop / 'analytics/static/style.css').read_bytes() == (ROOT / 'php/static/style.css').read_bytes()
+    assert (shop / 'analytics/static/help.js').is_file() and (shop / 'analytics/static/history.js').is_file()
+    assert all(p.read_bytes() == contents for p, contents in protected.items())
+    asset = shop / 'analytics/static/app.js'
+    asset.unlink(); asset.symlink_to(shop / 'index.php')
+    assert subprocess.run(refresh, capture_output=True).returncode == 1
+    assert all(p.read_bytes() == contents for p, contents in originals.items())
+    asset.unlink(); asset.write_bytes((ROOT / 'php/static/app.js').read_bytes()); asset.chmod(0o644)
     assert all(p.read_bytes() == contents for p, contents in originals.items())
     assert set(p.name for p in (shop / 'analytics').iterdir()) == {'index.php', '.htaccess', 'static'}
     for destination in ['/test-site/shop', '/test-site/shop/backups']:
@@ -84,18 +97,21 @@ else require '/test-site/shop/index.php';
     with socket.socket() as listener:
         listener.bind(('127.0.0.1', 0))
         port = listener.getsockname()[1]
+    print('Folder assets update and preservation checks passed; starting HTTP checks', flush=True)
     server = subprocess.Popen(docker + ['--name', container, '-p', f'127.0.0.1:{port}:8000',
         PHP_IMAGE, 'php', '-S', '0.0.0.0:8000', '-t', '/test-site/shop', '/test-data/router.php'],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         with httpx.Client(base_url=f'http://127.0.0.1:{port}',
-                          headers={'Host': 'www.shop.example.invalid'}, timeout=15) as client:
+                          headers={'Host': 'www.shop.example.invalid'}, timeout=15, trust_env=False) as client:
             def route(path):
                 return '/analytics/index.php?route=' + path
-            for _ in range(100):
+            for _ in range(600):
                 try:
-                    if client.get(route('/health')).status_code == 200:
+                    response=client.get(route('/health'))
+                    if response.status_code == 200:
                         break
+                    raise RuntimeError('Health response '+str(response.status_code)+': '+response.text[:250])
                 except httpx.TransportError:
                     pass
                 time.sleep(.1)

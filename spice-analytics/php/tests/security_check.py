@@ -28,14 +28,19 @@ with tempfile.TemporaryDirectory() as t:
     with socket.socket() as s:s.bind(('127.0.0.1',0));port=s.getsockname()[1]
     server=subprocess.Popen(docker+['--name',name,'-e','ANALYTICS_PUBLIC_URL=https://analytics.example.invalid','-p',f'127.0.0.1:{port}:8000',PHP_IMAGE,'php','-S','0.0.0.0:8000','/test-data/router.php'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     try:
-        with httpx.Client(base_url=f'http://127.0.0.1:{port}',headers={'Host':'analytics.example.invalid'},timeout=15) as client:
-            for _ in range(100):
+        with httpx.Client(base_url=f'http://127.0.0.1:{port}',headers={'Host':'analytics.example.invalid'},timeout=15,trust_env=False) as client:
+            for _ in range(600):
                 try:
-                    if client.get('/health').status_code==200:break
+                    response=client.get('/health')
+                    if response.status_code==200:break
+                    raise RuntimeError('Health response '+str(response.status_code)+': '+response.text[:250])
                 except httpx.TransportError:pass
                 time.sleep(.1)
             else:raise RuntimeError('PHP security test server failed to start')
             response=client.get('/api/meta');assert response.status_code==401
+            assert client.get('/api/crm/customers/1',params={'year':0,'as_of':'2026-10-20','currency':'UAH'}).status_code==401
+            assert client.post('/api/crm/customers/1/events',json={}).status_code==401
+            assert client.post('/api/identity/merge-pairs',json={'pairs':[['1','2']],'as_of':'2026-10-20','currency':'UAH'}).status_code==401
             assert response.headers['cache-control']=='no-store'
             assert 'noindex' in response.headers['x-robots-tag']
             assert response.headers['x-frame-options']=='DENY'
@@ -46,6 +51,17 @@ with tempfile.TemporaryDirectory() as t:
             cookie=response.headers['set-cookie'];assert 'secure' in cookie.lower() and 'httponly' in cookie.lower() and 'samesite=strict' in cookie.lower()
             parsed=SimpleCookie();parsed.load(cookie);client.headers['Cookie']='lavka_analytics_session='+parsed['lavka_analytics_session'].value
             meta=client.get('/api/meta');assert meta.status_code==200 and meta.json()['names_visible']
+            contact={'id':'a'*32,'as_of':'2026-10-20','currency':'UAH','kind':'start','occurred_at':'2026-10-20T10:00:00','owner':'Synthetic staff','channel':'call'}
+            assert client.post('/api/crm/customers/1/events',json=contact,headers={'Origin':'https://attacker.example.invalid'}).status_code==403
+            assert client.post('/api/crm/customers/1/events',json=contact).status_code==200
+            assert client.post('/api/crm/customers/1/events',json=contact).json()['repeated']
+            profile=client.get('/api/crm/customers/1',params={'year':0,'as_of':'2026-10-20','currency':'UAH'}).json()
+            assert len(profile['events'])==1 and profile['summary']['state']=='waiting'
+            endpoint='/api/crm/events/'+contact['id']+'/void'
+            assert client.post(endpoint,json={'reason':'Synthetic correction'},headers={'Origin':'https://attacker.example.invalid'}).status_code==403
+            assert client.post(endpoint,json={'reason':'Synthetic correction'}).status_code==200
+            assert client.post('/api/identity/merge-pairs',json={'pairs':[['1','2']],'as_of':'2026-10-20','currency':'UAH'},headers={'Origin':'https://attacker.example.invalid'}).status_code==403
+            assert client.post('/api/identity/merge-pairs',json={'pairs':[['1','2']],'as_of':'2026-10-20','currency':'UAH'}).status_code==409
             report=client.get('/api/report',params={'year':2026,'as_of':'2026-10-20','currency':'UAH'}).json()
             assert report['customers'][0]['name']=='Тест Покупатель'
             # CRM mutation must take effect in a new PHP request, including cached reports.
@@ -67,6 +83,7 @@ with tempfile.TemporaryDirectory() as t:
             with sqlite3.connect(copies[0]/'analytics.sqlite3') as copy:
                 assert copy.execute('PRAGMA quick_check').fetchone()[0]=='ok'
                 assert copy.execute('SELECT count(*) FROM customer_actions').fetchone()[0]==1
+                assert copy.execute('SELECT count(*) FROM crm_events WHERE voided_at IS NOT NULL').fetchone()[0]==1
         with tempfile.TemporaryDirectory() as dt:
             deployment=docker+['-v',dt+':/deployment',PHP_IMAGE,'php','php/bin/deploy.php','--webroot','/deployment/public','--data','/deployment/private','--url','https://analytics.example.invalid']
             subprocess.run(deployment,capture_output=True,check=True)

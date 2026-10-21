@@ -5,6 +5,7 @@ namespace Lavka;
 
 require_once __DIR__ . '/Analytics.php';
 require_once __DIR__ . '/Auth.php';
+require_once __DIR__ . '/Identity.php';
 final class HttpError extends \RuntimeException
 {
     public $status;
@@ -57,7 +58,7 @@ function report_params(): array
     $year = filter_var($_GET['year'] ?? null, FILTER_VALIDATE_INT);
     $asof = $_GET['as_of'] ?? '';
     $currency = $_GET['currency'] ?? 'UAH';
-    if (!$year || $year < 2000 || $year > 2100 || !is_string($asof) || !valid_date($asof) || !is_string($currency) || !preg_match('/^[A-Z]{3}$/', $currency)) {
+    if ($year === false || ($year !== 0 && ($year < 2000 || $year > 2100)) || !is_string($asof) || !valid_date($asof) || !is_string($currency) || !preg_match('/^[A-Z]{3}$/', $currency)) {
         fail(422, 'Неверные параметры отчёта');
     }
     return [$year, $asof, $currency];
@@ -66,7 +67,7 @@ function cached_report(\PDO $db, string $directory, int $year, string $asof, str
 {
     $cache = $directory . '/cache';
     private_dir($cache);
-    $key = hash('sha256', revision($db) . ':php-v1:' . $year . ':' . $asof . ':' . $currency);
+    $key = hash('sha256', revision($db) . ':php-v3-reactivation:' . $year . ':' . $asof . ':' . $currency);
     $file = $cache . '/report-' . $key . '.json';
     if (is_file($file)) {
         return decode(file_get_contents($file));
@@ -236,6 +237,29 @@ function run_app(string $directory, string $publicUrl, string $assets, string $l
             [$year, $asof, $currency] = report_params();
             respond(cached_report($db, $directory, $year, $asof, $currency));
         }
+        if (preg_match('~^/api/crm/customers/(\d+)$~', $path, $m) && $method === 'GET') {
+            [, $asof, $currency] = report_params();
+            [$s, $report, $customer, $events, $orders] = crm_context($db, $directory, $m[1], $asof, $currency);
+            $summaries = (array) $report['crm']['customers'];
+            $summary = $summaries[$customer['id']];
+            respond(['customer' => $customer, 'summary' => $summary, 'events' => array_reverse($events), 'attempts' => crm_attempts($events, $orders, $asof), 'plan' => crm_plan($s, $customer, $orders, $events, $summary, $asof), 'server_now' => date('Y-m-d\TH:i:s'), 'as_of' => $asof, 'currency' => $currency, 'reasons' => CRM_REASONS, 'outcomes' => CRM_OUTCOMES, 'kinds' => CRM_KINDS]);
+        }
+        if (preg_match('~^/api/crm/customers/(\d+)/events$~', $path, $m) && $method === 'POST') {
+            $b = request_json();
+            respond(crm_save_event($db, $directory, $m[1], valid_string($b['as_of'] ?? null, 10), valid_string($b['currency'] ?? null, 3), $b));
+        }
+        if (preg_match('~^/api/crm/events/([a-f0-9]{32})/void$~', $path, $m) && $method === 'POST') {
+            $b = request_json(); $reason = trim(valid_string($b['reason'] ?? '', 500));
+            if ($reason === '') fail(422, 'Укажите причину отмены записи');
+            $db->beginTransaction();
+            try {
+                $stmt = $db->prepare('SELECT id FROM crm_events WHERE id=?'); $stmt->execute([$m[1]]);
+                if (!$stmt->fetchColumn()) fail(404, 'Запись не найдена');
+                $stmt = $db->prepare('UPDATE crm_events SET voided_at=?,void_reason=? WHERE id=? AND voided_at IS NULL');
+                $stmt->execute([date('Y-m-d\TH:i:s'), $reason, $m[1]]); bump($db); $db->commit();
+            } catch (\Throwable $e) { if ($db->inTransaction()) $db->rollBack(); throw $e; }
+            respond(['ok' => true]);
+        }
         if (preg_match('~^/api/orders/(\d+)$~', $path, $m) && $method === 'GET') {
             $s = new Analytics($db, $directory);
             if (!isset($s->orders[$m[1]])) {
@@ -318,6 +342,11 @@ function run_app(string $directory, string $publicUrl, string $assets, string $l
             $b = request_json();
             $content = valid_string($b['content'] ?? null, 2000000);
             respond(ga4_import($db, $content, valid_string($b['kind'] ?? null, 20), valid_string($b['currency'] ?? null, 3)));
+        }
+        if ($path === '/api/identity/merge-pairs' && $method === 'POST') {
+            $b = request_json();
+            if (!isset($b['pairs']) || !is_array($b['pairs'])) fail(422, 'Нужен список пар контактов');
+            respond(merge_identity_pairs($db, $directory, $b['pairs'], valid_string($b['as_of'] ?? null, 10), valid_string($b['currency'] ?? null, 3)));
         }
         if ($path === '/api/identity/merge' && $method === 'POST') {
             $b = request_json();

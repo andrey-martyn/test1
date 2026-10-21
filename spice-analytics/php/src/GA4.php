@@ -173,7 +173,7 @@ function ga4_report(\PDO $db, int $year, string $asof, string $currency, array $
     $data = ['daily' => [], 'transactions' => []];
     foreach ($raw as $r) {
         $v = decode($r['payload']);
-        if ($v['currency'] === $currency && $v['date'] <= $asof && iso_year($v['date']) === $year) {
+        if ($v['currency'] === $currency && $v['date'] <= $asof && ($year === 0 || calendar_year($v['date']) === $year)) {
             $data[$r['kind']][] = $v;
         }
     }

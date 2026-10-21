@@ -8,11 +8,11 @@ if (PHP_SAPI !== 'cli') {
 require_once dirname(__DIR__) . '/src/App.php';
 $args = getopt('', ['data:', 'year:', 'as-of:', 'currency:', 'output:']);
 $directory = $args['data'] ?? (getenv('ANALYTICS_DATA_DIR') ?: dirname(__DIR__) . '/data');
-$year = (int) ($args['year'] ?? date('o'));
+$year = filter_var($args['year'] ?? date('Y'), FILTER_VALIDATE_INT);
 $asof = $args['as-of'] ?? date('Y-m-d');
 $currency = $args['currency'] ?? 'UAH';
 try {
-    if ($year < 2000 || $year > 2100 || !\Lavka\valid_date($asof) || !preg_match('/^[A-Z]{3}$/', $currency)) {
+    if ($year === false || ($year !== 0 && ($year < 2000 || $year > 2100)) || !\Lavka\valid_date($asof) || !preg_match('/^[A-Z]{3}$/', $currency)) {
         throw new \InvalidArgumentException('Неверные параметры отчёта');
     }
     $started = microtime(true);

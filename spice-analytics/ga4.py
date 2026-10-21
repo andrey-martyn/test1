@@ -96,7 +96,7 @@ def report(database,year,as_of,currency,orders):
     data={'daily':[],'transactions':[]}
     for kind,payload in raw:
         r=json.loads(payload)
-        if r['currency']==currency and r['date']<=as_of.isoformat() and date.fromisoformat(r['date']).isocalendar().year==year:data[kind].append(r)
+        if r['currency']==currency and r['date']<=as_of.isoformat() and date.fromisoformat(r['date']).year==year:data[kind].append(r)
     daily=data['daily'];transactions=data['transactions'];channels={}
     fields=['sessions','users','carts','checkouts','purchases','revenue','cost']
     totals={f:None for f in fields}

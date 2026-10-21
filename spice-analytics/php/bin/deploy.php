@@ -30,6 +30,7 @@ function public_dir(string $path): void
 }
 function copy_tree(string $from, string $to): void
 {
+    if (is_link($to)) throw new RuntimeException('Символические ссылки в публичных файлах запрещены');
     public_dir($to);
     foreach (new DirectoryIterator($from) as $entry) {
         if ($entry->isDot()) {
@@ -39,6 +40,7 @@ function copy_tree(string $from, string $to): void
             throw new RuntimeException('Символические ссылки в static запрещены');
         }
         $target = $to . '/' . $entry->getFilename();
+        if (is_link($target)) throw new RuntimeException('Символические ссылки в публичных файлах запрещены');
         if ($entry->isDir()) {
             copy_tree($entry->getPathname(), $target);
         } else {
@@ -49,7 +51,7 @@ function copy_tree(string $from, string $to): void
         }
     }
 }
-$args = getopt('', ['webroot:', 'data:', 'url:', 'shop-root:']);
+$args = getopt('', ['webroot:', 'data:', 'url:', 'shop-root:', 'refresh-assets']);
 try {
     foreach (['webroot', 'data', 'url'] as $key) {
         if (empty($args[$key])) {
@@ -86,12 +88,28 @@ try {
             throw new InvalidArgumentException('Код и данные должны находиться вне всей публичной папки магазина');
         }
     }
-    if (is_dir($webroot) && array_diff(scandir($webroot), ['.', '..'])) {
+    $refresh = isset($args['refresh-assets']);
+    if (!$refresh && is_dir($webroot) && array_diff(scandir($webroot), ['.', '..'])) {
         throw new InvalidArgumentException('Публичная папка не пуста. Файлы магазина не изменены.');
+    }
+    $launcher = "<?php\ndeclare(strict_types=1);\nif (PHP_VERSION_ID < 70300) { http_response_code(503); header('Content-Type: text/plain; charset=utf-8'); header('Cache-Control: no-store'); exit('Для кабинета нужен PHP 7.3+ и проверка расширений. Версию PHP магазина менять не требуется.'); }\nputenv('ANALYTICS_DATA_DIR='." . var_export($data, true) . ");\nputenv('ANALYTICS_PUBLIC_URL='." . var_export($url, true) . ");\nrequire " . var_export($root . '/public/index.php', true) . ";\n";
+    if ($refresh) {
+        $metadataFile = $data . '/deployment-php.json';
+        if (!is_file($metadataFile) || is_link($webroot . '/index.php') || !is_file($webroot . '/index.php') || file_get_contents($webroot . '/index.php') !== $launcher) throw new InvalidArgumentException('Не найден установленный кабинет с этими путями. Обновление остановлено.');
+        $metadata = \Lavka\decode(file_get_contents($metadataFile));
+        foreach (['application_root' => $root, 'document_root' => $webroot, 'data_dir' => $data, 'public_url' => $url, 'shop_root' => $shopRoot] as $key => $value) if (($metadata[$key] ?? null) !== $value) throw new InvalidArgumentException('Параметры не совпадают с установленным кабинетом');
+        // Check destinations before copying, so a pre-existing symlink cannot
+        // redirect an asset write into the shop or private directory.
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root . '/static', FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::SELF_FIRST) as $entry) {
+            $relative = substr($entry->getPathname(), strlen($root . '/static'));
+            if ($entry->isLink() || is_link($webroot . '/static') || is_link($webroot . '/static' . $relative)) throw new InvalidArgumentException('Символические ссылки в static запрещены');
+        }
+        copy_tree($root . '/static', $webroot . '/static');
+        echo \Lavka\encode(['updated' => true, 'public_url' => $url, 'shop_files' => 'preserved', 'private_data' => 'preserved']) . "\n";
+        exit;
     }
     \Lavka\private_dir($data);
     public_dir($webroot);
-    $launcher = "<?php\ndeclare(strict_types=1);\nif (PHP_VERSION_ID < 70300) { http_response_code(503); header('Content-Type: text/plain; charset=utf-8'); header('Cache-Control: no-store'); exit('Для кабинета нужен PHP 7.3+ и проверка расширений. Версию PHP магазина менять не требуется.'); }\nputenv('ANALYTICS_DATA_DIR='." . var_export($data, true) . ");\nputenv('ANALYTICS_PUBLIC_URL='." . var_export($url, true) . ");\nrequire " . var_export($root . '/public/index.php', true) . ";\n";
     file_put_contents($webroot . '/index.php', $launcher);
     chmod($webroot . '/index.php', 0644);
     $rules = "Options -Indexes\nDirectoryIndex index.php\n<IfModule mod_headers.c>\nHeader always set X-Robots-Tag \"noindex, nofollow, noarchive\"\nHeader always set Cache-Control \"no-store\"\n</IfModule>\n";

@@ -91,7 +91,7 @@ class ActualDatasetTests(unittest.TestCase):
     def test_independent_sum_and_weeks(self):
         from datetime import date
         r=self.s.report(2026,'2026-10-20','UAH')
-        eligible=[o for o in self.s.orders.values() if o['order_status_id'] in ['2','3'] and o['date_added'][:10]<='2026-10-20' and date.fromisoformat(o['date_added'][:10]).isocalendar().year==2026]
+        eligible=[o for o in self.s.orders.values() if o['order_status_id'] in ['2','3'] and o['date_added'][:10]<='2026-10-20' and date.fromisoformat(o['date_added'][:10]).year==2026]
         expected=sum((Decimal(o['total'])*Decimal(o['currency_value']) for o in eligible),Decimal(0))
         self.assertAlmostEqual(r['metrics']['amount'],float(expected),places=2)
         self.assertEqual(r['metrics']['order_count'],len(eligible))

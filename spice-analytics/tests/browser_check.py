@@ -43,9 +43,9 @@ def cleanup():
 atexit.register(cleanup)
 base=f'http://127.0.0.1:{port}'+mount
 def route(path):return '/index.php?route='+path if mount else path
-for attempt in range(100):
+for attempt in range(600):
     try:
-        if httpx.get(base+route('/health')).status_code==200:break
+        if httpx.get(base+route('/health'),trust_env=False,timeout=2).status_code==200:break
     except httpx.TransportError:
         pass
     time.sleep(.1)
@@ -107,7 +107,7 @@ with sync_playwright() as p:
         if view=='products':
             page.screenshot(path=str(out/'products.png'),full_page=True)
             page.screenshot(path=str(out/'products-preview.png'))
-            page.select_option('#product-mode','products');assert 'вариантов' in page.locator('main tbody').inner_text()
+            page.select_option('#product-mode','products');assert 'вариантов' in page.locator('#content tbody').inner_text()
         if view=='settings':
             page.fill('[name=interval_days]','31');page.click('button[type=submit]')
             page.wait_for_selector('#toast:not(.hidden)')
@@ -152,9 +152,13 @@ with sync_playwright() as p:
             checks.append('GA4 CSV import, channels and transaction-to-order reconciliation')
         checks.append(view+' view')
     page.click('[data-view=customers]')
-    page.select_option('#year','2025');page.wait_for_timeout(500)
-    assert '2025' in page.locator('.customer-table thead').inner_text()
-    page.select_option('#year','2026');page.wait_for_timeout(500)
+    page.select_option('#year','2025')
+    if runtime=='php':page.wait_for_function('() => state.report.year===2025')
+    else:page.wait_for_timeout(500)
+    assert page.evaluate('state.report.year===2025') if runtime=='php' else '2025' in page.locator('.customer-table thead').inner_text()
+    page.select_option('#year','2026')
+    if runtime=='php':page.wait_for_function('() => state.report.year===2026')
+    else:page.wait_for_timeout(500)
     page.select_option('#orders-basis','order_count')
     page.click('[data-action=show-overdue]')
     assert page.locator('#reminder').input_value()=='overdue'
