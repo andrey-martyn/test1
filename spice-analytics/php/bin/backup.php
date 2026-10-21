@@ -30,25 +30,40 @@ try {
     }
     $copyDir = $destination . '/.pending-' . bin2hex(random_bytes(5));
     \Lavka\private_dir($copyDir);
-    $original = new SQLite3($data . '/analytics.sqlite3', SQLITE3_OPEN_READONLY);
-    $original->busyTimeout(15000);
-    $copyPath = $copyDir . '/analytics.sqlite3';
-    if (method_exists($original, 'backup')) {
-        $copy = new SQLite3($copyPath);
-        $ok = $original->backup($copy);
-    } else {
-        // PHP 7.3 has no SQLite3::backup. VACUUM INTO creates a consistent
-        // SQLite snapshot (including committed WAL pages), never a raw file copy.
-        if (SQLite3::version()['versionNumber'] < 3027000) throw new RuntimeException('Для копии нужен SQLite 3.27+');
-        $ok = $original->exec("VACUUM INTO '" . SQLite3::escapeString($copyPath) . "'");
-        $copy = new SQLite3($copyPath, SQLITE3_OPEN_READONLY);
+    $names = ['analytics.sqlite3'];
+    if (file_exists($data . '/competitors.sqlite3')) {
+        if (!is_file($data . '/competitors.sqlite3')) {
+            throw new RuntimeException('База мониторинга недоступна для копирования');
+        }
+        $names[] = 'competitors.sqlite3';
     }
-    if (!$ok || $copy->querySingle('PRAGMA quick_check') !== 'ok') {
-        throw new RuntimeException('Резервная копия не прошла проверку');
+    foreach ($names as $name) {
+        $original = new SQLite3($data . '/' . $name, SQLITE3_OPEN_READONLY);
+        $copy = null;
+        try {
+            $original->busyTimeout(15000);
+            $copyPath = $copyDir . '/' . $name;
+            if (method_exists($original, 'backup')) {
+                $copy = new SQLite3($copyPath);
+                $ok = $original->backup($copy);
+            } else {
+                // PHP 7.3 has no SQLite3::backup. VACUUM INTO creates a
+                // consistent snapshot, including committed WAL pages.
+                if (SQLite3::version()['versionNumber'] < 3027000) throw new RuntimeException('Для копии нужен SQLite 3.27+');
+                $ok = $original->exec("VACUUM INTO '" . SQLite3::escapeString($copyPath) . "'");
+                $copy = new SQLite3($copyPath, SQLITE3_OPEN_READONLY);
+            }
+            if (!$ok || $copy->querySingle('PRAGMA quick_check') !== 'ok') {
+                throw new RuntimeException('Резервная копия не прошла проверку');
+            }
+            if (!chmod($copyPath, 0600)) {
+                throw new RuntimeException('Не удалось закрыть доступ к резервной копии');
+            }
+        } finally {
+            if ($copy instanceof SQLite3) $copy->close();
+            $original->close();
+        }
     }
-    $copy->close();
-    $original->close();
-    chmod($copyDir . '/analytics.sqlite3', 0600);
     foreach (['access-php.json', 'source.json', 'deployment-php.json'] as $name) {
         if (is_file($data . '/' . $name)) {
             copy($data . '/' . $name, $copyDir . '/' . $name);

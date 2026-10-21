@@ -20,14 +20,17 @@ const contact=c=>state.privacy?'Контакты скрыты':esc(c.email||c.ph
 const toast=text=>{const el=$('#toast');el.textContent=text;el.classList.remove('hidden');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.add('hidden'),4500);};
 async function api(path,options={}){const r=await fetch(appUrl(path),options);if(r.status===401){location.href=appUrl('/login');throw Error('Нужен вход');}const data=await r.json();if(!r.ok)throw Error(typeof data.detail==='string'?data.detail:'Не удалось выполнить запрос');return data;}
 const query=()=>new URLSearchParams({year:$('#year').value,as_of:$('#as-of').value,currency:$('#currency').value});
-let loadSequence=0;
+let loadSequence=0,ordersLoading=false,initLoading=false;
 async function load(){
   const sequence=++loadSequence;
-  $('#content').innerHTML='<div class="loading">Считаем историю покупок…</div>';
-  try{const report=await api('/api/report?'+query());if(sequence!==loadSequence)return;state.report=report;state.duplicateSelected.clear();state.page=1;render();}
-  catch(e){if(sequence===loadSequence)$('#content').innerHTML='<div class="notice">'+esc(e.message)+'</div>';}
+  ordersLoading=true;
+  if(state.view!=='competitors')$('#content').innerHTML='<div class="loading">Считаем историю покупок…</div>';
+  try{const report=await api('/api/report?'+query());if(sequence!==loadSequence)return;state.report=report;state.duplicateSelected.clear();state.page=1;if(state.view!=='competitors')render();}
+  catch(e){if(sequence===loadSequence&&state.view!=='competitors')$('#content').innerHTML='<div class="notice">'+esc(e.message)+'</div>';}
+  finally{if(sequence===loadSequence)ordersLoading=false;}
 }
 async function init(){
+  if(initLoading)return;initLoading=true;
   try{
     state.meta=await api('/api/meta');const m=state.meta;
     state.privacy=!m.names_visible;
@@ -37,7 +40,8 @@ async function init(){
     updateSourceStamp(m);
     $('#footer-range').textContent=fmtDate(m.date_min)+' — '+fmtDate(m.date_max);
     await load();
-  }catch(e){$('#content').innerHTML='<div class="notice">'+esc(e.message)+'</div>';}
+  }catch(e){if(state.view!=='competitors')$('#content').innerHTML='<div class="notice">'+esc(e.message)+'</div>';}
+  finally{initLoading=false;}
 }
 function updateSourceStamp(m){
   const s=m.sync||{};
@@ -45,7 +49,7 @@ function updateSourceStamp(m){
   if(m.production){$('.local-pill').textContent='Закрытый кабинет';$('.sidebar-bottom p').textContent=s.configured?'ocStore · синхронизация MySQL':'ocStore · загруженная копия';}
 }
 async function refreshSource(force=false){
-  if(!state.meta||(!force&&state.duplicateSelected.size)||(!force&&!state.meta.sync?.configured)||$('#drawer').open||document.hidden)return;
+  if(state.view==='competitors'||!state.meta||(!force&&state.duplicateSelected.size)||(!force&&!state.meta.sync?.configured)||$('#drawer').open||document.hidden)return;
   try{
     const m=await api('/api/meta'),previous=state.meta;state.meta=m;updateSourceStamp(m);
     if($('#as-of').value===previous.today)$('#as-of').value=m.today;
@@ -59,11 +63,13 @@ async function refreshSource(force=false){
 function sourceSettings(m){const s=m.sync||{};return `<section class="panel">${panelHeading('Источник и обновление',s.configured?'Копия магазина обновляется по расписанию cron.':'Пока используется загруженная SQL-копия.')}<div class="settings-grid"><div class="settings-note"><strong>${num(m.counts.oc_order)} заказов в закрытой копии</strong><br>История: ${fmtDate(m.date_min)} — ${fmtDate(m.date_max)}.<br>${s.configured?'Последняя успешная проверка: '+(s.last_success?esc(new Date(s.last_success).toLocaleString('ru-RU')):'ещё не завершена')+'.<br>Состояние: '+esc({ok:'актуально',running:'идёт проверка',error:'ошибка; сохранены предыдущие данные'}[s.state]||'ожидание')+(s.error?'<br>'+esc(s.error):''):'Полную выгрузку можно импортировать через import_dump.py; отчёты подхватят её автоматически.'}<br><button class="button" data-action="refresh-source">Обновить отчёт</button></div><div class="settings-note"><strong>Подключение только на чтение</strong><br>Кабинет читает шесть таблиц заказов. Изменения в магазине не выполняются. CRM-отметки, правила и объединения сохраняются в отдельной базе.<br>Для MyISAM сверяются два чтения; это проверка стабильности, а не транзакционный снимок. IP-география требует локальную GeoIP-базу.</div></div></section>`;}
 function metric(label,value,foot,action=''){return `<article class="metric"><div class="metric-label">${label}${infoHelp(label)}<span>↗</span></div><div class="metric-value">${value}</div><div class="metric-foot">${foot}</div>${action?`<button class="metric-link" data-action="${action}" aria-label="${label}"></button>`:''}</article>`;}
 function render(){
-  if(!state.report)return;
-  const r=state.report,m=r.metrics;
+  document.body.classList.toggle('competitors-mode',state.view==='competitors');
   document.body.classList.toggle('manual-mode',state.view==='manual');$('#year').disabled=state.view==='manual';
-  $('#page-title').textContent=titles[state.view][0];$('#page-description').textContent=titles[state.view][1];
+  $('#page-title').textContent=state.view==='competitors'?'Мониторинг конкурентов':titles[state.view][0];$('#page-description').textContent=state.view==='competitors'?'Цены выбранных товаров, доставка и изменения ассортимента.':titles[state.view][1];
   document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===state.view));
+  if(state.view==='competitors'){hideHelp();$('#content').innerHTML=competitorsView();return;}
+  if(!state.report){$('#content').innerHTML='<div class="loading">Загружаем историю заказов…</div>';return;}
+  const r=state.report,m=r.metrics;
   hideHelp();$('#duplicate-badge').textContent=r.duplicate_pairs.length;
   $('#metrics').innerHTML=metric('Сумма заказов',num(m.amount,2)+'<small>'+esc(r.currency)+'</small>','За '+periodTitle()+' до даты проверки')+
     metric('Заказы',num(m.order_count),num(m.customer_count)+' покупателей за период')+
@@ -161,7 +167,7 @@ async function drawMap(){
 }
 function settingsView(){const m=state.meta,s=m.settings;return `<section class="panel">${panelHeading('Правила расчёта','Изменения сохраняются в локальной базе и применяются ко всему отчёту.')}<form id="settings-form"><div class="settings-grid"><div><h3 class="section-caption">Напоминания о повторной покупке</h3><label class="field">Базовый интервал, дней<input name="interval_days" type="number" min="1" max="730" value="${s.interval_days}" required><small>Используется, пока у покупателя мало истории.</small></label><label class="field">Допустимая задержка, дней<input name="grace_days" type="number" min="0" max="365" value="${s.grace_days}" required><small>После этой задержки покупатель попадёт в «Просрочено».</small></label><label class="field">Минимум дат покупок для личного интервала<input name="minimum_orders" type="number" min="3" max="30" value="${s.minimum_orders}" required><small>Личный интервал — медиана последних шести промежутков между разными датами покупок. Заказы в один день не сокращают интервал.</small></label>${followupSettings(s)}<button class="button primary" type="submit">Сохранить настройки</button></div><div><h3 class="section-caption">Учитываемые статусы заказов</h3>${m.statuses.map(sx=>`<label class="status-option"><input type="checkbox" name="status_ids" value="${sx.id}" ${s.status_ids.includes(sx.id)?'checked':''}>${esc(sx.name)}<small>${num(sx.count)}</small></label>`).join('')}</div></div></form></section>${sourceSettings(m)}`;}
 function orderHTML(o,open=false){return `<details class="order-detail" ${open?'open':''}><summary><span>№${esc(o.id)}</span><span class="muted">${fmtDate(o.date)}</span><strong>${num(o.amount,2)} ${esc(o.currency)}</strong></summary><div class="order-body"><div class="order-meta">${esc(o.status)} · ${esc(o.city)}, ${esc(o.country)}<br>${esc(o.shipping_method)}<br>${esc(o.payment_method)}</div><div class="table-scroll"><table><thead><tr><th>Товар / фасовка</th><th>Кол-во</th><th>Сумма</th></tr></thead><tbody>${o.lines.map(l=>`<tr><td>${esc(l.name)}<span class="identity-meta">${esc(l.pack.label)} · ${esc(l.model)}</span></td><td>${l.quantity}</td><td>${num(l.total,2)} ${esc(o.currency)}</td></tr>`).join('')}</tbody></table></div><div style="margin-top:13px">${o.totals.map(t=>`<div class="order-total"><span>${esc(t.title)}</span><span>${num(t.value,2)} ${esc(o.currency)}</span></div>`).join('')}</div>${o.history.length?`<div class="section-caption">История статусов</div><div class="order-meta">${o.history.map(h=>fmtDate(h.date)+' · '+esc(h.status)).join('<br>')}</div>`:''}</div></details>`;}
-function openDrawer(label){$('#drawer-label').textContent=label;$('#drawer-content').innerHTML='<div class="loading">Загружаем…</div>';if(!$('#drawer').open)$('#drawer').showModal();}
+function openDrawer(label){if(typeof competitorState!=='undefined')competitorState.historySequence++;$('#drawer-label').textContent=label;$('#drawer-content').innerHTML='<div class="loading">Загружаем…</div>';if(!$('#drawer').open)$('#drawer').showModal();}
 async function openCustomer(id){
   openDrawer('КАРТОЧКА ПОКУПАТЕЛЯ');
   try{
@@ -171,7 +177,7 @@ async function openCustomer(id){
   }catch(e){$('#drawer-content').innerHTML='<div class="notice">'+esc(e.message)+'</div>';}
 }
 async function openWeek(ids){state.customer=null;openDrawer('ЗАКАЗЫ ЗА НЕДЕЛЮ');try{const orders=await Promise.all(ids.map(id=>api('/api/orders/'+id)));$('#drawer-content').innerHTML='<h2 class="drawer-name">Заказы за неделю</h2><p class="muted">'+orders.length+' заказов · '+cash(orders.reduce((a,o)=>a+o.amount,0))+'</p>'+orders.map(o=>orderHTML(o,true)).join('');}catch(e){toast(e.message);}}
-function navigate(view){state.historyOpen=null;state.duplicateCustomer=null;state.view=view;state.page=1;state.search='';render();window.scrollTo({top:0,behavior:'smooth'});}
+function navigate(view){if(state.view==='competitors')competitorCaptureDraft();state.historyOpen=null;state.duplicateCustomer=null;state.view=view;state.page=1;state.search='';render();if(view==='competitors'&&!competitorState.data&&!competitorState.loading)competitorsLoad();if(view!=='competitors'&&!state.report&&!ordersLoading&&!initLoading)init();window.scrollTo({top:0,behavior:'smooth'});}
 function exportCSV(){
   const rows=customerRows(),fields=['Покупатель','Город','Заказов за период','Сумма за период','Заказов всего','Сумма всего','Последний заказ','Дней с заказа','Интервал','Ожидаемая дата','Сегмент','RFM','Приоритет','Контакт разрешён правилами','Email','Телефон'];
   if(!state.report.year)fields.push(...state.report.calendar.flatMap(col=>['Заказы '+col.label,'Сумма '+col.label]));

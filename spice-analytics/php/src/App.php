@@ -6,6 +6,7 @@ namespace Lavka;
 require_once __DIR__ . '/Analytics.php';
 require_once __DIR__ . '/Auth.php';
 require_once __DIR__ . '/Identity.php';
+require_once __DIR__ . '/Competitors.php';
 final class HttpError extends \RuntimeException
 {
     public $status;
@@ -224,6 +225,36 @@ function run_app(string $directory, string $publicUrl, string $assets, string $l
             $auth->logout($_COOKIE[$cookieName] ?? '');
             setcookie($cookieName, '', array_replace($cookieOptions, ['expires' => 1]));
             respond(['ok' => true]);
+        }
+        if ($path === '/api/competitors' || str_starts_with($path, '/api/competitors/')) {
+            // HTTP reads saved observations or queues CLI work; it never fetches sites.
+            $competitors = competitors_db($directory);
+            try {
+                if ($path === '/api/competitors') {
+                    if ($method !== 'GET') fail(405, 'Метод не поддерживается');
+                    respond(competitors_overview($competitors));
+                }
+                if ($path === '/api/competitors/targets') {
+                    if ($method !== 'POST') fail(405, 'Метод не поддерживается');
+                    respond(competitors_save_target($competitors, request_json()), 201);
+                }
+                if (preg_match('~^/api/competitors/targets/([1-9][0-9]{0,9})$~D', $path, $m)) {
+                    if ($method === 'GET') respond(competitors_history($competitors, (int) $m[1]));
+                    if ($method === 'PUT') respond(competitors_save_target($competitors, request_json(), (int) $m[1]));
+                    fail(405, 'Метод не поддерживается');
+                }
+                if ($path === '/api/competitors/queue') {
+                    if ($method !== 'POST') fail(405, 'Метод не поддерживается');
+                    $body = request_json();
+                    if (array_diff(array_keys($body), ['target_id']) || array_key_exists('target_id', $body) && (!is_int($body['target_id']) || $body['target_id'] <= 0)) fail(422, 'Неверный номер страницы наблюдения');
+                    respond(competitors_queue($competitors, $body['target_id'] ?? null));
+                }
+                fail(404, 'Страница не найдена');
+            } catch (CompetitorNotFound $e) {
+                fail(404, $e->getMessage());
+            } catch (CompetitorConflict $e) {
+                fail(409, $e->getMessage());
+            }
         }
         if (!is_file($directory . '/analytics.sqlite3')) {
             fail(503, 'Сначала загрузите данные магазина');
