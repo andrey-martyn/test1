@@ -1,0 +1,9 @@
+FROM php@sha256:bd6f2dc7a4e4537e927355c94a74c3022911aa504278f5f0fd94016c90dfaecc
+RUN --mount=type=secret,id=host_ca \
+    if [ -s /run/secrets/host_ca ]; then cat /run/secrets/host_ca >> /etc/ssl/certs/ca-certificates.crt; fi \
+    && sed -i 's|http://deb.debian.org|https://deb.debian.org|g; s|http://security.debian.org|https://deb.debian.org|g' /etc/apt/sources.list \
+    && apt-get update -o Acquire::https::No-Cache=true \
+    && apt-get install -y --no-install-recommends libicu-dev=67.1-7 libicu67=67.1-7 icu-devtools=67.1-7 \
+    && docker-php-ext-install -j2 bcmath pdo_mysql mbstring intl \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app

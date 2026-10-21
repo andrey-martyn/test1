@@ -2,6 +2,7 @@
 import json
 import atexit
 import os
+PHP_IMAGE = os.environ.get('ANALYTICS_PHP_IMAGE', 'lavka-php-dev')
 from pathlib import Path
 import secrets
 import shutil
@@ -30,8 +31,8 @@ container=None
 if runtime=='php':
     container='lavka-php-browser-'+secrets.token_hex(5)
     docker=['docker','run','--rm','--user',f'{os.getuid()}:{os.getgid()}','-v',str(ROOT)+':/app:ro','-v',str(directory)+':/test-data','-e','ANALYTICS_DATA_DIR=/test-data','-e','ANALYTICS_BASE_PATH='+mount]
-    subprocess.run(docker+['-i','lavka-php-dev','php','-r','require "php/src/Auth.php"; \\Lavka\\Auth::setPassword(getenv("ANALYTICS_DATA_DIR"), stream_get_contents(STDIN));'],input=password.encode(),check=True,stdout=subprocess.DEVNULL)
-    command=docker+['--name',container,'-p',f'127.0.0.1:{port}:8000','lavka-php-dev','php','-d','memory_limit=256M','-S','0.0.0.0:8000','-t','php/public','php/public/index.php']
+    subprocess.run(docker+['-i',PHP_IMAGE,'php','-r','require "php/src/Auth.php"; \\Lavka\\Auth::setPassword(getenv("ANALYTICS_DATA_DIR"), stream_get_contents(STDIN));'],input=password.encode(),check=True,stdout=subprocess.DEVNULL)
+    command=docker+['--name',container,'-p',f'127.0.0.1:{port}:8000',PHP_IMAGE,'php','-d','memory_limit=256M','-S','0.0.0.0:8000','-t','php/public','php/public/index.php']
 else:
     command=[sys.executable,'-m','uvicorn','app:app','--host','127.0.0.1','--port',str(port),'--no-access-log']
 server=subprocess.Popen(command,cwd=ROOT,env={**os.environ,'ANALYTICS_DATA_DIR':str(directory)},stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)

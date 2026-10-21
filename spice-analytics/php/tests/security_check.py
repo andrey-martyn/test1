@@ -1,6 +1,8 @@
 """HTTP contract with a test-only HTTPS server marker; no public deployment claim."""
 import json
 import os
+PHP_IMAGE = os.environ.get('ANALYTICS_PHP_IMAGE', 'lavka-php-dev')
+AUTH_IMAGE = os.environ.get('ANALYTICS_AUTH_CLI_IMAGE', PHP_IMAGE)
 from pathlib import Path
 import secrets
 import socket
@@ -21,10 +23,10 @@ with tempfile.TemporaryDirectory() as t:
     directory=Path(t);apply_snapshot(directory/'analytics.sqlite3',snapshot(),'verified_two_reads')
     password=secrets.token_urlsafe(24)
     docker=['docker','run','--rm','--user',f'{os.getuid()}:{os.getgid()}','-v',str(ROOT)+':/app:ro','-v',str(directory)+':/test-data','-e','ANALYTICS_DATA_DIR=/test-data']
-    subprocess.run(docker+['-i','lavka-php-dev','php','-r','require "php/src/Auth.php"; \\Lavka\\Auth::setPassword(getenv("ANALYTICS_DATA_DIR"),stream_get_contents(STDIN));'],input=password.encode(),check=True,stdout=subprocess.DEVNULL)
+    subprocess.run(docker+['-i',AUTH_IMAGE,'php','-r','require "php/src/Auth.php"; \\Lavka\\Auth::setPassword(getenv("ANALYTICS_DATA_DIR"),stream_get_contents(STDIN));'],input=password.encode(),check=True,stdout=subprocess.DEVNULL)
     (directory/'router.php').write_text("<?php $_SERVER['HTTPS']='on'; require '/app/php/public/index.php';")
     with socket.socket() as s:s.bind(('127.0.0.1',0));port=s.getsockname()[1]
-    server=subprocess.Popen(docker+['--name',name,'-e','ANALYTICS_PUBLIC_URL=https://analytics.example.invalid','-p',f'127.0.0.1:{port}:8000','lavka-php-dev','php','-S','0.0.0.0:8000','/test-data/router.php'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    server=subprocess.Popen(docker+['--name',name,'-e','ANALYTICS_PUBLIC_URL=https://analytics.example.invalid','-p',f'127.0.0.1:{port}:8000',PHP_IMAGE,'php','-S','0.0.0.0:8000','/test-data/router.php'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     try:
         with httpx.Client(base_url=f'http://127.0.0.1:{port}',headers={'Host':'analytics.example.invalid'},timeout=15) as client:
             for _ in range(100):
@@ -59,14 +61,14 @@ with tempfile.TemporaryDirectory() as t:
             assert client.post('/api/login',json={'password':password}).status_code==429
         # Private backup preserves CRM and excludes live sessions.
         with tempfile.TemporaryDirectory() as bt:
-            subprocess.run(docker+['-v',bt+':/test-backups','lavka-php-dev','php','php/bin/backup.php','--data','/test-data','--destination','/test-backups'],capture_output=True,check=True)
+            subprocess.run(docker+['-v',bt+':/test-backups',PHP_IMAGE,'php','php/bin/backup.php','--data','/test-data','--destination','/test-backups'],capture_output=True,check=True)
             copies=list(Path(bt).iterdir());assert len(copies)==1
             assert (copies[0]/'access-php.json').exists() and not (copies[0]/'sessions-php.sqlite3').exists()
             with sqlite3.connect(copies[0]/'analytics.sqlite3') as copy:
                 assert copy.execute('PRAGMA quick_check').fetchone()[0]=='ok'
                 assert copy.execute('SELECT count(*) FROM customer_actions').fetchone()[0]==1
         with tempfile.TemporaryDirectory() as dt:
-            deployment=docker+['-v',dt+':/deployment','lavka-php-dev','php','php/bin/deploy.php','--webroot','/deployment/public','--data','/deployment/private','--url','https://analytics.example.invalid']
+            deployment=docker+['-v',dt+':/deployment',PHP_IMAGE,'php','php/bin/deploy.php','--webroot','/deployment/public','--data','/deployment/private','--url','https://analytics.example.invalid']
             subprocess.run(deployment,capture_output=True,check=True)
             launcher=(Path(dt)/'public/index.php').read_bytes()
             assert subprocess.run(deployment,capture_output=True).returncode==1

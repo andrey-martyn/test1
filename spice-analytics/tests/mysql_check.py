@@ -6,6 +6,7 @@ The container contains synthetic data and is always removed.
 from copy import deepcopy
 import json
 import os
+PHP_IMAGE = os.environ.get('ANALYTICS_PHP_IMAGE', 'lavka-php-dev')
 from pathlib import Path
 import secrets
 import sqlite3
@@ -33,9 +34,14 @@ runtime=os.environ.get('ANALYTICS_TEST_RUNTIME','python')
 def run_sync(config_file,database):
     if runtime!='php':return sync.run(config_file,database)
     result=subprocess.run(['docker','run','--rm','--network','host','--user',f'{os.getuid()}:{os.getgid()}',
-                           '-v',str(ROOT)+':/app:ro','-v',str(config_file.parent)+':/test-data','lavka-php-dev',
+                           '-v',str(ROOT)+':/app:ro','-v',str(config_file.parent)+':/test-data',PHP_IMAGE,
                            'php','-d','memory_limit=256M','php/bin/cron.php','--data','/test-data','--config','/test-data/source.json'],capture_output=True,text=True,timeout=60)
-    if result.returncode:raise RuntimeError('PHP MySQL sync failed: '+result.stderr[:300])
+    if result.returncode:
+        # Only report error codes from a synthetic disposable DB, never credentials.
+        diagnostic=subprocess.run(['docker','run','--rm','--network','host','--user',f'{os.getuid()}:{os.getgid()}',
+            '-v',str(ROOT)+':/app:ro','-v',str(config_file.parent)+':/test-data',PHP_IMAGE,'php','-r',
+            'require "php/src/Sync.php"; try {\\Lavka\\source_connect(\\Lavka\\source_config("/test-data/source.json")); echo "connected";} catch (PDOException $e) {echo json_encode(["sqlstate"=>$e->getCode(),"driver_code"=>$e->errorInfo[1]??null]);}'],capture_output=True,text=True)
+        raise RuntimeError('PHP MySQL sync failed: '+result.stderr[:200]+'; diagnostic='+diagnostic.stdout[:200])
     return json.loads(result.stdout)
 with tempfile.TemporaryDirectory() as t:
     directory=Path(t);environment=directory/'mysql.env'

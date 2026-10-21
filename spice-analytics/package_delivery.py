@@ -11,7 +11,7 @@ def source_files():
     from package_php_delivery import php_runtime_files
     files={p for pattern in PATTERNS for p in ROOT.glob(pattern) if p.is_file()}
     files.update(php_runtime_files())
-    files.update(p for p in (ROOT/'php/tests').iterdir() if p.is_file() and (p.suffix in ('.php','.py') or p.name=='Dockerfile'))
+    files.update(p for p in (ROOT/'php/tests').iterdir() if p.is_file() and (p.suffix in ('.php','.py') or p.name in ('Dockerfile','Dockerfile73')))
     return sorted(files)
 
 if __name__=='__main__':

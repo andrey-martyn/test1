@@ -7,6 +7,7 @@ from pathlib import Path
 import json
 import math
 import os
+PHP_IMAGE = os.environ.get('ANALYTICS_PHP_IMAGE', 'lavka-php-dev')
 import shutil
 import sqlite3
 import subprocess
@@ -38,7 +39,7 @@ with tempfile.TemporaryDirectory(prefix='php-contract-',dir=ROOT/'test-results')
     reference=Analytics(data/'analytics.sqlite3');checks=[]
     for year,asof in [(2026,'2026-10-20'),(2025,'2025-12-31'),(2021,'2021-03-10')]:
         output=directory/f'report-{year}.json'
-        command=['docker','run','--rm','--user',f'{os.getuid()}:{os.getgid()}','-v',str(ROOT)+':/app','lavka-php-dev','php','-d','memory_limit=256M','php/bin/report.php',
+        command=['docker','run','--rm','--user',f'{os.getuid()}:{os.getgid()}','-v',str(ROOT)+':/app',PHP_IMAGE,'php','-d','memory_limit=256M','php/bin/report.php',
                  '--data','/app/'+data.relative_to(ROOT).as_posix(),'--year',str(year),'--as-of',asof,'--currency','UAH','--output','/app/'+output.relative_to(ROOT).as_posix()]
         result=subprocess.run(command,capture_output=True,text=True,timeout=120)
         if result.returncode:raise RuntimeError('PHP report failed: '+result.stderr[:600])

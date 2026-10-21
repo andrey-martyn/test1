@@ -9,7 +9,7 @@ def php_runtime_files():
     allowed=[]
     for folder in ('src','bin','public','static','vendor'):
         allowed.extend(p for p in (PHP/folder).rglob('*') if p.is_file())
-    allowed.extend(PHP/name for name in ('README.md','composer.json','.gitignore'))
+    allowed.extend(PHP/name for name in ('README.md','COMPATIBILITY.md','composer.json','.gitignore'))
     forbidden={'source.json','access.json','access-php.json','.env'}
     assert not any(p.name in forbidden or p.suffix in ('.sql','.sqlite3','.mmdb') or 'data' in p.relative_to(PHP).parts for p in allowed)
     return sorted(allowed)

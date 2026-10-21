@@ -2,7 +2,7 @@
   "name": "lavka/analytics",
   "description": "Private ocStore retention dashboard, PHP runtime",
   "require": {
-    "php": ">=8.2",
+    "php": ">=7.3",
     "ext-bcmath": "*",
     "ext-intl": "*",
     "ext-mbstring": "*",

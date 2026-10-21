@@ -5,6 +5,7 @@ hosting vhost, Apache configuration or public TLS certificate.
 """
 import json
 import os
+PHP_IMAGE = os.environ.get('ANALYTICS_PHP_IMAGE', 'lavka-php-dev')
 from pathlib import Path
 import secrets
 import socket
@@ -35,10 +36,10 @@ with tempfile.TemporaryDirectory() as private, tempfile.TemporaryDirectory() as 
     docker = ['docker', 'run', '--rm', '--user', f'{os.getuid()}:{os.getgid()}',
               '-v', str(ROOT) + ':/app:ro', '-v', private + ':/test-data',
               '-v', site + ':/test-site', '-e', 'ANALYTICS_DATA_DIR=/test-data']
-    subprocess.run(docker + ['-i', 'lavka-php-dev', 'php', '-r',
+    subprocess.run(docker + ['-i', PHP_IMAGE, 'php', '-r',
         'require "php/src/Auth.php"; \\Lavka\\Auth::setPassword("/test-data",stream_get_contents(STDIN));'],
         input=password.encode(), capture_output=True, check=True)
-    deploy = docker + ['lavka-php-dev', 'php', 'php/bin/deploy.php',
+    deploy = docker + [PHP_IMAGE, 'php', 'php/bin/deploy.php',
                       '--webroot', '/test-site/shop/analytics', '--data', '/test-data',
                       '--url', 'https://www.shop.example.invalid/analytics',
                       '--shop-root', '/test-site/shop']
@@ -48,7 +49,7 @@ with tempfile.TemporaryDirectory() as private, tempfile.TemporaryDirectory() as 
     assert set(p.name for p in (shop / 'analytics').iterdir()) == {'index.php', '.htaccess', 'static'}
     for destination in ['/test-site/shop', '/test-site/shop/backups']:
         mode = shop.stat().st_mode
-        result = subprocess.run(docker + ['lavka-php-dev', 'php', 'php/bin/backup.php',
+        result = subprocess.run(docker + [PHP_IMAGE, 'php', 'php/bin/backup.php',
             '--data', '/test-data', '--destination', destination], capture_output=True)
         assert result.returncode == 1 and shop.stat().st_mode == mode
         assert not (shop / 'backups').exists()
@@ -74,7 +75,7 @@ else require '/test-site/shop/index.php';
         listener.bind(('127.0.0.1', 0))
         port = listener.getsockname()[1]
     server = subprocess.Popen(docker + ['--name', container, '-p', f'127.0.0.1:{port}:8000',
-        'lavka-php-dev', 'php', '-S', '0.0.0.0:8000', '-t', '/test-site/shop', '/test-data/router.php'],
+        PHP_IMAGE, 'php', '-S', '0.0.0.0:8000', '-t', '/test-site/shop', '/test-data/router.php'],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         with httpx.Client(base_url=f'http://127.0.0.1:{port}',
