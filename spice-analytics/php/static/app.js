@@ -11,8 +11,8 @@ const num=(n,d=0)=>Number(n||0).toLocaleString('ru-RU',{maximumFractionDigits:d}
 const fmtDate=d=>d?new Date(d.slice(0,10)+'T12:00:00').toLocaleDateString('ru-RU'):'—';
 const state={view:'customers',privacy:true,page:1,search:'',reminder:'all',periodOnly:true,sort:'amount',productMode:'variants',productSort:'amount',mapMode:'ukraine',geoMetric:'count',meta:null,report:null,customer:null};
 const PAGE=35;
-Object.assign(state,{ordersMin:0,ordersMax:'',ordersBasis:'lifetime_count',segment:'all',ids:null,eligibleOnly:false,actionMin:2,geoSource:'mixed',cohortCount:18,historyOpen:null,seasonMetric:'count',seasonYears:false,duplicateKind:'all',duplicateSort:'match',duplicateDir:1,duplicateSelected:new Set(),mergeBusy:false,crmScope:'todo',crmTier:'all',crmSort:'value',crmDuplicates:'all',duplicateCustomer:null});
-const titles={overview:['Обзор магазина','Покупки, товары и география — вся картина в одном месте.'],customers:['Покупатели','История покупок и подходящий момент для нового заказа.'],products:['Товары и фасовки','Что покупают чаще: упаковки, килограммы и суммы заказов.'],geography:['География заказов','Где находятся ваши покупатели — по адресам из заказов.'],duplicates:['Объединение покупателей','Проверьте совпадения контактов и свяжите историю покупок.'],settings:['Настройки аналитики','Какие заказы учитывать и когда напоминать о следующей покупке.']};
+Object.assign(state,{ordersMin:0,ordersMax:'',ordersBasis:'lifetime_count',segment:'all',ids:null,eligibleOnly:false,actionMin:2,geoSource:'mixed',cohortCount:18,historyOpen:null,seasonMetric:'count',seasonYears:false,duplicateKind:'all',duplicateSort:'match',duplicateDir:1,duplicateSelected:new Set(),mergeBusy:false,crmScope:'todo',crmTier:'all',crmSort:'value',crmDuplicates:'all',duplicateCustomer:null,manualTab:'start',manualSegment:'all',manualSearch:''});
+const titles={manual:['Практика возврата и удержания','Понятные сценарии для Тани: от первого разговора до следующего заказа.'],overview:['Обзор магазина','Покупки, товары и география — вся картина в одном месте.'],customers:['Покупатели','История покупок и подходящий момент для нового заказа.'],products:['Товары и фасовки','Что покупают чаще: упаковки, килограммы и суммы заказов.'],geography:['География заказов','Где находятся ваши покупатели — по адресам из заказов.'],duplicates:['Объединение покупателей','Проверьте совпадения контактов и свяжите историю покупок.'],settings:['Настройки аналитики','Какие заказы учитывать и когда напоминать о следующей покупке.']};
 const cash=v=>num(v,2)+' '+esc(state.report?.currency||'UAH');
 Object.assign(titles,{retention:['Удержание и когорты','От первой покупки ко второй: где теряются и возвращаются покупатели.'],segments:['Сегменты и RFM','Давность, частота и сумма покупок — кому какое предложение подходит.'],actions:['Очередь контактов','Приоритетные покупатели, причины контакта и история работы.'],opportunities:['Повторные продажи','Пополнение запасов, товарные связки и первые покупки.'],seasonality:['Сезонность','Ритм заказов по месяцам, дням недели и времени суток.'],ga4:['GA4 и каналы','Трафик, действия на сайте и сопоставление покупок с заказами.']});
 const name=c=>state.privacy?'Покупатель '+c.id:esc(c.name);
@@ -61,6 +61,7 @@ function metric(label,value,foot,action=''){return `<article class="metric"><div
 function render(){
   if(!state.report)return;
   const r=state.report,m=r.metrics;
+  document.body.classList.toggle('manual-mode',state.view==='manual');$('#year').disabled=state.view==='manual';
   $('#page-title').textContent=titles[state.view][0];$('#page-description').textContent=titles[state.view][1];
   document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===state.view));
   hideHelp();$('#duplicate-badge').textContent=r.duplicate_pairs.length;
@@ -76,6 +77,7 @@ function render(){
   if(state.view==='geography'){content.innerHTML=geographyView();drawMap();}
   if(state.view==='duplicates')content.innerHTML=duplicateTableView();
   if(state.view==='settings')content.innerHTML=settingsView();
+  if(state.view==='manual')content.innerHTML=manualView();
   if(['retention','segments','actions','opportunities','seasonality','ga4'].includes(state.view))content.innerHTML=marketingView(state.view);
   $('#yearly-summary').innerHTML=historySummaryView();
   enhanceHelp();
