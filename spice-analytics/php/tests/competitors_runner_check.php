@@ -123,7 +123,24 @@ try {
     $now += 901;
     $later = lavka_competitors_run(['data' => $pacedDir, 'seconds' => 45], $pacedTransport, $clock, $pause);
     runner_expect($later['succeeded'] === 1 && count($pacedCalls) === 2, 'Later cron can use cached robots and complete product check');
-    echo \Lavka\encode(['runner_init_lock_daily_errors' => 'passed', 'redirect_robots_and_pacing' => 'passed', 'network_requests' => 0, 'php' => PHP_VERSION]) . "\n";
+    $catalogDir = $root . '/catalog'; \Lavka\private_dir($catalogDir);
+    $catalogDb = \Lavka\competitors_db($catalogDir);
+    $catalogDb->exec('UPDATE competitor_targets SET enabled=0');
+    $catalogOwn = \Lavka\competitors_save_target($catalogDb, ['source_id' => 'lavka', 'kind' => 'product', 'url' => 'https://lavka-speciy.com/index.php?route=product/product&product_id=999990', 'label' => 'Own catalogue product']);
+    \Lavka\competitors_save_target($catalogDb, ['source_id' => 'deluxe', 'kind' => 'product', 'url' => 'https://deluxe.com.ua/catalog-synthetic-product', 'label' => 'Public competitor']);
+    \Lavka\atomic_write($catalogDir . '/own-catalog.json', \Lavka\encode(['state' => 'ok', 'last_success' => \Lavka\utc_now(), 'checked_at' => \Lavka\utc_now(), 'products' => [['target_id' => $catalogOwn['id'], 'product_id' => 999990, 'offers' => []]]]));
+    file_put_contents($catalogDir . '/source.json', 'SENTINEL_NOT_VALID_JSON');
+    $catalogCalls = [];
+    $catalogRun = lavka_competitors_run(['data' => $catalogDir, 'seconds' => 45], function ($url) use (&$catalogCalls, $productHtml) {
+        $catalogCalls[] = $url;
+        return ['status' => 200, 'body' => strpos($url, '/robots.txt') !== false ? "User-agent: *\nAllow: /\n" : $productHtml];
+    }, $clock, $pause);
+    runner_expect($catalogRun['own_catalog']['active'] && $catalogRun['checked'] === 1 && count($catalogCalls) === 2, 'Fresh activated snapshot skips own HTTP pages and keeps normal competitor fetching');
+    runner_expect(\Lavka\competitors_target($catalogDb, $catalogOwn['id'])['last_attempt'] === null && file_get_contents($catalogDir . '/source.json') === 'SENTINEL_NOT_VALID_JSON', 'Fresh catalogue does not read source settings or mutate own HTTP history');
+    $catalogSeo = \Lavka\competitors_save_target($catalogDb, ['source_id' => 'lavka', 'kind' => 'product', 'url' => 'https://lavka-speciy.com/synthetic-custom-seo', 'label' => 'Own SEO link without catalogue ID']);
+    runner_expect(in_array($catalogSeo['id'], array_column(\Lavka\competitors_due($catalogDb, 50, [$catalogOwn['id']]), 'id'), true), 'Own SEO pages not mapped to the catalogue keep their HTTP checks');
+    $catalogDb = null;
+    echo \Lavka\encode(['runner_init_lock_daily_errors' => 'passed', 'redirect_robots_and_pacing' => 'passed', 'own_catalog_http_isolation' => 'passed', 'network_requests' => 0, 'php' => PHP_VERSION]) . "\n";
 } finally {
     $db = null; $redirectDb = null; $pacedDb = null;
     runner_remove($root);

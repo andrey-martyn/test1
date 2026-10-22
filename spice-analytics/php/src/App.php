@@ -232,7 +232,7 @@ function run_app(string $directory, string $publicUrl, string $assets, string $l
             try {
                 if ($path === '/api/competitors') {
                     if ($method !== 'GET') fail(405, 'Метод не поддерживается');
-                    respond(competitors_overview($competitors));
+                    respond(competitors_overview($competitors, $directory));
                 }
                 if ($path === '/api/competitors/targets') {
                     if ($method !== 'POST') fail(405, 'Метод не поддерживается');
@@ -247,7 +247,8 @@ function run_app(string $directory, string $publicUrl, string $assets, string $l
                     if ($method !== 'POST') fail(405, 'Метод не поддерживается');
                     $body = request_json();
                     if (array_diff(array_keys($body), ['target_id']) || array_key_exists('target_id', $body) && (!is_int($body['target_id']) || $body['target_id'] <= 0)) fail(422, 'Неверный номер страницы наблюдения');
-                    respond(competitors_queue($competitors, $body['target_id'] ?? null));
+                    require_once __DIR__ . '/CompetitorOwnCatalog.php';
+                    respond(competitors_queue($competitors, $body['target_id'] ?? null, competitors_catalog_target_ids(competitors_own_catalog_read($directory))));
                 }
                 fail(404, 'Страница не найдена');
             } catch (CompetitorNotFound $e) {

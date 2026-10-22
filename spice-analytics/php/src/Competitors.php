@@ -215,7 +215,7 @@ function competitors_save_target(\PDO $db, array $body, ?int $id = null): array
     return competitors_target($db, $id);
 }
 
-function competitors_overview(\PDO $db): array
+function competitors_overview(\PDO $db, ?string $directory = null): array
 {
     $targets = array_map(__NAMESPACE__ . '\\competitors_target_row', $db->query('SELECT * FROM competitor_targets ORDER BY CASE source_id WHEN \'lavka\' THEN 0 ELSE 1 END,source_id,kind,id')->fetchAll());
     $changes = [];
@@ -223,7 +223,12 @@ function competitors_overview(\PDO $db): array
     $discoveries = [];
     foreach ($db->query('SELECT * FROM competitor_discoveries WHERE baseline=0 ORDER BY first_seen DESC,target_id,url LIMIT 100') as $r) { $r['target_id'] = (int) $r['target_id']; $r['baseline'] = (bool) $r['baseline']; $discoveries[] = $r; }
     $runs = []; foreach ($db->query('SELECT payload FROM competitor_runs ORDER BY id DESC LIMIT 10') as $r) $runs[] = decode($r['payload']);
-    return ['sources' => competitors_sources(), 'targets' => $targets, 'changes' => $changes, 'discoveries' => $discoveries, 'runs' => $runs, 'settings' => ['interval_hours' => 24, 'max_product_targets' => 300, 'max_targets' => 350, 'catalog_coverage' => 'watched_pages'], 'server_now' => utc_now()];
+    $result = ['sources' => competitors_sources(), 'targets' => $targets, 'changes' => $changes, 'discoveries' => $discoveries, 'runs' => $runs, 'settings' => ['interval_hours' => 24, 'max_product_targets' => 300, 'max_targets' => 350, 'catalog_coverage' => 'watched_pages', 'comparison_basis' => 'exact_pack', 'initial_grams' => 50, 'shop_price_writes' => false], 'server_now' => utc_now()];
+    if ($directory !== null) {
+        require_once __DIR__ . '/CompetitorOwnCatalog.php';
+        $result['own_catalog'] = competitors_own_catalog_read($directory);
+    }
+    return $result;
 }
 
 function competitors_history(\PDO $db, int $id): array
@@ -236,21 +241,37 @@ function competitors_history(\PDO $db, int $id): array
     return ['target' => $target, 'observations' => $observations, 'attempts' => $attempts];
 }
 
-function competitors_queue(\PDO $db, ?int $id = null): array
+function competitors_catalog_target_ids(array $catalog): array
+{
+    if (empty($catalog['last_success'])) return [];
+    $ids = [];
+    foreach ($catalog['products'] ?? [] as $product) {
+        if (is_array($product) && is_int($product['target_id'] ?? null) && $product['target_id'] > 0) $ids[] = $product['target_id'];
+        if (count($ids) >= 350) break;
+    }
+    return array_values(array_unique($ids));
+}
+
+function competitors_queue(\PDO $db, ?int $id = null, array $ownCatalogTargetIds = []): array
 {
     if ($id !== null && !competitors_target($db, $id)['enabled']) throw new CompetitorConflict('Сначала включите наблюдение за страницей');
-    $stmt = $db->prepare('UPDATE competitor_targets SET next_check_at=?,queued=1 WHERE enabled=1' . ($id === null ? '' : ' AND id=?'));
-    $stmt->execute($id === null ? [utc_now()] : [utc_now(), $id]);
+    $ownCatalogTargetIds = array_values(array_unique(array_filter(array_slice($ownCatalogTargetIds, 0, 350), function ($value) { return is_int($value) && $value > 0; })));
+    if ($id !== null && in_array($id, $ownCatalogTargetIds, true)) throw new CompetitorConflict('Цена этого товара обновляется из каталога БД раз в сутки; проверка его веб-страницы не требуется');
+    $exclude = $ownCatalogTargetIds ? ' AND id NOT IN (' . implode(',', array_fill(0, count($ownCatalogTargetIds), '?')) . ')' : '';
+    $stmt = $db->prepare('UPDATE competitor_targets SET next_check_at=?,queued=1 WHERE enabled=1' . ($id === null ? '' : ' AND id=?') . $exclude);
+    $stmt->execute(array_merge($id === null ? [utc_now()] : [utc_now(), $id], $ownCatalogTargetIds));
     return ['ok' => true, 'queued' => $stmt->rowCount(), 'message' => 'Проверка поставлена в очередь фоновой задачи'];
 }
 
-function competitors_due(\PDO $db, int $limit): array
+function competitors_due(\PDO $db, int $limit, array $ownCatalogTargetIds = []): array
 {
     $limit = max(1, min(50, $limit));
     // A manual recheck is served before the untouched initial backlog, still only
     // by the next bounded CLI packet. HTTP never performs the request itself.
-    $stmt = $db->prepare('SELECT * FROM competitor_targets WHERE enabled=1 AND next_check_at<=? ORDER BY queued DESC,next_check_at,id LIMIT ' . $limit);
-    $stmt->execute([utc_now()]);
+    $ownCatalogTargetIds = array_values(array_unique(array_filter(array_slice($ownCatalogTargetIds, 0, 350), function ($id) { return is_int($id) && $id > 0; })));
+    $exclude = $ownCatalogTargetIds ? " AND NOT (source_id='lavka' AND kind='product' AND id IN (" . implode(',', array_fill(0, count($ownCatalogTargetIds), '?')) . '))' : '';
+    $stmt = $db->prepare('SELECT * FROM competitor_targets WHERE enabled=1 AND next_check_at<=?' . $exclude . ' ORDER BY queued DESC,next_check_at,id LIMIT ' . $limit);
+    $stmt->execute(array_merge([utc_now()], $ownCatalogTargetIds));
     return array_map(__NAMESPACE__ . '\\competitors_target_row', $stmt->fetchAll());
 }
 

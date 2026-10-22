@@ -9,7 +9,9 @@ final class LavkaCompetitorDeferred extends RuntimeException {}
 
 /**
  * CLI implementation with explicit test injection, never an environment bypass.
- * No credentials, shop database, or customer data are read by this task.
+ * Public competitor requests are separate from the optional read-only own
+ * catalogue refresh. The latter starts only after its first manual activation.
+ * Neither path writes to the shop or reads customer records.
  */
 function lavka_competitors_run(array $args, ?callable $transport = null, ?callable $clock = null, ?callable $pause = null): array
 {
@@ -46,6 +48,11 @@ function lavka_competitors_run(array $args, ?callable $transport = null, ?callab
         $db = \Lavka\competitors_db($directory);
         if (array_key_exists('init-only', $args)) return ['state' => 'initialized', 'network_requests' => 0];
         require_once dirname(__DIR__) . '/src/CompetitorParser.php';
+        require_once dirname(__DIR__) . '/src/CompetitorOwnCatalog.php';
+        $ownCatalog = \Lavka\competitors_own_catalog_sync_due($directory);
+        $ownCatalogActive = !empty($ownCatalog['last_success']);
+        $ownCatalogTargetIds = \Lavka\competitors_catalog_target_ids($ownCatalog);
+        $summary['own_catalog'] = ['state' => $ownCatalog['state'], 'active' => $ownCatalogActive];
         $deadline = $started + $seconds;
         $cacheDirectory = $directory . '/competitor-http-cache';
         \Lavka\private_dir($cacheDirectory);
@@ -74,7 +81,7 @@ function lavka_competitors_run(array $args, ?callable $transport = null, ?callab
             $pace($url, (float)$policy['crawl_delay']);
         };
 
-        $targets = \Lavka\competitors_due($db, $limit);
+        $targets = \Lavka\competitors_due($db, $limit, $ownCatalogTargetIds);
         foreach ($targets as $position => $target) {
             // A fresh robots check and product each have their own 12s total
             // timeout; reserve enough budget before starting the next target.

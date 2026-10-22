@@ -65,7 +65,7 @@ function metric(label,value,foot,action=''){return `<article class="metric"><div
 function render(){
   document.body.classList.toggle('competitors-mode',state.view==='competitors');
   document.body.classList.toggle('manual-mode',state.view==='manual');$('#year').disabled=state.view==='manual';
-  $('#page-title').textContent=state.view==='competitors'?'Мониторинг конкурентов':titles[state.view][0];$('#page-description').textContent=state.view==='competitors'?'Цены выбранных товаров, доставка и изменения ассортимента.':titles[state.view][1];
+  $('#page-title').textContent=state.view==='competitors'?'Мониторинг конкурентов':titles[state.view][0];$('#page-description').textContent=state.view==='competitors'?'Одинаковые фасовки, цены магазинов и черновик ценового решения.':titles[state.view][1];
   document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===state.view));
   if(state.view==='competitors'){hideHelp();$('#content').innerHTML=competitorsView();return;}
   if(!state.report){$('#content').innerHTML='<div class="loading">Загружаем историю заказов…</div>';return;}

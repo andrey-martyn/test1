@@ -145,6 +145,8 @@ with tempfile.TemporaryDirectory() as temporary:
             page.wait_for_selector(".customer-table")
             order_amount = page.evaluate("state.report.metrics.amount")
             page.click("[data-view=competitors]")
+            page.wait_for_selector(".competitor-matrix")
+            page.click("#competitor-tab-links")
             page.wait_for_selector(".competitor-product-card")
             assert page.locator(".report-controls").is_hidden()
             assert page.locator("#metrics").is_hidden()
@@ -230,14 +232,12 @@ with tempfile.TemporaryDirectory() as temporary:
             page.click("[data-comp-action=refresh]")
             page.wait_for_function("() => !competitorState.loading")
             assert error_cards.count() == 3
-            page.click("#competitor-tab-products")
+            page.click("#competitor-tab-links")
             page.fill("#competitor-search", "Синтетический")
             page.set_viewport_size({"width": 1440, "height": 1000})
 
             # Keyboard tab navigation and stable display of all history types.
-            page.click("#competitor-tab-products")
-            page.keyboard.press("ArrowRight")
-            assert page.locator("#competitor-tab-errors").get_attribute("aria-selected") == "true"
+            page.click("#competitor-tab-links")
             page.keyboard.press("ArrowRight")
             assert page.locator("#competitor-tab-changes").get_attribute("aria-selected") == "true"
             assert page.locator(".competitor-changes article").count() >= 2
@@ -248,7 +248,7 @@ with tempfile.TemporaryDirectory() as temporary:
             page.click("#competitor-tab-discoveries")
             assert page.locator(".competitor-discovery-list article").count() == 1
             assert "Синтетический новый товар" in page.locator(".competitor-discovery-list").inner_text()
-            page.click("#competitor-tab-products")
+            page.click("#competitor-tab-links")
             valid = page.locator(".competitor-product-card").filter(
                 has=page.locator("h3", has_text="Синтетический кориандр конкурент"))
             valid.locator("[data-comp-action=history]").click()
