@@ -94,6 +94,30 @@ try {
     setup_expect(strpos(\Lavka\encode($stores), 'STORE_SECRET') === false, 'Only non-secret store metadata is returned');
     setup_rejects('test_admin_config_invalid', function () use ($shop) { lavka_sandbox_store_checks($shop, $shop . '/config.php'); });
     setup_rejects('test_admin_config_invalid', function () use ($shop) { lavka_sandbox_store_checks($shop); });
+    foreach (['storage-test', 'test_storage'] as $name) {
+        $storage = $root . '/' . $name;
+        foreach (['', '/cache', '/logs', '/session', '/modification'] as $suffix) \Lavka\private_dir($storage . $suffix);
+        file_put_contents($shop . '/config.php', setup_store_php(false, $storage . '/'));
+        file_put_contents($admin, setup_store_php(true, $storage . '/'));
+        $checks = lavka_sandbox_store_checks($shop, $admin);
+        setup_expect($checks[0]['storage'] === $storage && $checks[1]['storage'] === $storage, 'Both storefront and admin accept isolated sibling ' . $name);
+    }
+    $testStorage = $root . '/test_storage'; $liveStorage = $root . '/lavka_storage';
+    \Lavka\private_dir($liveStorage . '/cache');
+    file_put_contents($shop . '/config.php', setup_store_php(false, $liveStorage . '/'));
+    setup_rejects('test_shop_storage_not_isolated', function () use ($shop, $admin) { lavka_sandbox_store_checks($shop, $admin); });
+    file_put_contents($shop . '/config.php', setup_store_php(false, $testStorage . '/'));
+    file_put_contents($admin, setup_store_php(true, $liveStorage . '/'));
+    setup_rejects('test_shop_storage_not_isolated', function () use ($shop, $admin) { lavka_sandbox_store_checks($shop, $admin); });
+    file_put_contents($admin, setup_store_php(true, $testStorage . '/'));
+    rename($testStorage, $testStorage . '.saved'); symlink($liveStorage, $testStorage);
+    setup_rejects('test_shop_storage_not_isolated', function () use ($shop, $admin) { lavka_sandbox_store_checks($shop, $admin); });
+    unlink($testStorage); rename($testStorage . '.saved', $testStorage);
+    rmdir($testStorage . '/cache'); symlink($liveStorage . '/cache', $testStorage . '/cache');
+    setup_rejects('test_shop_storage_not_isolated', function () use ($shop, $admin) { lavka_sandbox_store_checks($shop, $admin); });
+    unlink($testStorage . '/cache'); \Lavka\private_dir($testStorage . '/cache');
+    file_put_contents($shop . '/config.php', setup_store_php());
+    file_put_contents($admin, setup_store_php(true));
     foreach ([
         [str_replace("'lavkasp_test'", "'lavkasp_lavka'", setup_store_php()), 'test_shop_points_elsewhere'],
         [str_replace("'3306'", "'3307'", setup_store_php()), 'test_shop_port_mismatch'],

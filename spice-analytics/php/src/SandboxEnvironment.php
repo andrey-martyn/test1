@@ -106,8 +106,9 @@ function sandbox_store_config(string $file, string $shopRoot): array
     }
     if (empty($values['DIR_STORAGE'])) throw new SandboxEnvironmentError('test_shop_storage_unknown');
     $storage = canonical_path($values['DIR_STORAGE']);
+    $privateStorage = [dirname($root) . '/storage-test', dirname($root) . '/test_storage'];
     if (!str_starts_with($values['DIR_STORAGE'], '/')
-        || !(str_starts_with($storage, $root . '/') || $storage === dirname($root) . '/storage-test')) throw new SandboxEnvironmentError('test_shop_storage_not_isolated');
+        || !(str_starts_with($storage, $root . '/') || in_array($storage, $privateStorage, true))) throw new SandboxEnvironmentError('test_shop_storage_not_isolated');
     foreach (['DIR_APPLICATION', 'DIR_SYSTEM', 'DIR_IMAGE'] as $key) {
         if (!isset($values[$key])) continue;
         $pathValue = canonical_path($values[$key]);

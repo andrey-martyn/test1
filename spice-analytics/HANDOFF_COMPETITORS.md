@@ -150,6 +150,8 @@ Python-веб-приложения на этом тарифе недоступн
 | Закрытые данные кабинета | `/home/lavkasp/lavka-speciy.com/analytics-private` |
 | Отдельные закрытые данные песочницы после переключения | `/home/lavkasp/lavka-speciy.com/analytics-private-test` |
 | Основной магазин | `/home/lavkasp/lavka-speciy.com/www` |
+| Хранилище тестового магазина (витрина и админка) | `/home/lavkasp/lavka-speciy.com/test_storage` |
+| Хранилище основного магазина | `/home/lavkasp/lavka-speciy.com/lavka_storage` |
 | Отдельная публичная папка прежнего поддомена | `/home/lavkasp/lavka-speciy.com/analytics` |
 
 Последние `analytics` и `test/analytics` — разные каталоги. Рабочий кабинет находится

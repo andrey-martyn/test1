@@ -25,7 +25,7 @@ function prep_config(string $shop, bool $admin = false, string $user = 'lavkasp_
     $result = "<?php\n// define('DB_USERNAME','lavkasp_lavka'); define('DB_PASSWORD','COMMENT_NOT_CREDENTIAL');\n";
     foreach (['DB_DATABASE' => 'lavkasp_test', 'DB_PREFIX' => 'oc_', 'DB_HOSTNAME' => '127.0.0.1', 'DB_PORT' => '3306', 'DB_USERNAME' => $user,
         'HTTP_SERVER' => 'https://test.lavka-speciy.com/' . ($admin ? 'secret-admin/' : ''),
-        'HTTPS_SERVER' => 'https://test.lavka-speciy.com/' . ($admin ? 'secret-admin/' : ''), 'DIR_STORAGE' => $shop . '/storage/'] as $key => $value) {
+        'HTTPS_SERVER' => 'https://test.lavka-speciy.com/' . ($admin ? 'secret-admin/' : ''), 'DIR_STORAGE' => $GLOBALS['prepare_fixture_storage'] ?? $shop . '/storage/'] as $key => $value) {
         $result .= 'define(' . var_export($key, true) . ',' . var_export($value, true) . ");\n";
     }
     $result .= 'define(\'DB_PASSWORD\',' . $literal . ");\n";
@@ -114,7 +114,8 @@ try {
         exit(0);
     }
     $old = $root . '/analytics-private'; $data = $root . '/analytics-private-test'; $shop = $root . '/test'; $adminFile = $shop . '/secret-admin/config.php';
-    foreach ([$old, $shop . '/storage', $shop . '/secret-admin', $shop . '/analytics', $root . '/www'] as $directory) \Lavka\private_dir($directory);
+    $GLOBALS['prepare_fixture_storage'] = $root . '/test_storage/';
+    foreach ([$old, $root . '/test_storage', $shop . '/secret-admin', $shop . '/analytics', $root . '/www'] as $directory) \Lavka\private_dir($directory);
     file_put_contents($shop . '/config.php', prep_config($shop));
     file_put_contents($adminFile, prep_config($shop, true));
     $credentials = lavka_sandbox_prepare_credentials($shop . '/config.php');
