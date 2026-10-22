@@ -196,12 +196,21 @@ function sandbox_pricing_product_plan(array $catalogRows,array $product,string $
     if ($product['warnings'] || !$product['offers']) throw new SandboxPricingError('sandbox_product_unsupported');
     if (count($ownRows['product'])!==1 || count($ownRows['product_option'])!==1) throw new SandboxPricingError('sandbox_options_unsupported');
     foreach ($product['offers'] as $offer) if (($offer['provenance']['base_price_kind']??'')!=='base') throw new SandboxPricingError('sandbox_active_retail_price');
-    $prices=sandbox_pricing_formula($base); $basePrice=$prices[50]; $seen=[]; $packs=[]; $changes=[]; $beforeBase=null;
+    $decimals=$product['currency_decimal_places']??null;
+    if (!is_int($decimals) || !in_array($decimals,[0,2],true)) throw new SandboxPricingError('sandbox_currency_unsupported');
+    $prices=sandbox_pricing_formula($base); $basePrice=$prices[50]; $seen=[]; $packs=[]; $changes=[]; $beforeBase=null; $beforeDisplayBase=null;
     foreach ($product['offers'] as $offer) {
         $grams=$offer['grams']; $key=(int)$grams;
         if ($grams===null || (float)$grams!==(float)$key || !isset($prices[$key]) || isset($seen[$key]) || $offer['unit']!=='pack') throw new SandboxPricingError('sandbox_pack_unsupported');
         $seen[$key]=true;
-        if ($key===50) $beforeBase=$offer['price'];
+        // The review keeps the stored numeric sum separate from the storefront's
+        // currency rounding. A whole-hryvnia display must never replace raw SQL prices.
+        $rawBefore=$offer['provenance']['raw_price']??null;
+        if (!is_string($rawBefore) || !preg_match('/^\d{1,10}(?:\.\d{1,4})?$/D',$rawBefore)) throw new SandboxPricingError('sandbox_product_unsupported');
+        $rawBefore=bcadd($rawBefore,'0',4);
+        $displayAfter=competitors_own_catalog_round($prices[$key],$decimals);
+        if (bccomp($displayAfter,'0',$decimals)<=0) throw new SandboxPricingError('sandbox_nonpositive_display_price');
+        if ($key===50) { $beforeBase=$rawBefore; $beforeDisplayBase=$offer['price']; }
         $valueId=(int)$offer['provenance']['product_option_value_id']; $before=null;
         foreach ($ownRows['product_option_value'] as $value) if ((int)$value['product_option_value_id']===$valueId) $before=$value;
         if (!$before || $valueId<1) throw new SandboxPricingError('sandbox_option_missing');
@@ -211,13 +220,15 @@ function sandbox_pricing_product_plan(array $catalogRows,array $product,string $
             'before'=>['price'=>bcadd((string)$before['price'],'0',4),'price_prefix'=>(string)$before['price_prefix']],
             'after'=>['price'=>$afterPrice,'price_prefix'=>$prefix],
             'identity'=>['product_option_id'=>(string)$before['product_option_id'],'option_id'=>(string)$before['option_id'],'option_value_id'=>(string)$before['option_value_id']]];
-        $packs[]=['grams'=>$key,'before'=>$offer['price'],'after'=>$prices[$key]];
+        $packs[]=['grams'=>$key,'before'=>$rawBefore,'after'=>$prices[$key],
+            'display_before'=>$offer['price'],'display_after'=>$displayAfter];
     }
     if (!isset($seen[50]) || count($seen)!==count($ownRows['product_option_value'])) throw new SandboxPricingError('sandbox_pack_unsupported');
     $productBefore=$ownRows['product'][0];
     array_unshift($changes,['table'=>'product','row_id'=>$id,'product_id'=>$id,'before'=>['price'=>bcadd((string)$productBefore['price'],'0',4)],'after'=>['price'=>bcadd($basePrice,'0',4)],'identity'=>['model'=>(string)$productBefore['model']]]);
     usort($packs,function($a,$b){return $a['grams']<=>$b['grams'];});
     return ['target_id'=>$product['target_id'],'product_id'=>$id,'label'=>$product['label'],'base_50'=>$basePrice,'before_base_50'=>$beforeBase,
+        'currency_decimal_places'=>$decimals,'display_base_50'=>competitors_own_catalog_round($basePrice,$decimals),'display_before_base_50'=>$beforeDisplayBase,
         'url'=>'https://test.lavka-speciy.com/index.php?route=product%2Fproduct&product_id='.$id,'packs'=>$packs,'changes'=>$changes,
         'guard'=>sandbox_pricing_guard($ownRows,$catalogRows),'after_guard'=>sandbox_pricing_guard($ownRows,$catalogRows,$changes),'structure_guard'=>sandbox_pricing_structure($catalogRows,$id)];
 }

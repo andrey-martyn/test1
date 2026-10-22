@@ -157,6 +157,7 @@ try {
     $plan=\Lavka\sandbox_pricing_plan($data,$selections,$source);
     sp_expect($plan['state']==='planned' && count($plan['rows'])===2 && $before===$source->digest() && !$source->updates,'Planning executes real SELECT but never changes shop prices');
     sp_expect($plan['rows'][0]['packs'][0]['after']==='12.50' && $plan['rows'][0]['packs'][4]['after']==='337.50','Every pack derives from explicit 50 g base');
+    sp_expect($plan['rows'][0]['currency_decimal_places']===2 && $plan['rows'][0]['packs'][0]['display_after']==='12.50','Two-place storefront prices preserve the reviewed decimal amount');
     sp_expect(!isset($plan['rows'][0]['guard']) && !isset($plan['rows'][0]['changes']),'Internal fingerprints and SQL field lists stay private');
     $result=\Lavka\sandbox_pricing_apply($data,$plan['plan_id'],$plan['plan_hash'],$source);
     sp_expect($result['state']==='applied' && $result['applied_products']===2 && $result['own_catalog_refresh']==='ok','Multi-product plan applies and refreshes saved own catalogue');
@@ -170,6 +171,39 @@ try {
     $rollback=\Lavka\sandbox_pricing_rollback($data,$plan['plan_id'],$plan['plan_hash'],$source);
     sp_expect($rollback['state']==='rolled_back' && !$rollback['conflicting_changes'] && $source->digest()===$before,'Rollback restores exact original price and option prefixes');
     sp_expect(\Lavka\sandbox_pricing_rollback($data,$plan['plan_id'],$plan['plan_hash'],$source)===$rollback,'Repeated rollback is idempotent');
+
+    // Whole-hryvnia storefront formatting never changes the stored numeric
+    // source used for formula, review, compare-and-swap and exact rollback.
+    list($wholeData,$wholeShop,$wholeTargets)=sp_fixture($root.'/whole-hryvnia');
+    $wholeRows=sp_rows(); $wholeRows['currency'][0]['decimal_place']='0';
+    $wholeRows['product'][0]['price']='100.4900';
+    $wholeRows['product_option_value'][1]['price']='25.4900';
+    $wholeSource=new SandboxSqliteSource($wholeRows); $wholeBefore=$wholeSource->digest();
+    $wholeSelections=[['target_id'=>$wholeTargets[990],'base_50'=>'25.49']];
+    $wholePlan=\Lavka\sandbox_pricing_plan($wholeData,$wholeSelections,$wholeSource);
+    $wholeRow=$wholePlan['rows'][0];
+    sp_expect($wholeRow['currency_decimal_places']===0 && $wholeRow['before_base_50']==='125.9800'
+        && $wholeRow['display_before_base_50']==='126','Review retains raw base-plus-option sum alongside the storefront-rounded price');
+    sp_expect($wholeRow['packs'][0]['after']==='12.75' && $wholeRow['packs'][0]['display_after']==='13'
+        && $wholeRow['packs'][1]['after']==='25.49' && $wholeRow['packs'][1]['display_after']==='25'
+        && $wholeRow['packs'][2]['after']==='91.76' && $wholeRow['packs'][2]['display_after']==='92','Whole-hryvnia display is computed from each final raw pack price');
+    sp_expect($wholeSource->digest()===$wholeBefore && !$wholeSource->updates,'Currency display projection never writes SQL prices');
+    $wholeApplied=\Lavka\sandbox_pricing_apply($wholeData,$wholePlan['plan_id'],$wholePlan['plan_hash'],$wholeSource);
+    sp_expect($wholeApplied['state']==='applied' && bccomp((string)$wholeSource->query('SELECT price FROM oc_product')->fetchColumn(),'25.4900',4)===0,'Applying whole-hryvnia display keeps the exact two-place base in SQL');
+    $wholeCatalog=\Lavka\competitors_own_catalog_read($wholeData); $wholeOffer=null;
+    foreach ($wholeCatalog['products'][0]['offers'] as $offer) if ((int)$offer['grams']===50) $wholeOffer=$offer;
+    sp_expect($wholeOffer!==null && $wholeOffer['price']==='25' && $wholeOffer['provenance']['raw_price']==='25.4900'
+        && $wholeOffer['provenance']['currency_decimal_places']===0,'Refreshed catalogue exposes the storefront price without losing the raw source amount');
+    $wholeRollback=\Lavka\sandbox_pricing_rollback($wholeData,$wholePlan['plan_id'],$wholePlan['plan_hash'],$wholeSource);
+    sp_expect($wholeRollback['state']==='rolled_back' && $wholeSource->digest()===$wholeBefore,'Whole-hryvnia rollback restores all original four-place source values exactly');
+    $zeroDisplay=\Lavka\sandbox_pricing_plan($wholeData,[['target_id'=>$wholeTargets[990],'base_50'=>'0.01']],$wholeSource);
+    sp_expect($zeroDisplay['state']==='empty' && $zeroDisplay['skipped'][0]['reason']==='sandbox_nonpositive_display_price','A positive raw amount rounded to zero cannot silently become a storefront proposal');
+
+    $precisionSource=new SandboxSqliteSource($wholeRows); $precisionBefore=$precisionSource->digest();
+    $precisionPlan=\Lavka\sandbox_pricing_plan($wholeData,$wholeSelections,$precisionSource);
+    $precisionSource->mutate("UPDATE oc_currency SET decimal_place='2'");
+    sp_error('sandbox_plan_stale',function()use($wholeData,$precisionPlan,$precisionSource){\Lavka\sandbox_pricing_apply($wholeData,$precisionPlan['plan_id'],$precisionPlan['plan_hash'],$precisionSource);});
+    sp_expect(!$precisionSource->updates && $precisionSource->digest()===$precisionBefore,'Changing supported currency precision invalidates the reviewed plan before every price write');
 
     $plan=\Lavka\sandbox_pricing_plan($data,[['target_id'=>$targets[990],'base_50'=>'21']],$source);
     $source->mutate("UPDATE oc_product SET price=1 WHERE product_id='990'"); $updates=$source->updates;

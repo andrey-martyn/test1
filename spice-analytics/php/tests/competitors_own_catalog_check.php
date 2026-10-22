@@ -67,10 +67,29 @@ $offers=$built['products'][0]['offers'];
 own_expect($offers[0]['price']==='125.00' && $offers[0]['grams']===50.0,'Zero base plus selected option is actual pack price');
 own_expect($offers[0]['availability']==='in_stock' && $offers[1]['availability']==='out_of_stock','Option stock distinguishes availability');
 own_expect($offers[0]['provenance']['product_option_value_id']===701 && $offers[0]['provenance']['base_price']==='0.0000','Exact source identifiers and pricing evidence retained');
+own_expect($offers[0]['provenance']['raw_price']==='125.0000' && $offers[0]['provenance']['currency_decimal_places']===2
+    && $built['currency_decimal_places']===2 && $built['products'][0]['currency_decimal_places']===2,'Precise stored amount and storefront precision remain distinct evidence');
 own_expect(strpos(\Lavka\encode($built),'PRIVATE_SETTING')===false,'Only fixed setting keys can enter projection');
 $rounding=$rows; $rounding['product_option_value'][0]['price']='125.0050';
 $rounded=\Lavka\competitors_own_catalog_build($rounding,$watch,$time);
 own_expect($rounded['products'][0]['offers'][0]['price']==='125.01','Currency display rounds half up instead of truncating fractional kopecks');
+$whole=own_fixture(); $whole['currency'][0]['decimal_place']='0';
+$whole['product'][0]['price']='100.4900'; $whole['product_option_value'][0]['price']='25.4900';
+$wholeBuilt=\Lavka\competitors_own_catalog_build($whole,$watch,$time); $wholeOffer=$wholeBuilt['products'][0]['offers'][0];
+own_expect($wholeOffer['price']==='126' && $wholeOffer['provenance']['raw_price']==='125.9800'
+    && $wholeBuilt['currency_decimal_places']===0 && $wholeBuilt['products'][0]['currency_decimal_places']===0
+    && $wholeOffer['provenance']['currency_decimal_places']===0,'Whole-hryvnia display rounds the raw sum once while retaining precise stored prices');
+own_expect($wholeOffer['provenance']['base_price']==='100.4900' && $wholeOffer['provenance']['option_adjustment']==='25.4900','Display rounding never changes base or option values');
+$whole['product'][0]['price']='100.0000'; $whole['product_option_value'][0]['price']='25.4999';
+own_expect(\Lavka\competitors_own_catalog_build($whole,$watch,$time)['products'][0]['offers'][0]['price']==='125','Whole-hryvnia display does not pre-round to kopecks');
+$whole['product_option_value'][0]['price']='25.5000';
+own_expect(\Lavka\competitors_own_catalog_build($whole,$watch,$time)['products'][0]['offers'][0]['price']==='126','Whole-hryvnia exact half rounds upward');
+$whole['product'][0]['price']='0.0000'; $whole['product_option_value'][0]['price']='0.4900';
+$zeroDisplay=\Lavka\competitors_own_catalog_build($whole,$watch,$time);
+own_expect(count($zeroDisplay['products'][0]['offers'])===1 && $zeroDisplay['products'][0]['offers'][0]['grams']===200.0
+    && in_array('nonpositive_price',$zeroDisplay['products'][0]['warnings'],true),'Positive raw values displayed as zero do not become comparable zero prices');
+$whole['product_option_value'][0]['price']='0.4900'; $whole['product_option_value'][0]['price_prefix']='-';
+own_expect(count(\Lavka\competitors_own_catalog_build($whole,$watch,$time)['products'][0]['offers'])===1,'Negative raw prices are rejected before display rounding');
 $rows['product'][0]['price']='100'; $rows['product_option_value'][0]['price']='25'; $rows['product_option_value'][0]['price_prefix']='-';
 $built=\Lavka\competitors_own_catalog_build($rows,$watch,$time); own_expect($built['products'][0]['offers'][0]['price']==='75.00','Subtractive option uses base price');
 $rows['product_discount']=[['product_id'=>1214,'customer_group_id'=>1,'quantity'=>1,'priority'=>1,'price'=>'90'],['product_id'=>1214,'customer_group_id'=>1,'quantity'=>5,'priority'=>0,'price'=>'10']];
@@ -94,6 +113,14 @@ $bad['product_description']=[['product_id'=>1214,'language_id'=>9,'name'=>'Other
 $built=\Lavka\competitors_own_catalog_build($bad,$watch,$time);
 own_expect(!$built['offer_count'] && in_array('description_missing',$built['products'][0]['warnings'],true),'Description in another language cannot satisfy storefront visibility');
 $bad=$rows; $bad['currency'][0]['value']='40'; own_throws('catalog_currency_unsupported',function()use($bad,$watch,$time){\Lavka\competitors_own_catalog_build($bad,$watch,$time);});
+foreach ([['value','0'],['value','1.00000001'],['status','0'],['status','01'],['decimal_place','1'],['decimal_place','3'],['decimal_place','2bad'],['decimal_place','0.0'],['decimal_place',null]] as $invalidCurrency) {
+    $bad=own_fixture(); $bad['currency'][0][$invalidCurrency[0]]=$invalidCurrency[1];
+    own_throws('catalog_currency_unsupported',function()use($bad,$watch,$time){\Lavka\competitors_own_catalog_build($bad,$watch,$time);});
+}
+$bad=own_fixture(); $bad['currency']=[];
+own_throws('catalog_currency_unsupported',function()use($bad,$watch,$time){\Lavka\competitors_own_catalog_build($bad,$watch,$time);});
+$bad=own_fixture(); $bad['currency'][]=$bad['currency'][0];
+own_throws('catalog_currency_unsupported',function()use($bad,$watch,$time){\Lavka\competitors_own_catalog_build($bad,$watch,$time);});
 $fixed=own_fixture(); $fixed['product_option']=[]; $fixed['product_option_value']=[]; $fixed['product'][0]['price']='75';
 $fixed['product_description'][0]['name']='Синтетична пряність, 50 г';
 $built=\Lavka\competitors_own_catalog_build($fixed,[1214=>array_merge($watch[1214],['pack_label'=>'50 г'])],$time);
@@ -106,6 +133,11 @@ $sqlSource=new OwnSqliteReadOnlySource(own_fixture());
 $sqlRows=\Lavka\competitors_own_catalog_fetch($sqlSource,'oc_',$watch);
 $sqlBuilt=\Lavka\competitors_own_catalog_build($sqlRows,$watch,$time);
 own_expect($sqlBuilt['offer_count']===2 && $sqlBuilt['products'][0]['offers'][0]['price']==='125.00','Production SELECTs round-trip through query-only SQL fixture');
+$wholeRows=own_fixture(); $wholeRows['currency'][0]['decimal_place']='0';
+$wholeRows['product'][0]['price']='100.4900'; $wholeRows['product_option_value'][0]['price']='25.4900';
+$wholeSqlSource=new OwnSqliteReadOnlySource($wholeRows);
+$wholeSqlBuilt=\Lavka\competitors_own_catalog_build(\Lavka\competitors_own_catalog_fetch($wholeSqlSource,'oc_',$watch),$watch,$time);
+own_expect($wholeSqlBuilt['products'][0]['offers'][0]['price']==='126' && $wholeSqlBuilt['products'][0]['offers'][0]['provenance']['raw_price']==='125.9800','Read-only SQL projection supports the actual zero-decimal UAH metadata');
 own_expect(count($sqlRows['setting'])===4,'Settings view exposes only four selected configuration rows');
 $changingSource=new OwnSqliteReadOnlySource(own_fixture()); $changingSource->mutateBetweenReads=true;
 own_throws('catalog_source_changed',function()use($changingSource,$watch){\Lavka\competitors_own_catalog_fetch($changingSource,'oc_',$watch);});
@@ -119,6 +151,8 @@ try {
         ['state'=>'ok','products'=>[],'last_success'=>'2026-02-30T00:00:00Z'],
         ['state'=>'ok','products'=>['invalid'],'last_success'=>\Lavka\utc_now()],
         ['state'=>'error','products'=>[],'last_success'=>\Lavka\utc_now()],
+        ['state'=>'ok','products'=>[],'last_success'=>\Lavka\utc_now(),'currency_decimal_places'=>'0'],
+        ['state'=>'ok','products'=>[],'last_success'=>\Lavka\utc_now(),'currency_decimal_places'=>null],
     ] as $invalidSnapshot) {
         file_put_contents($root.'/own-catalog.json',\Lavka\encode($invalidSnapshot));
         $beforeInvalid=file_get_contents($root.'/own-catalog.json');
@@ -131,6 +165,11 @@ try {
     file_put_contents($root.'/own-catalog-status.json',\Lavka\encode(['state'=>'error','checked_at'=>$validTime,'error_code'=>'catalog_read_failed','products'=>'injected','last_success'=>'injected']));
     $safeStatus=\Lavka\competitors_own_catalog_read($root);
     own_expect($safeStatus['state']==='error' && $safeStatus['products']===[] && $safeStatus['last_success']===$validTime,'Status whitelist cannot replace products or successful timestamp');
+    own_expect($safeStatus['currency_decimal_places']===2,'Legacy snapshots retain their existing two-decimal display interpretation');
+    file_put_contents($root.'/own-catalog.json',\Lavka\encode(['state'=>'ok','products'=>$wholeSqlBuilt['products'],'last_success'=>$validTime,'currency_decimal_places'=>0]));
+    file_put_contents($root.'/own-catalog-status.json',\Lavka\encode(['state'=>'ok','checked_at'=>$validTime,'currency_decimal_places'=>2]));
+    $wholeRead=\Lavka\competitors_own_catalog_read($root);
+    own_expect($wholeRead['currency_decimal_places']===0 && $wholeRead['products'][0]['offers'][0]['provenance']['raw_price']==='125.9800','Snapshot precision survives the reader and cannot be replaced by status metadata');
     file_put_contents($root.'/own-catalog-status.json',\Lavka\encode(['state'=>'ok','checked_at'=>['invalid']]));
     $invalidStatus=\Lavka\competitors_own_catalog_sync_due($root);
     own_expect($invalidStatus['state']==='error' && $invalidStatus['error_code']==='catalog_snapshot_invalid' && $invalidStatus['last_success']===$validTime

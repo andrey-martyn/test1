@@ -480,6 +480,54 @@ with tempfile.TemporaryDirectory() as temporary:
             own_entries = page.evaluate("() => competitorState.data.targets.filter(competitorOwn).map(t=>competitorMatrixEntries(t))")
             assert all(entry["catalog"] and not entry["target"].get("queued") for entry in own_entries)
             assert all(not entry["offers"] for entry in own_entries if entry["target"]["id"] != ids["main"])
+
+            # The storefront's whole-hryvnia display never replaces the precise
+            # amount used by the formula or by a reviewed database update.
+            rounding_state = page.evaluate("() => ({selected:competitorState.selected,preview:competitorState.preview,sandboxPlan:competitorState.sandboxPlan})")
+            whole_currency = deepcopy(isolated)
+            whole_currency["own_catalog"]["currency_decimal_places"] = 0
+            whole_currency["own_catalog"]["products"][0]["currency_decimal_places"] = 0
+            for offer in whole_currency["own_catalog"]["products"][0]["offers"]:
+                raw = "125.9800" if offer["grams"] == 50 else "299.5100"
+                offer["price"] = "126" if offer["grams"] == 50 else "300"
+                offer["source"] = "mysql_catalog"
+                offer["provenance"] = {"raw_price": raw, "currency_decimal_places": 0}
+            whole_plan = {"state": "planned", "database": "lavkasp_test", "plan_id": "c" * 32, "plan_hash": "d" * 64,
+                "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "rows": [{"product_id": 999501, "label": main_target["label"], "currency_decimal_places": 0,
+                          "packs": [{"grams": 50, "before": "125.9800", "display_before": "126", "after": "88.20", "display_after": "88"},
+                                    {"grams": 200, "before": "299.5100", "display_before": "300", "after": "317.52", "display_after": "318"}]}], "skipped": []}
+            rounding_posts = len(requests)
+            page.evaluate("""input => {competitorState.data=input.data;competitorState.selected={'sandbox-main|50':true};
+                competitorState.preview=true;competitorState.sandboxPlan=input.plan;competitorsRender();}""",
+                {"data": whole_currency, "plan": whole_plan})
+            whole_cell = row(page).locator("td[data-source=lavka]")
+            assert whole_cell.get_attribute("data-price") == "126.00"
+            assert "125,98" in whole_cell.locator(".competitor-raw-price").inner_text()
+            chain_base = page.locator("[data-chain-row='sandbox-main|50'] [data-chain-grams='50']")
+            assert chain_base.get_attribute("data-chain-price") == "88.20"
+            assert chain_base.locator(".competitor-chain-display").get_attribute("data-chain-display") == "88"
+            assert page.locator("[data-chain-grams='200'] .competitor-chain-display").get_attribute("data-chain-display") == "318"
+            rounded_plan = page.locator(".competitor-server-plan")
+            assert "Витрина округляет до целой гривны" in rounded_plan.locator(".competitor-rounding-note").inner_text()
+            assert rounded_plan.locator("[data-sandbox-price='88.20']").get_attribute("data-sandbox-display-price") == "88"
+            assert "88,2" in rounded_plan.locator("[data-sandbox-price='88.20'] .competitor-sandbox-raw-price").inner_text()
+            assert rounded_plan.locator("[data-sandbox-price='317.52']").get_attribute("data-sandbox-display-price") == "318"
+            whole_cell.locator("[data-comp-action=matrix-detail]").click()
+            page.wait_for_selector("#drawer[open]")
+            assert "125,98" in " ".join(page.locator("#drawer-content .competitor-raw-price").all_inner_texts())
+            page.click("[data-action=close-dialog]")
+            caps = page.evaluate("""() => ["99.6000","100.4900","100.4999",null].map(raw=>{
+                const current=competitorMatrixRows().find(row=>row.key==='sandbox-main|50');
+                current.cells.lavka={...current.cells.lavka,price:100,offer:{...current.cells.lavka.offer,
+                    provenance:{raw_price:raw,currency_decimal_places:0}}};current.competitorMinimum=110;
+                return competitorSuggestion(current);})""")
+            assert [item["price"] for item in caps] == [99.6, 100.49, 100.49, 100]
+            assert all(item["keep"] for item in caps)
+            assert len(requests) == rounding_posts
+            page.evaluate("""input => {competitorState.data=input.data;competitorState.selected=input.state.selected;
+                competitorState.preview=input.state.preview;competitorState.sandboxPlan=input.state.sandboxPlan;competitorsRender();}""",
+                {"data": isolated, "state": rounding_state})
             page.click("[data-comp-action=tab][data-tab=links]")
             assert page.locator(".competitor-product-card.own [data-comp-action=queue]").count() == 0
             assert page.locator(".competitor-product-card.own .competitor-price-line strong").count() == 2
@@ -527,7 +575,8 @@ with tempfile.TemporaryDirectory() as temporary:
             browser.close()
         print(json.dumps({"php_image": IMAGE, "sandbox_gates_and_explicit_review": "passed",
                           "real_http_auth_origin_methods_and_production_block": "passed",
-                          "base50_chain_and_existing_packs": "passed", "plan_invalidation_and_rollback": "passed",
+                          "base50_chain_and_existing_packs": "passed", "whole_currency_display_and_raw_no_raise": "passed",
+                          "plan_invalidation_and_rollback": "passed",
                           "partial_conflict_honesty": "passed", "test_sql_only_own_prices": "passed",
                           "queued_cli_jobs_poll_timeout_and_retry": "passed",
                           "contrast_12px_and_mobile": "passed",

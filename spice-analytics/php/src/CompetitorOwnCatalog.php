@@ -120,6 +120,14 @@ function competitors_own_catalog_amount($value): ?string
     if (!is_scalar($value) || !preg_match('/^-?\d{1,9}(?:\.\d{1,6})?$/D',(string)$value)) return null;
     return bcadd((string)$value,'0',4);
 }
+
+/** Match ocStore currency display without changing stored catalogue amounts. */
+function competitors_own_catalog_round(string $value,int $decimals): string
+{
+    if (!in_array($decimals,[0,2],true)) throw new SyncError('catalog_currency_unsupported');
+    $half=$decimals===0?'0.5':'0.005';
+    return bccomp($value,'0',12)<0?bcsub($value,$half,$decimals):bcadd($value,$half,$decimals);
+}
 function competitors_own_catalog_pack(string $name): ?array
 {
     $name=competitor_text($name);
@@ -144,11 +152,13 @@ function competitors_own_catalog_build(array $rows,array $watch,string $checkedA
     foreach (COMPETITOR_CATALOG_SETTING_KEYS as $key) if (!array_key_exists($key,$settings)) throw new SyncError('catalog_settings_missing');
     if ($settings['config_currency']!=='UAH' || !ctype_digit($settings['config_customer_group_id']) || (int)$settings['config_customer_group_id']<1
         || !in_array($settings['config_tax'],['0','1'],true)) throw new SyncError('catalog_settings_unsupported');
-    $currencyOk=false;
-    foreach ($rows['currency']??[] as $currency) if ($currency['code']==='UAH' && (int)$currency['status']===1
-        && (int)$currency['decimal_place']===2 && preg_match('/^\d{1,9}(?:\.\d{1,12})?$/D',(string)$currency['value'])
-        && bccomp((string)$currency['value'],'1',12)===0) $currencyOk=true;
-    if (!$currencyOk) throw new SyncError('catalog_currency_unsupported');
+    $currencies=array_values(array_filter($rows['currency']??[],function($currency){return ($currency['code']??null)==='UAH';}));
+    if (count($currencies)!==1) throw new SyncError('catalog_currency_unsupported');
+    $currency=$currencies[0]; $precision=(string)($currency['decimal_place']??'');
+    if ((string)($currency['status']??'')!=='1' || !in_array($precision,['0','2'],true)
+        || !preg_match('/^\d{1,9}(?:\.\d{1,12})?$/D',(string)($currency['value']??''))
+        || bccomp((string)$currency['value'],'1',12)!==0) throw new SyncError('catalog_currency_unsupported');
+    $currencyDecimals=(int)$precision;
     $languageId=0;
     foreach ($rows['language']??[] as $language) if ($language['code']===$settings['config_language'] && (int)$language['status']===1) $languageId=(int)$language['language_id'];
     if (!$languageId) throw new SyncError('catalog_language_unknown');
@@ -160,7 +170,7 @@ function competitors_own_catalog_build(array $rows,array $watch,string $checkedA
     $names=[]; foreach ($rows['option_value_description']??[] as $description) if ((int)$description['language_id']===$languageId) $names[(int)$description['option_value_id']]=(string)$description['name'];
     $products=[]; $offerCount=0;
     foreach ($watch as $id=>$target) {
-        $entry=$target+['offers'=>[],'warnings'=>[],'source'=>'mysql_catalog','checked_at'=>$checkedAt,'method'=>'standard_ocstore3_catalog'];
+        $entry=$target+['offers'=>[],'warnings'=>[],'source'=>'mysql_catalog','checked_at'=>$checkedAt,'method'=>'standard_ocstore3_catalog','currency_decimal_places'=>$currencyDecimals];
         $product=$byId['product'][$id][0]??null;
         if (!$product) { $entry['warnings'][]='product_missing'; $products[]=$entry; continue; }
         $entry['model']=mb_substr((string)$product['model'],0,100);
@@ -205,21 +215,25 @@ function competitors_own_catalog_build(array $rows,array $watch,string $checkedA
         if (!$entry['warnings']) foreach ($values as $pair) {
             list($value,$pack)=$pair; $delta=competitors_own_catalog_amount($value['price']);
             if ($delta===null || !in_array($value['price_prefix'],['+','-'],true)) { $entry['warnings'][]='option_price_unsupported'; $entry['offers']=[]; break; }
-            $price=$value['price_prefix']==='+'?bcadd($base,$delta,4):bcsub($base,$delta,4);
-            // ocStore currency output rounds half up; BCMath's scale alone truncates.
-            $price=bcadd($price,'0.005',2);
-            if (bccomp($price,'0',2)<=0) { $entry['warnings'][]='nonpositive_price'; continue; }
+            $rawPrice=$value['price_prefix']==='+'?bcadd($base,$delta,4):bcsub($base,$delta,4);
+            if (bccomp($rawPrice,'0',4)<=0) { $entry['warnings'][]='nonpositive_price'; continue; }
+            // Round the raw sum once, as Currency::format does. Rounding the
+            // base and the option separately can change the storefront price.
+            $price=competitors_own_catalog_round($rawPrice,$currencyDecimals);
+            if (bccomp($price,'0',$currencyDecimals)<=0) { $entry['warnings'][]='nonpositive_price'; continue; }
             $stock=(int)$product['quantity']>0 && ((int)$value['subtract']!==1 || (int)$value['quantity']>0);
             $entry['offers'][]=['label'=>$pack['label'],'grams'=>$pack['grams'],'price'=>$price,'currency'=>'UAH','unit'=>'pack',
                 'availability'=>$stock?'in_stock':'out_of_stock','min_quantity'=>1,'condition'=>'','checked_at'=>$checkedAt,
                 'source'=>'mysql_catalog','provenance'=>['product_id'=>(int)$id,'product_option_id'=>(int)$value['product_option_id'],
                     'product_option_value_id'=>(int)$value['product_option_value_id'],'option_value_id'=>(int)$value['option_value_id'],
-                    'base_price'=>$base,'option_adjustment'=>$delta,'price_prefix'=>$value['price_prefix'],'base_price_kind'=>$priceKind]];
+                    'base_price'=>$base,'option_adjustment'=>$delta,'price_prefix'=>$value['price_prefix'],'base_price_kind'=>$priceKind,
+                    'raw_price'=>$rawPrice,'currency_decimal_places'=>$currencyDecimals]];
         }
         $offerCount+=count($entry['offers']); $entry['warnings']=array_values(array_unique($entry['warnings'])); $products[]=$entry;
     }
     return ['state'=>'ok','source'=>'mysql_catalog','checked_at'=>$checkedAt,'last_success'=>$checkedAt,'products'=>$products,
-        'product_count'=>count($products),'offer_count'=>$offerCount,'pricing_model'=>'standard_ocstore3_guest_single_pack','shop_writes'=>false];
+        'product_count'=>count($products),'offer_count'=>$offerCount,'pricing_model'=>'standard_ocstore3_guest_single_pack','shop_writes'=>false,
+        'currency_decimal_places'=>$currencyDecimals];
 }
 
 function competitors_own_catalog_utc($value): bool
@@ -246,6 +260,7 @@ function competitors_own_catalog_read(string $directory): array
                 if (($value['state']??null)!=='ok' || !is_array($value['products']??null)
                     || !competitors_own_catalog_utc($value['last_success']??null)) throw new \UnexpectedValueException();
                 if (file_exists($directory.'/sandbox.json') && (($value['source_database']??null)!=='lavkasp_test' || ($value['environment']??null)!=='sandbox')) throw new \UnexpectedValueException();
+                if (array_key_exists('currency_decimal_places',$value) && !in_array($value['currency_decimal_places'],[0,2],true)) throw new \UnexpectedValueException();
                 foreach ($value['products'] as $product) if (!is_array($product)) throw new \UnexpectedValueException();
                 $result['state']='ok'; $result['products']=$value['products']; $result['last_success']=$value['last_success'];
                 $result['checked_at']=competitors_own_catalog_utc($value['checked_at']??null)?$value['checked_at']:$value['last_success'];
@@ -254,6 +269,7 @@ function competitors_own_catalog_read(string $directory): array
                 $result['pricing_model']='standard_ocstore3_guest_single_pack'; $result['shop_writes']=false; $snapshotValid=true;
                 $result['source_database']=is_string($value['source_database']??null)?$value['source_database']:null;
                 $result['environment']=($value['environment']??null)==='sandbox'?'sandbox':'read_only';
+                $result['currency_decimal_places']=$value['currency_decimal_places']??2;
             } else {
                 if (!in_array($value['state']??null,['ok','error'],true) || !competitors_own_catalog_utc($value['checked_at']??null)
                     || isset($value['error_code']) && (!is_string($value['error_code']) || !preg_match('/^catalog_[a-z0-9_]+$/D',$value['error_code']))) throw new \UnexpectedValueException();
