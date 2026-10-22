@@ -27,7 +27,7 @@ function competitors_source(string $id): array
 }
 
 /** Canonical public HTTPS URL; the CLI transport independently enforces the same restrictions. */
-function competitors_validate_url(string $url, string $sourceId): string
+function competitors_validate_url(string $url, string $sourceId, bool $allowTestOwn = false): string
 {
     $source = competitors_source($sourceId);
     if (strlen($url) > 2000 || $url === '' || preg_match('/[\x00-\x20\x7f\\\\]/', $url) || preg_match('/%(?:0[0-9a-f]|1[0-9a-f]|7f)/i', $url)) {
@@ -36,7 +36,9 @@ function competitors_validate_url(string $url, string $sourceId): string
     $parts = parse_url($url);
     $baseHost = preg_replace('/^www\./', '', parse_url($source['base_url'], PHP_URL_HOST));
     $host = strtolower($parts['host'] ?? '');
-    if (!$parts || strtolower($parts['scheme'] ?? '') !== 'https' || !in_array($host, [$baseHost, 'www.' . $baseHost], true) || isset($parts['user']) || isset($parts['pass']) || isset($parts['fragment']) || isset($parts['port']) && $parts['port'] !== 443) {
+    $allowedHosts = [$baseHost, 'www.' . $baseHost];
+    if ($allowTestOwn && $sourceId === 'lavka') $allowedHosts[] = 'test.lavka-speciy.com';
+    if (!$parts || strtolower($parts['scheme'] ?? '') !== 'https' || !in_array($host, $allowedHosts, true) || isset($parts['user']) || isset($parts['pass']) || isset($parts['fragment']) || isset($parts['port']) && $parts['port'] !== 443) {
         throw new \InvalidArgumentException('Ссылка должна вести на публичную страницу выбранного магазина по HTTPS');
     }
     $path = $parts['path'] ?? '/';
@@ -167,7 +169,7 @@ function competitors_target(\PDO $db, int $id): array
     return competitors_target_row($row);
 }
 
-function competitors_save_target(\PDO $db, array $body, ?int $id = null): array
+function competitors_save_target(\PDO $db, array $body, ?int $id = null, bool $sandbox = false): array
 {
     $allowed = ['source_id', 'kind', 'url', 'label', 'enabled', 'grams_override', 'pack_label', 'match_group', 'match_confirmed'];
     if (array_diff(array_keys($body), $allowed)) throw new \InvalidArgumentException('Неизвестные поля страницы наблюдения');
@@ -177,7 +179,7 @@ function competitors_save_target(\PDO $db, array $body, ?int $id = null): array
     competitors_source($sourceId);
     $kind = $v['kind'] ?? null;
     if (!in_array($kind, ['product', 'terms', 'catalog'], true)) throw new \InvalidArgumentException('Выберите тип страницы наблюдения');
-    $url = competitors_validate_url(competitors_text($v['url'] ?? null, 2000, 'ссылка', false), $sourceId);
+    $url = competitors_validate_url(competitors_text($v['url'] ?? null, 2000, 'ссылка', false), $sourceId, $sandbox && $kind === 'product');
     if ($old && ($sourceId !== $old['source_id'] || $kind !== $old['kind'] || $url !== $old['url'])) throw new CompetitorConflict('Для другой ссылки создайте новую страницу; прежнюю можно отключить с сохранением истории');
     $label = competitors_text($v['label'], 160, 'название');
     if ($label === '') $label = competitors_source($sourceId)['name'] . ' · ' . ['product' => 'товар', 'terms' => 'условия', 'catalog' => 'каталог'][$kind];

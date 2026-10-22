@@ -41,7 +41,9 @@ function competitors_own_catalog_watch(string $directory): array
         $watch=[];
         while ($row=$result->fetchArray(SQLITE3_ASSOC)) {
             $parts=parse_url($row['url']); $query=[];
-            if (!is_array($parts) || !in_array(strtolower($parts['host']??''),['lavka-speciy.com','www.lavka-speciy.com'],true)) continue;
+            $hosts=['lavka-speciy.com','www.lavka-speciy.com'];
+            if (file_exists($directory.'/sandbox.json')) $hosts[]='test.lavka-speciy.com';
+            if (!is_array($parts) || !in_array(strtolower($parts['host']??''),$hosts,true)) continue;
             parse_str($parts['query']??'',$query);
             $id=$query['product_id']??null;
             if (!is_string($id) || !preg_match('/^[1-9][0-9]{0,9}$/D',$id)) continue;
@@ -243,12 +245,15 @@ function competitors_own_catalog_read(string $directory): array
             if ($name==='own-catalog.json') {
                 if (($value['state']??null)!=='ok' || !is_array($value['products']??null)
                     || !competitors_own_catalog_utc($value['last_success']??null)) throw new \UnexpectedValueException();
+                if (file_exists($directory.'/sandbox.json') && (($value['source_database']??null)!=='lavkasp_test' || ($value['environment']??null)!=='sandbox')) throw new \UnexpectedValueException();
                 foreach ($value['products'] as $product) if (!is_array($product)) throw new \UnexpectedValueException();
                 $result['state']='ok'; $result['products']=$value['products']; $result['last_success']=$value['last_success'];
                 $result['checked_at']=competitors_own_catalog_utc($value['checked_at']??null)?$value['checked_at']:$value['last_success'];
                 $result['product_count']=count($value['products']); $result['offer_count']=0;
                 foreach ($value['products'] as $product) if (is_array($product['offers']??null)) $result['offer_count']+=count($product['offers']);
                 $result['pricing_model']='standard_ocstore3_guest_single_pack'; $result['shop_writes']=false; $snapshotValid=true;
+                $result['source_database']=is_string($value['source_database']??null)?$value['source_database']:null;
+                $result['environment']=($value['environment']??null)==='sandbox'?'sandbox':'read_only';
             } else {
                 if (!in_array($value['state']??null,['ok','error'],true) || !competitors_own_catalog_utc($value['checked_at']??null)
                     || isset($value['error_code']) && (!is_string($value['error_code']) || !preg_match('/^catalog_[a-z0-9_]+$/D',$value['error_code']))) throw new \UnexpectedValueException();
@@ -297,10 +302,18 @@ function competitors_own_catalog_sync(string $directory,string $configFile,?call
             set_error_handler(function(){return true;});
             try {
                 $config=source_config($configFile);
+                require_once __DIR__.'/SandboxRuntime.php';
+                sandbox_assert_source($directory,$config,$configFile);
                 if ($reader) $rows=$reader($config,$watch);
                 else { $source=source_connect($config); $rows=competitors_own_catalog_fetch($source,$config['prefix']??'oc_',$watch); $source=null; }
             } finally { restore_error_handler(); }
             $snapshot=competitors_own_catalog_build($rows,$watch,$checkedAt);
+            $snapshot['source_database']=$config['database'];
+            $snapshot['environment']=file_exists($directory.'/sandbox.json')?'sandbox':'read_only';
+            if ($snapshot['environment']==='sandbox') foreach ($snapshot['products'] as &$product) {
+                $product['url']='https://test.lavka-speciy.com/index.php?route=product%2Fproduct&product_id='.$product['product_id'];
+            }
+            unset($product);
             atomic_write($directory.'/own-catalog.json',encode($snapshot));
             $status=['state'=>'ok','checked_at'=>$checkedAt,'last_success'=>$checkedAt,'error_code'=>null];
             atomic_write($directory.'/own-catalog-status.json',encode($status)); return $snapshot;
@@ -321,5 +334,6 @@ function competitors_own_catalog_sync_due(string $directory): array
         || $state['error_code']==='catalog_snapshot_invalid') return $state;
     $last=is_string($state['checked_at'])?strtotime($state['checked_at']):false;
     if ($last!==false && $last>time()-86400) return $state;
-    return competitors_own_catalog_sync($directory,$directory.'/source.json');
+    $updated=competitors_own_catalog_sync($directory,$directory.'/source.json');
+    return ($updated['state']??null)==='skipped'?$state:$updated;
 }

@@ -1,10 +1,12 @@
 # Свои цены из каталога ocStore
 
-Подготовлен отдельный импорт публичных цен каталога. Он не меняет цены магазина,
-права MySQL, `source.json`, заказы, CRM, сессии или таблицы мониторинга. Текущий
-этап — проверка формата отчёта; подключение каталога не включается автоматически.
-Сначала пользователь переведёт существующий источник на тестовую БД и отдельно
-подготовит права чтения. Пароль в чат не передавать и заново не настраивать.
+Отдельный импорт читает текущие цены выбранных товаров непосредственно из БД
+ocStore. Сам импорт не меняет цены магазина, права MySQL, `source.json`, заказы,
+CRM, сессии или таблицы мониторинга. Для нового этапа подготовлена отдельная
+песочница **`lavkasp_test`** с пользователем **`lavkasp_sandbox`** и закрытым
+каталогом **`analytics-private-test`**. Порядок создания пользователя, проверки
+изоляции и переключения всего кабинета — [SANDBOX.md](SANDBOX.md).
+Старый боевой источник не перенастраивается. Пароль в чат не передавать.
 
 ## Что получает отчёт
 
@@ -14,6 +16,8 @@
 Снимок отделён от `analytics.sqlite3` и `competitors.sqlite3`.
 
 Успешный результат имеет `state: ok`, `last_success`, `checked_at`, `products`.
+В песочнице также обязательны `source_database: lavkasp_test` и
+`environment: sandbox`; снимок другого источника не используется как текущая цена.
 Каждый товар содержит `target_id`, `product_id`/`source_product_id`, название,
 модель, ссылку и `offers`. У предложения есть точный вес `grams`, название фасовки,
 цена строкой, UAH, наличие, время и `provenance`: ID товара, опции и значения,
@@ -55,10 +59,10 @@
 две равные выборки не являются транзакционной гарантией MyISAM. Бюджет проверяется
 между запросами (30 секунд); уже начатый запрос ограничен таймаутом MySQL-клиента.
 
-## Какие права подготовить позже
+## Права чтения каталога
 
-Существующие шесть SELECT на заказы сохранить. Дополнительно нужны SELECT только
-на следующие объекты каталога с текущим префиксом `oc_`:
+Пользователь песочницы читает шесть таблиц заказов и следующие объекты каталога
+с префиксом `oc_` только в `lavkasp_test`:
 
 - `oc_product`, `oc_product_to_store`, `oc_product_description`;
 - `oc_product_option`, `oc_product_option_value`, `oc_option`,
@@ -67,36 +71,13 @@
 - `oc_currency`, `oc_language`;
 - ограниченное представление **`oc_analytics_catalog_settings`**.
 
-Не выдавать пользователю аналитики SELECT на всю `oc_setting`: в ней могут быть
-секреты других модулей. Код обращается только к фиксированному представлению с
-четырьмя разрешёнными ключами. Представление создаёт администратор БД с правами
-чтения `oc_setting`; приложение не выполняет DDL.
-
-Следующий SQL — шаблон для администратора **будущей тестовой БД**, не команда
-обновления текущего кабинета. `TEST_DATABASE` заменить на выбранную тестовую БД;
-`EXISTING_HOST` — на host уже существующей учётной записи `lavkasp_analytics`.
-Не создавать другого пользователя, не менять пароль и не отзывать старые права.
-
-```sql
-CREATE OR REPLACE SQL SECURITY DEFINER VIEW TEST_DATABASE.oc_analytics_catalog_settings AS
-SELECT store_id, `key`, `value`, serialized
-FROM TEST_DATABASE.oc_setting
-WHERE store_id = 0
-  AND `key` IN ('config_currency', 'config_language', 'config_customer_group_id', 'config_tax');
-
-GRANT SELECT ON TEST_DATABASE.oc_product TO 'lavkasp_analytics'@'EXISTING_HOST';
-GRANT SELECT ON TEST_DATABASE.oc_product_to_store TO 'lavkasp_analytics'@'EXISTING_HOST';
-GRANT SELECT ON TEST_DATABASE.oc_product_description TO 'lavkasp_analytics'@'EXISTING_HOST';
-GRANT SELECT ON TEST_DATABASE.oc_product_option TO 'lavkasp_analytics'@'EXISTING_HOST';
-GRANT SELECT ON TEST_DATABASE.oc_product_option_value TO 'lavkasp_analytics'@'EXISTING_HOST';
-GRANT SELECT ON TEST_DATABASE.oc_option TO 'lavkasp_analytics'@'EXISTING_HOST';
-GRANT SELECT ON TEST_DATABASE.oc_option_value_description TO 'lavkasp_analytics'@'EXISTING_HOST';
-GRANT SELECT ON TEST_DATABASE.oc_product_discount TO 'lavkasp_analytics'@'EXISTING_HOST';
-GRANT SELECT ON TEST_DATABASE.oc_product_special TO 'lavkasp_analytics'@'EXISTING_HOST';
-GRANT SELECT ON TEST_DATABASE.oc_currency TO 'lavkasp_analytics'@'EXISTING_HOST';
-GRANT SELECT ON TEST_DATABASE.oc_language TO 'lavkasp_analytics'@'EXISTING_HOST';
-GRANT SELECT ON TEST_DATABASE.oc_analytics_catalog_settings TO 'lavkasp_analytics'@'EXISTING_HOST';
-```
+Код не читает `oc_setting` напрямую: только фиксированное представление с четырьмя
+разрешёнными ключами. Его SQL приведён в [SANDBOX.md](SANDBOX.md), рядом со вторым
+представлением `oc_analytics_sandbox_guard`, проверяющим изоляцию таблиц записи.
+Оба создаёт существующий администратор тестовой БД `lavkasp_test`; приложение
+не выполняет DDL. В панели можно выдать SELECT + UPDATE на `lavkasp_test.*` либо
+ограничить UPDATE тремя колонками цен, как описано в этой инструкции. Боевой
+пользователь `lavkasp_analytics` и его шесть SELECT остаются прежними.
 
 Полный список фиксированных полей и объектов можно вывести без подключения к БД
 и без чтения настроек соединения:
@@ -105,19 +86,19 @@ GRANT SELECT ON TEST_DATABASE.oc_analytics_catalog_settings TO 'lavkasp_analytic
 /usr/local/php82/bin/php /home/lavkasp/lavka-speciy.com/analytics-app/spice-analytics/php/bin/sync_competitor_catalog.php --requirements
 ```
 
-Если хостинг ограничивает создание представлений, не расширять доступ к секретам
-ради обхода. Подготовить ограниченное представление через администратора хостинга
-или отдельно согласовать узкую конфигурацию каталога.
+Если хостинг ограничивает создание представлений, подготовить их через
+администратора хостинга. Отсутствие проверочного представления блокирует
+подготовку песочницы и запись цен.
 
 ## Первое включение после подключения тестовой БД
 
-Только после подготовки тестового источника и SELECT выполнить один раз в WebSSH:
+После подготовки отдельного тестового источника выполнить один раз в WebSSH:
 
 ```bash
-/usr/local/php82/bin/php /home/lavkasp/lavka-speciy.com/analytics-app/spice-analytics/php/bin/sync_competitor_catalog.php --data /home/lavkasp/lavka-speciy.com/analytics-private
+/usr/local/php82/bin/php /home/lavkasp/lavka-speciy.com/analytics-app/spice-analytics/php/bin/sync_competitor_catalog.php --data /home/lavkasp/lavka-speciy.com/analytics-private-test
 ```
 
-Команда использует уже существующий закрытый `source.json`; параметры соединения
+Команда использует новый закрытый `source.json` песочницы; параметры соединения
 и пароль не печатает. Выводит только статус, время и количество товаров/фасовок.
 Неуспех сохраняет прежние цены и выдаёт код вроде `catalog_select_required`,
 `catalog_read_failed`, `catalog_settings_missing`, `catalog_currency_unsupported`.
@@ -125,4 +106,13 @@ GRANT SELECT ON TEST_DATABASE.oc_analytics_catalog_settings TO 'lavkasp_analytic
 До первого успешного ручного импорта фоновая функция `sync_due` не открывает
 `source.json` и не подключается к MySQL. После успешного импорта существующий runner
 может обновлять снимок не чаще раза в сутки; новая задача cron не нужна. Это
-включает только чтение. Запись и массовый пересчёт цен магазина здесь не реализованы.
+включает только чтение. В песочнице все собственные товарные страницы исключаются
+из HTTP-обхода, включая SEO-ссылки без ID. Для них требуется сопоставить числовой
+ID тестового товара; старая цена боевого сайта не подставляется.
+
+Запись тестовых цен выполняет отдельный модуль по явно просмотренному серверному
+плану через локальную очередь и отдельный CLI-обработчик PHP 8.2, запускаемый
+раз в минуту. Веб-PHP MySQL не открывает; импорт каталога сам UPDATE не делает.
+После записи создаётся новый снимок
+цен для отчёта. Формулы и ограничения — [PRICING_RULES.md](PRICING_RULES.md),
+сценарий подтверждения и отката — [COMPETITOR_REPORT.md](COMPETITOR_REPORT.md).

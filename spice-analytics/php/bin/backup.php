@@ -31,11 +31,12 @@ try {
     $copyDir = $destination . '/.pending-' . bin2hex(random_bytes(5));
     \Lavka\private_dir($copyDir);
     $names = ['analytics.sqlite3'];
-    if (file_exists($data . '/competitors.sqlite3')) {
-        if (!is_file($data . '/competitors.sqlite3')) {
-            throw new RuntimeException('База мониторинга недоступна для копирования');
+    foreach (['competitors.sqlite3', 'sandbox-prices.sqlite3', 'sandbox-price-jobs.sqlite3'] as $name) {
+        if (!file_exists($data . '/' . $name)) continue;
+        if (!is_file($data . '/' . $name) || is_link($data . '/' . $name)) {
+            throw new RuntimeException('Дополнительная база недоступна для копирования');
         }
-        $names[] = 'competitors.sqlite3';
+        $names[] = $name;
     }
     foreach ($names as $name) {
         $original = new SQLite3($data . '/' . $name, SQLITE3_OPEN_READONLY);
@@ -64,10 +65,10 @@ try {
             $original->close();
         }
     }
-    foreach (['access-php.json', 'source.json', 'deployment-php.json'] as $name) {
+    foreach (['access-php.json', 'source.json', 'deployment-php.json', 'sandbox.json', 'own-catalog.json', 'own-catalog-status.json'] as $name) {
         if (is_file($data . '/' . $name)) {
-            copy($data . '/' . $name, $copyDir . '/' . $name);
-            chmod($copyDir . '/' . $name, 0600);
+            if (is_link($data . '/' . $name) || !copy($data . '/' . $name, $copyDir . '/' . $name)
+                || !chmod($copyDir . '/' . $name, 0600)) throw new RuntimeException('Не удалось скопировать закрытые настройки');
         }
     }
     $completed = $destination . '/' . gmdate('Ymd\THis\Z') . '-' . bin2hex(random_bytes(3));

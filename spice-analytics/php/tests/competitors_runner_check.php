@@ -139,6 +139,11 @@ try {
     runner_expect(\Lavka\competitors_target($catalogDb, $catalogOwn['id'])['last_attempt'] === null && file_get_contents($catalogDir . '/source.json') === 'SENTINEL_NOT_VALID_JSON', 'Fresh catalogue does not read source settings or mutate own HTTP history');
     $catalogSeo = \Lavka\competitors_save_target($catalogDb, ['source_id' => 'lavka', 'kind' => 'product', 'url' => 'https://lavka-speciy.com/synthetic-custom-seo', 'label' => 'Own SEO link without catalogue ID']);
     runner_expect(in_array($catalogSeo['id'], array_column(\Lavka\competitors_due($catalogDb, 50, [$catalogOwn['id']]), 'id'), true), 'Own SEO pages not mapped to the catalogue keep their HTTP checks');
+    // Even a broken marker must never re-enable live own-page crawling.
+    file_put_contents($catalogDir . '/sandbox.json', '{invalid-marker');
+    $sandboxCalls=[];
+    $sandboxRun=lavka_competitors_run(['data'=>$catalogDir,'seconds'=>45], function($url)use(&$sandboxCalls){$sandboxCalls[]=$url;throw new RuntimeException('Unexpected HTTP');},$clock,$pause);
+    runner_expect($sandboxRun['checked']===0 && !$sandboxCalls && \Lavka\competitors_target($catalogDb,$catalogSeo['id'])['last_attempt']===null, 'Unmapped own URLs never use live HTTP in sandbox or blocked configuration');
     $catalogDb = null;
     echo \Lavka\encode(['runner_init_lock_daily_errors' => 'passed', 'redirect_robots_and_pacing' => 'passed', 'own_catalog_http_isolation' => 'passed', 'network_requests' => 0, 'php' => PHP_VERSION]) . "\n";
 } finally {

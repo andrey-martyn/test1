@@ -76,6 +76,13 @@ with tempfile.TemporaryDirectory() as t:
             for _ in range(10):assert client.post('/api/login',json={'password':'incorrect'}).status_code==401
             assert client.post('/api/login',json={'password':password}).status_code==429
         # Private backup preserves CRM and excludes live sessions.
+        # Applied sandbox plans must survive, including committed WAL pages.
+        sandbox_journal=sqlite3.connect(directory/'sandbox-prices.sqlite3')
+        sandbox_journal.execute('PRAGMA journal_mode=WAL')
+        sandbox_journal.execute('CREATE TABLE sandbox_price_plans(id TEXT PRIMARY KEY,state TEXT)')
+        sandbox_journal.execute("INSERT INTO sandbox_price_plans VALUES('synthetic-plan','applied')")
+        sandbox_journal.commit()
+        (directory/'sandbox.json').write_text(json.dumps({'environment':'sandbox','database':'lavkasp_test'}))
         with tempfile.TemporaryDirectory() as bt:
             subprocess.run(docker+['-v',bt+':/test-backups',PHP_IMAGE,'php','php/bin/backup.php','--data','/test-data','--destination','/test-backups'],capture_output=True,check=True)
             copies=list(Path(bt).iterdir());assert len(copies)==1
@@ -84,6 +91,12 @@ with tempfile.TemporaryDirectory() as t:
                 assert copy.execute('PRAGMA quick_check').fetchone()[0]=='ok'
                 assert copy.execute('SELECT count(*) FROM customer_actions').fetchone()[0]==1
                 assert copy.execute('SELECT count(*) FROM crm_events WHERE voided_at IS NOT NULL').fetchone()[0]==1
+            with sqlite3.connect(copies[0]/'sandbox-prices.sqlite3') as copy:
+                assert copy.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+                assert copy.execute('SELECT state FROM sandbox_price_plans').fetchone()[0]=='applied'
+            assert json.loads((copies[0]/'sandbox.json').read_text())['database']=='lavkasp_test'
+            assert (copies[0]/'sandbox-prices.sqlite3').stat().st_mode & 0o777==0o600
+        sandbox_journal.close()
         with tempfile.TemporaryDirectory() as dt:
             deployment=docker+['-v',dt+':/deployment',PHP_IMAGE,'php','php/bin/deploy.php','--webroot','/deployment/public','--data','/deployment/private','--url','https://analytics.example.invalid']
             subprocess.run(deployment,capture_output=True,check=True)

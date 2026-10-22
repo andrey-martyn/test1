@@ -7,6 +7,7 @@ require_once __DIR__ . '/Analytics.php';
 require_once __DIR__ . '/Auth.php';
 require_once __DIR__ . '/Identity.php';
 require_once __DIR__ . '/Competitors.php';
+require_once __DIR__ . '/SandboxRuntime.php';
 final class HttpError extends \RuntimeException
 {
     public $status;
@@ -193,7 +194,12 @@ function run_app(string $directory, string $publicUrl, string $assets, string $l
                 fail(405, 'Метод не поддерживается');
             }
             header('Content-Type: text/html; charset=utf-8');
-            echo str_replace('__ANALYTICS_BASE__', htmlspecialchars($base, ENT_QUOTES, 'UTF-8'), file_get_contents($assets . ($path === '/login' ? '/login.html' : '/index.html')));
+            $html = str_replace('__ANALYTICS_BASE__', htmlspecialchars($base, ENT_QUOTES, 'UTF-8'), file_get_contents($assets . ($path === '/login' ? '/login.html' : '/index.html')));
+            if ($path === '/') {
+                $environment = analytics_environment_summary($directory);
+                $html = str_replace(['__ENV_MODE__', '__ENV_LABEL__', '__ENV_MESSAGE__'], array_map(function ($value) { return htmlspecialchars($value, ENT_QUOTES, 'UTF-8'); }, [$environment['mode'], $environment['label'], $environment['message']]), $html);
+            }
+            echo $html;
             exit;
         }
         if (str_starts_with($path, '/static/')) {
@@ -232,15 +238,54 @@ function run_app(string $directory, string $publicUrl, string $assets, string $l
             try {
                 if ($path === '/api/competitors') {
                     if ($method !== 'GET') fail(405, 'Метод не поддерживается');
-                    respond(competitors_overview($competitors, $directory));
+                    require_once __DIR__ . '/CompetitorSandboxJobs.php';
+                    $overview = competitors_overview($competitors, $directory);
+                    $overview['sandbox_pricing'] = sandbox_pricing_status($directory);
+                    $overview['sandbox_pricing']['recent_jobs'] = $overview['sandbox_pricing']['enabled'] ? sandbox_price_jobs_recent($directory) : [];
+                    $overview['environment'] = analytics_environment_summary($directory);
+                    if ($overview['environment']['mode'] !== 'read_only') foreach ($overview['sources'] as &$source) {
+                        if ($source['id'] === 'lavka') $source['base_url'] = 'https://test.lavka-speciy.com';
+                    }
+                    unset($source);
+                    respond($overview);
+                }
+                if (str_starts_with($path, '/api/competitors/sandbox/')) {
+                    require_once __DIR__ . '/CompetitorSandboxJobs.php';
+                    try {
+                        if ($path === '/api/competitors/sandbox/status') {
+                            if ($method !== 'GET') fail(405, 'Метод не поддерживается');
+                            $status = sandbox_pricing_status($directory);
+                            $status['recent_jobs'] = $status['enabled'] ? sandbox_price_jobs_recent($directory) : [];
+                            respond($status);
+                        }
+                        if (preg_match('~^/api/competitors/sandbox/jobs/([a-f0-9]{32})$~D', $path, $job)) {
+                            if ($method !== 'GET') fail(405, 'Метод не поддерживается');
+                            respond(sandbox_price_jobs_status($directory, $job[1]));
+                        }
+                        if (!in_array($path, ['/api/competitors/sandbox/plan', '/api/competitors/sandbox/apply', '/api/competitors/sandbox/rollback'], true)) fail(404, 'Страница не найдена');
+                        if ($method !== 'POST') fail(405, 'Метод не поддерживается');
+                        $body = request_json();
+                        if ($path === '/api/competitors/sandbox/plan') {
+                            if (array_diff(array_keys($body), ['selections']) || !is_array($body['selections'] ?? null)) fail(422, 'sandbox_selection_invalid');
+                            respond(sandbox_price_jobs_enqueue($directory, 'plan', $body), 202);
+                        }
+                        if (array_diff(array_keys($body), ['plan_id', 'plan_hash']) || !is_string($body['plan_id'] ?? null) || !is_string($body['plan_hash'] ?? null)) fail(422, 'sandbox_plan_invalid');
+                        respond(sandbox_price_jobs_enqueue($directory,
+                            $path === '/api/competitors/sandbox/apply' ? 'apply' : 'rollback', $body), 202);
+                    } catch (SandboxPricingError $error) {
+                        $code = preg_match('/^[a-z][a-z0-9_]{1,70}$/D', $error->errorCode) ? $error->errorCode : 'sandbox_operation_failed';
+                        $status = preg_match('/(?:conflict|expired|already_running|in_progress|locked)/', $code) ? 409 : (preg_match('/(?:invalid|selection|base_price|unsupported|missing)/', $code) ? 422 : 403);
+                        respond(['detail' => $code, 'error_code' => $code], $status);
+                    } catch (HttpError $error) { throw $error; }
+                    catch (\Throwable $ignored) { respond(['detail' => 'sandbox_operation_failed', 'error_code' => 'sandbox_operation_failed'], 503); }
                 }
                 if ($path === '/api/competitors/targets') {
                     if ($method !== 'POST') fail(405, 'Метод не поддерживается');
-                    respond(competitors_save_target($competitors, request_json()), 201);
+                    respond(competitors_save_target($competitors, request_json(), null, analytics_environment_summary($directory)['mode'] === 'sandbox'), 201);
                 }
                 if (preg_match('~^/api/competitors/targets/([1-9][0-9]{0,9})$~D', $path, $m)) {
                     if ($method === 'GET') respond(competitors_history($competitors, (int) $m[1]));
-                    if ($method === 'PUT') respond(competitors_save_target($competitors, request_json(), (int) $m[1]));
+                    if ($method === 'PUT') respond(competitors_save_target($competitors, request_json(), (int) $m[1], analytics_environment_summary($directory)['mode'] === 'sandbox'));
                     fail(405, 'Метод не поддерживается');
                 }
                 if ($path === '/api/competitors/queue') {

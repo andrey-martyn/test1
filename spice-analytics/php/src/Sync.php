@@ -250,10 +250,17 @@ function sync_run(string $directory, string $configFile): array
     try {
         save_sync_status($db, ['state' => 'running', 'checked_at' => utc_now(), 'error' => null]);
         $c = source_config($configFile);
+        require_once __DIR__ . '/SandboxRuntime.php';
+        try { sandbox_assert_source($directory, $c, $configFile); }
+        catch (\Throwable $ignored) { throw new SyncError('Песочница: источник должен указывать только на lavkasp_test с отдельным пользователем'); }
         $source = source_connect($c);
         [$rows, $consistency] = stable_snapshot($source, $c);
         $source = null;
-        return apply_snapshot($db, $rows, $consistency);
+        $state = apply_snapshot($db, $rows, $consistency);
+        $state['source_database'] = $c['database'];
+        $state['environment'] = file_exists($directory . '/sandbox.json') ? 'sandbox' : 'read_only';
+        save_sync_status($db, $state);
+        return $state;
     } catch (\Throwable $e) {
         $message = $e instanceof SyncError ? $e->getMessage() : 'Ошибка подключения или чтения БД. Проверьте права, TLS и закрытые настройки.';
         save_sync_status($db, ['state' => 'error', 'checked_at' => utc_now(), 'error' => $message]);

@@ -52,6 +52,10 @@ function lavka_competitors_run(array $args, ?callable $transport = null, ?callab
         $ownCatalog = \Lavka\competitors_own_catalog_sync_due($directory);
         $ownCatalogActive = !empty($ownCatalog['last_success']);
         $ownCatalogTargetIds = \Lavka\competitors_catalog_target_ids($ownCatalog);
+        // Sandbox own prices never fall back to live storefront requests.
+        if (file_exists($directory . '/sandbox.json') || is_link($directory . '/sandbox.json')) {
+            $ownCatalogTargetIds = array_map('intval', $db->query("SELECT id FROM competitor_targets WHERE source_id='lavka' AND kind='product'")->fetchAll(PDO::FETCH_COLUMN));
+        }
         $summary['own_catalog'] = ['state' => $ownCatalog['state'], 'active' => $ownCatalogActive];
         $deadline = $started + $seconds;
         $cacheDirectory = $directory . '/competitor-http-cache';

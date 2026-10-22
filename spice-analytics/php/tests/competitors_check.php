@@ -193,6 +193,9 @@ try {
     }
     $own = \Lavka\competitors_validate_url('https://lavka-speciy.com/index.php?route=product/product&product_id=990', 'lavka');
     cck(strpos($own, 'product_id=990') !== false && strpos($own, 'route=product%2Fproduct') !== false, 'Public ocStore product query supported');
+    rejects(function () { \Lavka\competitors_validate_url('https://test.lavka-speciy.com/index.php?route=product/product&product_id=990', 'lavka'); }, 'Test storefront URL requires explicit sandbox context');
+    cck(strpos(\Lavka\competitors_validate_url('https://test.lavka-speciy.com/index.php?route=product/product&product_id=990', 'lavka', true), 'https://test.lavka-speciy.com/') === 0, 'Sandbox accepts test own product URLs');
+    rejects(function () { \Lavka\competitors_validate_url('https://test.lavka-speciy.com/product', 'deluxe', true); }, 'Sandbox flag does not expand competitor host access');
     rejects(function () { \Lavka\competitors_validate_url('https://lavka-speciy.com/index.php?route=product/product&product_id=abc', 'lavka'); }, 'Own product id must be numeric');
     $body = ['source_id' => 'deluxe', 'kind' => 'product', 'url' => 'https://deluxe.com.ua/fixture-watch.html', 'label' => 'Синтетический товар', 'pack_label' => '100 г / 1 кг'];
     $target = \Lavka\competitors_save_target($db, $body); $id = $target['id'];
