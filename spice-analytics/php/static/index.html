@@ -1,12 +1,12 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="analytics-base" content="__ANALYTICS_BASE__"><title>Лавка · Аналитика</title><link rel="stylesheet" href="__ANALYTICS_BASE__/static/style.css"><link rel="stylesheet" href="__ANALYTICS_BASE__/static/marketing.css"><link rel="stylesheet" href="__ANALYTICS_BASE__/static/history.css"><link rel="stylesheet" href="__ANALYTICS_BASE__/static/crm.css"><link rel="stylesheet" href="__ANALYTICS_BASE__/static/manual.css"><link rel="stylesheet" href="__ANALYTICS_BASE__/static/competitors.css?v=20261023-matrix"><link rel="stylesheet" href="__ANALYTICS_BASE__/static/competitor-terms.css?v=20261023-matrix"><link rel="stylesheet" href="__ANALYTICS_BASE__/static/environment.css?v=20261022-sandbox"><script defer src="__ANALYTICS_BASE__/static/manual-content.js"></script><script defer src="__ANALYTICS_BASE__/static/manual.js"></script><script defer src="__ANALYTICS_BASE__/static/help.js"></script><script defer src="__ANALYTICS_BASE__/static/history.js"></script><script defer src="__ANALYTICS_BASE__/static/crm.js"></script><script defer src="__ANALYTICS_BASE__/static/marketing.js"></script><script defer src="__ANALYTICS_BASE__/static/competitors.js?v=20261023-matrix"></script><script defer src="__ANALYTICS_BASE__/static/competitor-terms.js?v=20261023-matrix"></script><script defer src="__ANALYTICS_BASE__/static/app.js?v=20261022-sandbox"></script></head>
-<body data-environment="__ENV_MODE__">
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="analytics-base" content="__ANALYTICS_BASE__"><title>Лавка · Аналитика</title><link rel="stylesheet" href="__ANALYTICS_BASE__/static/style.css"><link rel="stylesheet" href="__ANALYTICS_BASE__/static/marketing.css"><link rel="stylesheet" href="__ANALYTICS_BASE__/static/history.css"><link rel="stylesheet" href="__ANALYTICS_BASE__/static/crm.css"><link rel="stylesheet" href="__ANALYTICS_BASE__/static/manual.css"><link rel="stylesheet" href="__ANALYTICS_BASE__/static/competitors.css?v=20261023-matrix"><link rel="stylesheet" href="__ANALYTICS_BASE__/static/competitor-terms.css?v=20261023-matrix"><link rel="stylesheet" href="__ANALYTICS_BASE__/static/environment.css?v=20261022-sandbox"><link rel="stylesheet" href="__ANALYTICS_BASE__/static/dashboard.css?v=20261023-pilot"><script defer src="__ANALYTICS_BASE__/static/manual-content.js"></script><script defer src="__ANALYTICS_BASE__/static/manual.js"></script><script defer src="__ANALYTICS_BASE__/static/help.js"></script><script defer src="__ANALYTICS_BASE__/static/history.js"></script><script defer src="__ANALYTICS_BASE__/static/crm.js"></script><script defer src="__ANALYTICS_BASE__/static/marketing.js"></script><script defer src="__ANALYTICS_BASE__/static/competitors.js?v=20261023-matrix"></script><script defer src="__ANALYTICS_BASE__/static/competitor-terms.js?v=20261023-matrix"></script><script defer src="__ANALYTICS_BASE__/static/dashboard.js?v=20261023-pilot"></script><script defer src="__ANALYTICS_BASE__/static/app.js?v=20261023-pilot"></script></head>
+<body class="dashboard-mode" data-environment="__ENV_MODE__">
 <aside class="sidebar">
   <a class="brand" href="__ANALYTICS_BASE__/" aria-label="Лавка аналитика"><span class="brand-mark">л.</span><span>Лавка<span class="brand-sub">аналитика магазина</span></span></a>
   <div class="workspace-label">РАБОЧЕЕ ПРОСТРАНСТВО</div>
   <nav id="navigation">
-    <button data-view="overview"><span class="nav-icon">◫</span>Обзор</button>
-    <button data-view="customers" class="active"><span class="nav-icon">♙</span>Покупатели</button>
+    <button data-view="overview" class="active"><span class="nav-icon">◫</span>Сегодня</button>
+    <button data-view="customers"><span class="nav-icon">♙</span>Покупатели</button>
     <button data-view="actions"><span class="nav-icon">☷</span>Очередь контактов</button>
     <button data-view="retention"><span class="nav-icon">↻</span>Удержание и когорты</button>
     <button data-view="segments"><span class="nav-icon">◩</span>Сегменты и RFM</button>
@@ -24,12 +24,12 @@
 </aside>
 <main>
   <div id="environment-banner" class="environment-banner" data-mode="__ENV_MODE__" role="status"><strong>__ENV_LABEL__</strong><span>__ENV_MESSAGE__</span></div>
-  <header><div><div class="eyebrow">ЛАВКА СПЕЦИЙ / АНАЛИТИКА</div><h1 id="page-title">Покупатели</h1><p id="page-description">История покупок и подходящий момент для нового заказа.</p></div><button id="privacy" class="button secondary" aria-pressed="true">◉ Имена скрыты</button></header>
+  <header><div><div class="eyebrow">ЛАВКА СПЕЦИЙ / АНАЛИТИКА</div><h1 id="page-title">Сегодня в лавке</h1><p id="page-description">Результаты месяца, риски и возможности.</p></div><button id="privacy" class="button secondary" aria-pressed="true">◉ Имена скрыты</button></header>
   <div class="report-controls"><label>Период<span id="period-help"></span><select id="year" aria-label="Период отчёта"></select></label><label>Дата проверки<span id="asof-help"></span><input id="as-of" type="date" aria-label="Дата проверки отчёта"></label><label>Валюта<span id="currency-help"></span><select id="currency" aria-label="Валюта"></select></label><div class="data-stamp"><span class="status-dot"></span><span id="data-stamp">Загружаем данные…</span></div></div>
   <div id="notice" class="notice hidden"></div>
   <section id="metrics" class="metrics" aria-label="Основные показатели"></section>
   <section id="yearly-summary" aria-label="История магазина по годам"></section>
-  <section id="content" aria-live="polite"><div class="loading">Загружаем историю заказов…</div></section>
+  <section id="content" aria-live="polite"><div class="loading">Загружаем сводку месяца…</div></section>
   <footer>Суммы заказов ≠ подтверждённые оплаты <span>Часовой пояс отчёта: Europe/Kyiv · <span id="footer-range"></span></span></footer>
 </main>
 <dialog id="drawer"><div class="drawer-heading"><span class="eyebrow" id="drawer-label">ПОКУПАТЕЛЬ</span><button class="icon-button" data-action="close-dialog" aria-label="Закрыть">✕</button></div><div id="drawer-content"></div></dialog>

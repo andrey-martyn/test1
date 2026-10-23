@@ -107,6 +107,7 @@ with tempfile.TemporaryDirectory() as temporary:
             page.goto(base + "/")
             page.fill("#password", password)
             page.click("button[type=submit]")
+            page.click("[data-view=customers]")
             page.wait_for_selector(".customer-table")
             page.on("request", lambda request: mutations.append(request.method + " " + request.url) if request.method in ["POST", "PUT", "PATCH", "DELETE"] else None)
             page.click("[data-view=competitors]")

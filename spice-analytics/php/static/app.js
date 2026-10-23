@@ -9,19 +9,20 @@ const appUrl=path=>{
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const num=(n,d=0)=>Number(n||0).toLocaleString('ru-RU',{maximumFractionDigits:d});
 const fmtDate=d=>d?new Date(d.slice(0,10)+'T12:00:00').toLocaleDateString('ru-RU'):'—';
-const state={view:'customers',privacy:true,page:1,search:'',reminder:'all',periodOnly:true,sort:'amount',productMode:'variants',productSort:'amount',mapMode:'ukraine',geoMetric:'count',meta:null,report:null,customer:null};
+const state={view:'overview',privacy:true,page:1,search:'',reminder:'all',periodOnly:true,sort:'amount',productMode:'variants',productSort:'amount',mapMode:'ukraine',geoMetric:'count',meta:null,report:null,customer:null};
 const PAGE=35;
 Object.assign(state,{ordersMin:0,ordersMax:'',ordersBasis:'lifetime_count',segment:'all',ids:null,eligibleOnly:false,actionMin:2,geoSource:'mixed',cohortCount:18,historyOpen:null,seasonMetric:'count',seasonYears:false,duplicateKind:'all',duplicateSort:'match',duplicateDir:1,duplicateSelected:new Set(),mergeBusy:false,crmScope:'todo',crmTier:'all',crmSort:'value',crmDuplicates:'all',duplicateCustomer:null,manualTab:'start',manualSegment:'all',manualSearch:''});
-const titles={manual:['Практика возврата и удержания','Понятные сценарии для Тани: от первого разговора до следующего заказа.'],overview:['Обзор магазина','Покупки, товары и география — вся картина в одном месте.'],customers:['Покупатели','История покупок и подходящий момент для нового заказа.'],products:['Товары и фасовки','Что покупают чаще: упаковки, килограммы и суммы заказов.'],geography:['География заказов','Где находятся ваши покупатели — по адресам из заказов.'],duplicates:['Объединение покупателей','Проверьте совпадения контактов и свяжите историю покупок.'],settings:['Настройки аналитики','Какие заказы учитывать и когда напоминать о следующей покупке.']};
-const cash=v=>num(v,2)+' '+esc(state.report?.currency||'UAH');
+const titles={manual:['Практика возврата и удержания','Понятные сценарии для Тани: от первого разговора до следующего заказа.'],overview:['Сегодня в лавке','Результаты месяца, риски и возможности.'],'overview-report':['Обзор за период','Покупки, товары и география — вся картина в одном месте.'],customers:['Покупатели','История покупок и подходящий момент для нового заказа.'],products:['Товары и фасовки','Что покупают чаще: упаковки, килограммы и суммы заказов.'],geography:['География заказов','Где находятся ваши покупатели — по адресам из заказов.'],duplicates:['Объединение покупателей','Проверьте совпадения контактов и свяжите историю покупок.'],settings:['Настройки аналитики','Какие заказы учитывать и когда напоминать о следующей покупке.']};
+const cash=v=>num(v,2)+' '+esc(state.report?.currency||(state.view==='overview'?dashboardState.data?.currency:null)||'UAH');
 Object.assign(titles,{retention:['Удержание и когорты','От первой покупки ко второй: где теряются и возвращаются покупатели.'],segments:['Сегменты и RFM','Давность, частота и сумма покупок — кому какое предложение подходит.'],actions:['Очередь контактов','Приоритетные покупатели, причины контакта и история работы.'],opportunities:['Повторные продажи','Пополнение запасов, товарные связки и первые покупки.'],seasonality:['Сезонность','Ритм заказов по месяцам, дням недели и времени суток.'],ga4:['GA4 и каналы','Трафик, действия на сайте и сопоставление покупок с заказами.']});
 const name=c=>state.privacy?'Покупатель '+c.id:esc(c.name);
 const contact=c=>state.privacy?'Контакты скрыты':esc(c.email||c.phone||'Без контактов');
 const toast=text=>{const el=$('#toast');el.textContent=text;el.classList.remove('hidden');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.add('hidden'),4500);};
 async function api(path,options={}){const r=await fetch(appUrl(path),options);if(r.status===401){location.href=appUrl('/login');throw Error('Нужен вход');}const data=await r.json();if(!r.ok){const error=Error(typeof data.detail==='string'?data.detail:'Не удалось выполнить запрос');error.code=data.error_code||data.detail;error.error_code=error.code;throw error;}return data;}
-const query=()=>new URLSearchParams({year:$('#year').value,as_of:$('#as-of').value,currency:$('#currency').value});
+const query=()=>{const dashboard=state.view==='overview'&&dashboardState.data;return new URLSearchParams({year:dashboard?0:$('#year').value,as_of:dashboard?dashboard.today:$('#as-of').value,currency:dashboard?dashboard.currency:$('#currency').value});};
 let loadSequence=0,ordersLoading=false,initLoading=false;
 async function load(){
+  if(state.view==='overview'){await dashboardLoad();return;}
   const sequence=++loadSequence;
   ordersLoading=true;
   if(state.view!=='competitors')$('#content').innerHTML='<div class="loading">Считаем историю покупок…</div>';
@@ -35,7 +36,7 @@ async function init(){
     state.meta=await api('/api/meta');const m=state.meta;
     state.privacy=!m.names_visible;
     $('#year').innerHTML=yearOptions(m.years,m.years[0]);
-    $('#currency').innerHTML=m.currencies.map(c=>`<option>${esc(c)}</option>`).join('');
+    $('#currency').innerHTML=m.currencies.map(c=>`<option>${esc(c)}</option>`).join('');if(m.currencies.includes('UAH'))$('#currency').value='UAH';
     $('#as-of').value=m.today;
     updateSourceStamp(m);
     $('#footer-range').textContent=fmtDate(m.date_min)+' — '+fmtDate(m.date_max);
@@ -53,6 +54,7 @@ async function refreshSource(force=false){
   try{
     const m=await api('/api/meta'),previous=state.meta;state.meta=m;updateSourceStamp(m);
     if($('#as-of').value===previous.today)$('#as-of').value=m.today;
+    if(state.view==='overview'){await dashboardLoad();return;}
     if(force||m.imported_at!==previous.imported_at||m.today!==previous.today){
       const year=$('#year').value;$('#year').innerHTML=yearOptions(m.years,year);
       const currency=$('#currency').value;$('#currency').innerHTML=m.currencies.map(c=>`<option>${esc(c)}</option>`).join('');if(m.currencies.includes(currency))$('#currency').value=currency;
@@ -63,11 +65,14 @@ async function refreshSource(force=false){
 function sourceSettings(m){const s=m.sync||{};return `<section class="panel">${panelHeading('Источник и обновление',s.configured?'Копия магазина обновляется по расписанию cron.':'Пока используется загруженная SQL-копия.')}<div class="settings-grid"><div class="settings-note"><strong>${num(m.counts.oc_order)} заказов в закрытой копии</strong><br>История: ${fmtDate(m.date_min)} — ${fmtDate(m.date_max)}.<br>${s.configured?'Последняя успешная проверка: '+(s.last_success?esc(new Date(s.last_success).toLocaleString('ru-RU')):'ещё не завершена')+'.<br>Состояние: '+esc({ok:'актуально',running:'идёт проверка',error:'ошибка; сохранены предыдущие данные'}[s.state]||'ожидание')+(s.error?'<br>'+esc(s.error):''):'Полную выгрузку можно импортировать через import_dump.py; отчёты подхватят её автоматически.'}<br><button class="button" data-action="refresh-source">Обновить отчёт</button></div><div class="settings-note"><strong>Источник заказов — только чтение</strong><br>Кабинет читает шесть таблиц заказов. Изменение цен доступно отдельно только в проверенной песочнице lavkasp_test. CRM-отметки, правила и объединения сохраняются в отдельной базе.<br>Для MyISAM сверяются два чтения; это проверка стабильности, а не транзакционный снимок. IP-география требует локальную GeoIP-базу.</div></div></section>`;}
 function metric(label,value,foot,action=''){return `<article class="metric"><div class="metric-label">${label}${infoHelp(label)}<span>↗</span></div><div class="metric-value">${value}</div><div class="metric-foot">${foot}</div>${action?`<button class="metric-link" data-action="${action}" aria-label="${label}"></button>`:''}</article>`;}
 function render(){
+  document.body.classList.toggle('dashboard-mode',state.view==='overview');
   document.body.classList.toggle('competitors-mode',state.view==='competitors');
   document.body.classList.toggle('manual-mode',state.view==='manual');$('#year').disabled=state.view==='manual';
   $('#page-title').textContent=state.view==='competitors'?'Мониторинг конкурентов':titles[state.view][0];$('#page-description').textContent=state.view==='competitors'?'Одинаковые фасовки, цены магазинов и черновик ценового решения.':titles[state.view][1];
   document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===state.view));
   if(state.view==='competitors'){hideHelp();$('#content').innerHTML=competitorsView();return;}
+  $('#privacy').textContent=state.privacy?'◉ Имена скрыты':'◎ Имена видны';$('#privacy').setAttribute('aria-pressed',state.privacy);
+  if(state.view==='overview'){hideHelp();$('#content').innerHTML=dashboardOverviewView();return;}
   if(!state.report){$('#content').innerHTML='<div class="loading">Загружаем историю заказов…</div>';return;}
   const r=state.report,m=r.metrics;
   hideHelp();$('#duplicate-badge').textContent=r.duplicate_pairs.length;
@@ -78,7 +83,7 @@ function render(){
   $('#privacy').textContent=state.privacy?'◉ Имена скрыты':'◎ Имена видны';$('#privacy').setAttribute('aria-pressed',state.privacy);
   const content=$('#content');
   if(state.view==='customers')content.innerHTML=customersView();
-  if(state.view==='overview')content.innerHTML=overviewView();
+  if(state.view==='overview-report')content.innerHTML=overviewView();
   if(state.view==='products')content.innerHTML=productsView();
   if(state.view==='geography'){content.innerHTML=geographyView();drawMap();}
   if(state.view==='duplicates')content.innerHTML=duplicateTableView();
@@ -177,7 +182,7 @@ async function openCustomer(id){
   }catch(e){$('#drawer-content').innerHTML='<div class="notice">'+esc(e.message)+'</div>';}
 }
 async function openWeek(ids){state.customer=null;openDrawer('ЗАКАЗЫ ЗА НЕДЕЛЮ');try{const orders=await Promise.all(ids.map(id=>api('/api/orders/'+id)));$('#drawer-content').innerHTML='<h2 class="drawer-name">Заказы за неделю</h2><p class="muted">'+orders.length+' заказов · '+cash(orders.reduce((a,o)=>a+o.amount,0))+'</p>'+orders.map(o=>orderHTML(o,true)).join('');}catch(e){toast(e.message);}}
-function navigate(view){if(state.view==='competitors')competitorCaptureDraft();state.historyOpen=null;state.duplicateCustomer=null;state.view=view;state.page=1;state.search='';render();if(view==='competitors'&&!competitorState.data&&!competitorState.loading)competitorsLoad();if(view!=='competitors'&&!state.report&&!ordersLoading&&!initLoading)init();window.scrollTo({top:0,behavior:'smooth'});}
+function navigate(view){if(state.view==='competitors')competitorCaptureDraft();state.historyOpen=null;state.duplicateCustomer=null;state.view=view;state.page=1;state.search='';render();if(view==='competitors'&&!competitorState.data&&!competitorState.loading)competitorsLoad();if(view==='overview'&&!dashboardState.loading)dashboardLoad();if(!['competitors','overview'].includes(view)&&!state.report&&state.meta&&!ordersLoading)load();window.scrollTo({top:0,behavior:'smooth'});}
 function exportCSV(){
   const rows=customerRows(),fields=['Покупатель','Город','Заказов за период','Сумма за период','Заказов всего','Сумма всего','Последний заказ','Дней с заказа','Интервал','Ожидаемая дата','Сегмент','RFM','Приоритет','Контакт разрешён правилами','Email','Телефон'];
   if(!state.report.year)fields.push(...state.report.calendar.flatMap(col=>['Заказы '+col.label,'Сумма '+col.label]));

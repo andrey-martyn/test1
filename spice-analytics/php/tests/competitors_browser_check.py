@@ -142,6 +142,7 @@ with tempfile.TemporaryDirectory() as temporary:
             page.goto(base + "/")
             page.fill("#password", password)
             page.click("button[type=submit]")
+            page.click("[data-view=customers]")
             page.wait_for_selector(".customer-table")
             order_amount = page.evaluate("state.report.metrics.amount")
             page.click("[data-view=competitors]")

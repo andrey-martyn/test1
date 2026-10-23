@@ -34,7 +34,7 @@ with tempfile.TemporaryDirectory() as tmp:
   with sync_playwright() as p:
    browser=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox']);page=browser.new_page(viewport={'width':1536,'height':1000});errors=[];outside=[];mutations=[]
    page.on('pageerror',lambda e:errors.append(str(e)));page.on('request',lambda r:outside.append(r.url) if not r.url.startswith(base+'/') else None)
-   page.goto(base+'/');page.fill('#password',password);page.click('button[type=submit]');page.wait_for_selector('.customer-table')
+   page.goto(base+'/');page.fill('#password',password);page.click('button[type=submit]');page.click('[data-view=customers]');page.wait_for_selector('.customer-table')
    page.fill('#as-of','2026-10-20');page.dispatch_event('#as-of','change');page.wait_for_function('() => state.report.as_of==="2026-10-20"')
    assert page.evaluate('state.report.marketing.segments.every(s=>s.count===1)')
    page.on('request',lambda r:mutations.append(r.url) if r.method not in ['GET','HEAD'] else None)

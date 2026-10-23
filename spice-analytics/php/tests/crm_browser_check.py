@@ -34,7 +34,7 @@ with tempfile.TemporaryDirectory() as tmp:
    context=browser.new_context(viewport={'width':1536,'height':1000},permissions=['clipboard-read','clipboard-write'])
    page=context.new_page();errors=[];external=[]
    page.on('pageerror',lambda e:errors.append(str(e)));page.on('request',lambda r:external.append(r.url) if not r.url.startswith(origin+'/analytics/') else None)
-   page.goto(base+'/');page.fill('#password',password);page.click('button[type=submit]');page.wait_for_selector('.customer-table')
+   page.goto(base+'/');page.fill('#password',password);page.click('button[type=submit]');page.click('[data-view=customers]');page.wait_for_selector('.customer-table')
    page.fill('#as-of','2026-10-20');page.dispatch_event('#as-of','change');page.wait_for_function('() => state.report.as_of==="2026-10-20"')
    page.click('#privacy');page.click('[data-view=actions]');page.select_option('#crm-scope','all')
    assert page.locator('.crm-queue tbody tr').count()==3

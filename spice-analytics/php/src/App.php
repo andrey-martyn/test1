@@ -314,6 +314,16 @@ function run_app(string $directory, string $publicUrl, string $assets, string $l
             [$year, $asof, $currency] = report_params();
             respond(cached_report($db, $directory, $year, $asof, $currency));
         }
+        if ($path === '/api/dashboard') {
+            if ($method !== 'GET') fail(405, 'Метод не поддерживается');
+            require_once __DIR__ . '/Dashboard.php';
+            $currency = $_GET['currency'] ?? 'UAH';
+            if (!is_string($currency) || !preg_match('/^[A-Z]{3}$/D', $currency)) fail(422, 'Неверная валюта');
+            $result = cached_dashboard($db, $directory, date('Y-m-d'), $currency);
+            $result['sync'] = sync_state($db);
+            $result['server_now'] = utc_now();
+            respond($result);
+        }
         if (preg_match('~^/api/crm/customers/(\d+)$~', $path, $m) && $method === 'GET') {
             [, $asof, $currency] = report_params();
             [$s, $report, $customer, $events, $orders] = crm_context($db, $directory, $m[1], $asof, $currency);

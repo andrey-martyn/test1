@@ -135,6 +135,7 @@ with tempfile.TemporaryDirectory() as temporary:
             page.goto(base + "/")
             page.fill("#password", password)
             page.click("button[type=submit]")
+            page.click("[data-view=customers]")
             page.wait_for_selector(".customer-table")
             real_status = page.request.get(base + "/index.php?route=/api/competitors/sandbox/status")
             assert real_status.status == 200
@@ -437,6 +438,7 @@ with tempfile.TemporaryDirectory() as temporary:
             page.wait_for_function("() => competitorState.sandboxJob?.paused === 'left'")
             assert len(requests) == recovering_posts
             page.reload()
+            page.click("[data-view=customers]")
             page.wait_for_selector(".customer-table")
             page.click("[data-view=competitors]")
             page.wait_for_selector(".competitor-matrix")

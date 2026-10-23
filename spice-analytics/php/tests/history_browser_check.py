@@ -37,7 +37,7 @@ with tempfile.TemporaryDirectory() as temporary:
             page=browser.new_page(viewport={'width':1536,'height':1000},has_touch=True);errors=[];misplaced=[]
             page.on('pageerror',lambda error:errors.append(str(error)))
             page.on('request',lambda req:misplaced.append(req.url) if req.url.startswith(origin+'/') and not req.url.startswith(base+'/') else None)
-            page.goto(base+'/');page.fill('#password',password);page.click('button[type=submit]');page.wait_for_selector('.customer-table')
+            page.goto(base+'/');page.fill('#password',password);page.click('button[type=submit]');page.click('[data-view=customers]');page.wait_for_selector('.customer-table')
             page.select_option('#year','0');page.wait_for_function('() => state.report.year===0')
             assert page.locator('.customer-years').count()==1
             assert page.evaluate('state.report.metrics.amount')==500
