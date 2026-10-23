@@ -57,6 +57,8 @@ function lavka_competitors_run(array $args, ?callable $transport = null, ?callab
             $ownCatalogTargetIds = array_map('intval', $db->query("SELECT id FROM competitor_targets WHERE source_id='lavka' AND kind='product'")->fetchAll(PDO::FETCH_COLUMN));
         }
         $summary['own_catalog'] = ['state' => $ownCatalog['state'], 'active' => $ownCatalogActive];
+        $summary['limit']=$limit;$summary['budget_seconds']=$seconds;
+        $discoveryOn=(bool)$db->query('SELECT enabled FROM competitor_discovery_settings WHERE id=1')->fetchColumn();
         $deadline = $started + $seconds;
         $cacheDirectory = $directory . '/competitor-http-cache';
         \Lavka\private_dir($cacheDirectory);
@@ -79,12 +81,30 @@ function lavka_competitors_run(array $args, ?callable $transport = null, ?callab
             \Lavka\atomic_write($path, \Lavka\encode(['last_request_at' => $clock(), 'crawl_delay' => $delay]));
         };
         $robotsPace = function (string $url) use ($pace): void { $pace($url); };
-        $guard = function (string $url) use ($directory, $transport, $clock, $pace, $robotsPace): void {
+        $guard = function (string $url) use ($directory, $transport, $clock, $pace, $robotsPace, $db, $discoveryOn): void {
             $policy = \Lavka\competitors_robots_policy($url, $directory, $transport, (int)$clock(), $robotsPace);
+            if($discoveryOn) {foreach(\Lavka\competitors_sources() as $source)if(preg_replace('/^www\./','',parse_url($source['base_url'],PHP_URL_HOST))===preg_replace('/^www\./','',parse_url($url,PHP_URL_HOST)))foreach($policy['sitemaps']??[] as $sitemap)\Lavka\competitors_scan_enqueue($db,$source['id'],$sitemap,'sitemap');}
             if (!$policy['allowed']) throw new \Lavka\CompetitorHttpError('robots_disallowed');
             $pace($url, (float)$policy['crawl_delay']);
         };
 
+        if($discoveryOn && $deadline-$clock()>=27) {
+            $scan=$db->query("SELECT p.* FROM competitor_scan_pages p WHERE p.next_check_at<='".$stamp()."' ORDER BY (SELECT COALESCE(MAX(q.checked_at),'') FROM competitor_scan_pages q WHERE q.source_id=p.source_id),p.depth,p.id LIMIT 1")->fetch();
+            if($scan) {
+                $summary['discovery']=['checked'=>0,'links'=>0,'pages'=>0,'failed'=>0];
+                try {
+                    $response=\Lavka\competitors_http_fetch($scan['url'],$transport,$guard,$scan['kind']==='sitemap');
+                    $found=\Lavka\competitors_scan_parse($db,$scan,$response['body'],$response['url']);
+                    $db->prepare("UPDATE competitor_scan_pages SET checked_at=?,next_check_at=?,state='ok',error_code=NULL,errors=0 WHERE id=?")->execute([$stamp(),gmdate('Y-m-d\TH:i:s\Z',(int)$clock()+604800),$scan['id']]);
+                    $summary['discovery']=['checked'=>1,'failed'=>0]+$found;
+                }catch(LavkaCompetitorDeferred $deferred){$summary['discovery']['deferred']=1;}
+                catch(\Throwable $error){$code=$error instanceof \Lavka\CompetitorHttpError?$error->errorCode:($error instanceof \Lavka\CompetitorParseError?$error->getMessage():'scan_error');if(!preg_match('/^[a-z_]{1,60}$/D',$code))$code='scan_error';
+                    $db->prepare("UPDATE competitor_scan_pages SET checked_at=?,next_check_at=?,state='error',error_code=?,errors=errors+1 WHERE id=?")->execute([$stamp(),gmdate('Y-m-d\TH:i:s\Z',(int)$clock()+min(86400,3600*(1<<(min(4,(int)$scan['errors']))))),$code,$scan['id']]);
+                    $summary['discovery']['checked']=1;$summary['discovery']['failed']=1;
+                }
+            }
+            $summary['matching']=\Lavka\competitors_discovery_match($db,true);
+        }
         $targets = \Lavka\competitors_due($db, $limit, $ownCatalogTargetIds);
         foreach ($targets as $position => $target) {
             // A fresh robots check and product each have their own 12s total
@@ -97,9 +117,10 @@ function lavka_competitors_run(array $args, ?callable $transport = null, ?callab
                 $observation = \Lavka\competitors_parse($target, $response['body'], $response['url']);
                 \Lavka\competitors_record_attempt($db, (int)$target['id'], $observation, null, $stamp(), $status);
                 $summary['succeeded']++;
+                if($discoveryOn && $target['source_id']!=='lavka' && $target['kind']==='product')\Lavka\competitors_index_link($db,$target['source_id'],$target['url'],$observation['title'],'page');
             } catch (LavkaCompetitorDeferred $error) {
-                $summary['deferred'] += count($targets) - $position;
-                break;
+                $summary['deferred']++;
+                continue;
             } catch (\Lavka\CompetitorHttpError $error) {
                 \Lavka\competitors_record_attempt($db, (int)$target['id'], null, $error->errorCode, $stamp(), $error->httpStatus);
                 $summary['failed']++;
@@ -111,7 +132,8 @@ function lavka_competitors_run(array $args, ?callable $transport = null, ?callab
             }
             $summary['checked']++;
         }
-        $summary['state'] = $summary['failed'] ? ($summary['succeeded'] ? 'partial' : 'error') : 'ok';
+        $failures=$summary['failed']+($summary['discovery']['failed']??0);$successes=$summary['succeeded']+($summary['discovery']['checked']??0)-($summary['discovery']['failed']??0);
+        $summary['state'] = $failures ? ($successes ? 'partial' : 'error') : 'ok';
         $summary['finished_at'] = $stamp();
         $summary['seconds'] = round($clock() - $started, 3);
         $summary['peak_mb'] = round(memory_get_peak_usage(true) / 1048576, 1);

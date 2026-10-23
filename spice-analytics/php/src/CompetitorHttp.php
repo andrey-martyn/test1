@@ -205,7 +205,7 @@ function competitors_redirect_url(string $base, string $location): string
 }
 
 /** Injected transports exist only for deterministic tests; no environment bypass. */
-function competitors_http_fetch(string $url, ?callable $transport = null, ?callable $beforeRequest = null): array
+function competitors_http_fetch(string $url, ?callable $transport = null, ?callable $beforeRequest = null, bool $allowGzip = false): array
 {
     $deadline = microtime(true) + 12;
     $sourceHost = preg_replace('/^www\./', '', competitors_http_url($url)['host']);
@@ -239,7 +239,7 @@ function competitors_http_fetch(string $url, ?callable $transport = null, ?calla
         if ($status >= 500) throw new CompetitorHttpError('upstream_error', $status);
         if ($status < 200 || $status >= 300) throw new CompetitorHttpError('http_error', $status);
         $type = strtolower(trim(explode(';', (string)($headers['content-type'] ?? $response['content_type'] ?? ''))[0]));
-        if ($type !== '' && !in_array($type, ['text/html', 'application/xhtml+xml', 'text/plain', 'text/xml', 'application/xml', 'application/json'], true)) {
+        if ($type !== '' && !in_array($type, array_merge(['text/html', 'application/xhtml+xml', 'text/plain', 'text/xml', 'application/xml', 'application/json'], $allowGzip?['application/gzip','application/x-gzip','application/octet-stream']:[]), true)) {
             throw new CompetitorHttpError('unsupported_content', $status);
         }
         // Review/contact widgets can legitimately include reCAPTCHA on a product.
@@ -353,5 +353,6 @@ function competitors_robots_policy(string $url, string $directory, ?callable $tr
     }
     $policy = competitors_robots_parse((string)($cache['body'] ?? ''), $url);
     $policy['fetched_network'] = $fetched;
+    preg_match_all('~^Sitemap:\s*(https://\S+)~im',(string)($cache['body']??''),$maps);$policy['sitemaps']=array_slice($maps[1],0,20);
     return $policy;
 }

@@ -37,7 +37,7 @@ function competitors_own_catalog_watch(string $directory): array
     if (!is_file($path) || is_link($path)) return [];
     $db=new \SQLite3($path,SQLITE3_OPEN_READONLY); $db->enableExceptions(true);
     try {
-        $result=$db->query("SELECT id,url,label,pack_label FROM competitor_targets WHERE enabled=1 AND source_id='lavka' AND kind='product' ORDER BY id LIMIT 350");
+        $result=$db->query("SELECT id,url,label,pack_label FROM competitor_targets WHERE enabled=1 AND source_id='lavka' AND kind='product' ORDER BY id LIMIT 5000");
         $watch=[];
         while ($row=$result->fetchArray(SQLITE3_ASSOC)) {
             $parts=parse_url($row['url']); $query=[];
@@ -250,7 +250,7 @@ function competitors_own_catalog_read(string $directory): array
     foreach (['own-catalog.json','own-catalog-status.json'] as $name) {
         $path=$directory.'/'.$name;
         if (!file_exists($path) && !is_link($path)) continue;
-        if (!is_file($path) || is_link($path) || filesize($path)>4194304) { $invalid=true; continue; }
+        if (!is_file($path) || is_link($path) || filesize($path)>16777216) { $invalid=true; continue; }
         try {
             $contents=@file_get_contents($path);
             if ($contents===false) throw new \UnexpectedValueException();
@@ -310,6 +310,7 @@ function competitors_own_catalog_sync(string $directory,string $configFile,?call
         if (!flock($lock,LOCK_EX|LOCK_NB)) return ['state'=>'skipped','error_code'=>'already_running'];
         $checkedAt=utc_now();
         try {
+            if (is_file($directory.'/competitor-full-catalog.json')) {require_once __DIR__.'/CompetitorDiscovery.php';competitors_catalog_expand($directory,$configFile);}
             $watch=competitors_own_catalog_watch($directory);
             if (!$watch) return ['state'=>'not_configured','error_code'=>'no_selected_products'];
             if (!is_file($configFile) || is_link($configFile)) throw new SyncError('catalog_source_missing');

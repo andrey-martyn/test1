@@ -73,3 +73,12 @@ dialog{width:940px;max-width:94vw;padding:28px 32px;font-size:16px;line-height:1
 
 .dashboard-mode header h1{font-size:32px}.crm-clear{color:#32633e}.manual-guide p,.manual-guide li,.manual-goal,.manual-case-grid li,.manual-card p,.manual-step p,.manual-book p,.manual-book li{font-size:16px;line-height:1.7}.manual-guide input,.manual-guide select{font-size:16px;min-height:44px}.manual-tabs button{font-size:16px;min-height:44px}.manual-tabs button.active{background:var(--brand-red);border-color:var(--brand-red)}.filter-line input,.filter-line select,.advanced-filters select{font-size:16px;min-height:44px}.crm-void summary{color:#455b4a}.crm-event.voided{opacity:1;color:#43564d}.crm-template{color:#192e27}
 @media(max-width:720px){.dashboard-mode header h1{font-size:28px}}
+
+/* The same menu rhythm and green KPI emphasis in every business section. */
+.sidebar nav,.dashboard-mode .sidebar nav{gap:6px}
+.sidebar,.dashboard-mode .sidebar{padding-top:26px;padding-bottom:26px}
+.sidebar .workspace-label,.dashboard-mode .workspace-label{margin:30px 10px 14px}
+.sidebar-bottom,.dashboard-mode .sidebar-bottom{padding-top:15px}
+.dash-kpi:first-child{background:var(--green);border-color:var(--green)}
+.dash-kpi:first-child .help-trigger{color:var(--green-dark)}
+@media(max-width:720px){.sidebar,.dashboard-mode .sidebar{padding:16px 14px}.sidebar nav,.dashboard-mode .sidebar nav{gap:6px}}

@@ -283,6 +283,18 @@ function run_app(string $directory, string $publicUrl, string $assets, string $l
                     } catch (HttpError $error) { throw $error; }
                     catch (\Throwable $ignored) { respond(['detail' => 'sandbox_operation_failed', 'error_code' => 'sandbox_operation_failed'], 503); }
                 }
+                if ($path === '/api/competitors/discovery') {
+                    if ($method !== 'GET') fail(405, 'Метод не поддерживается');
+                    respond(competitors_discovery_results($competitors, (string)($_GET['search']??''), (string)($_GET['source']??'all'), (int)($_GET['page']??1), (int)($_GET['own_id']??0)));
+                }
+                if ($path === '/api/competitors/discovery/start') {
+                    if ($method !== 'POST') fail(405, 'Метод не поддерживается');
+                    $body=request_json();if($body)fail(422,'Лишние параметры');respond(competitors_discovery_start($competitors));
+                }
+                if ($path === '/api/competitors/discovery/review') {
+                    if ($method !== 'POST') fail(405, 'Метод не поддерживается');
+                    respond(competitors_discovery_review($competitors,request_json()));
+                }
                 if ($path === '/api/competitors/targets') {
                     if ($method !== 'POST') fail(405, 'Метод не поддерживается');
                     respond(competitors_save_target($competitors, request_json(), null, analytics_environment_summary($directory)['mode'] === 'sandbox'), 201);
