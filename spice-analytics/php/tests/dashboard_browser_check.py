@@ -168,7 +168,7 @@ with tempfile.TemporaryDirectory() as temporary:
             page.locator('.dash-market-row').first.click()
             assert 'не дата появления' in page.locator('#drawer-content').inner_text()
             page.click('[data-action=close-dialog]')
-            page.click('[data-dash-action=market-health]');assert 'Свежесть наблюдений' in page.locator('#drawer-content').inner_text();assert page.locator('#drawer-content tbody tr').count()==4;page.click('[data-action=close-dialog]')
+            page.click('[data-dash-action=market-health]');assert 'Когда обновлялись данные' in page.locator('#drawer-content').inner_text();assert page.locator('#drawer-content tbody tr').count()==4;page.click('[data-action=close-dialog]')
             page.click('[data-dash-action=inventory]');assert 'пока не подключены' in page.locator('#drawer-content').inner_text();page.click('[data-action=close-dialog]')
             page.locator('.dash-kpi').last.click();assert 'до первого числа' in page.locator('#drawer-content').inner_text();page.click('[data-action=close-dialog]')
             page.click('[data-dash-action=reports]');page.wait_for_selector('.mini-list');assert page.locator('#year').is_visible()
@@ -177,6 +177,66 @@ with tempfile.TemporaryDirectory() as temporary:
             page.click('[data-view=overview]');page.wait_for_selector('.dash-board')
             page.locator('.dash-tasks [data-id^=customer]').first.click();page.wait_for_selector('#crm-prompt');assert page.evaluate('crmCard.as_of')==str(today);page.click('[data-action=close-dialog]')
             assert not page.locator('#year').is_visible()
+            # Everyday areas expose every existing workflow through clear section tabs.
+            assert 'Лавочка · Дела магазина' == page.title()
+            assert page.locator('#navigation [data-area]').count()==6
+            assert page.locator('#navigation').get_by_role('button',name='Продажи',exact=True).count()==1
+            primary_text=page.locator('#navigation').inner_text()
+            assert all(term not in primary_text for term in ['RFM','GA4','CRM','Когорты','Удержание'])
+            page.click('[data-view=overview-report]');page.wait_for_selector('.mini-list')
+            page.click('[data-view=seasonality]');page.wait_for_selector('[data-chart=months]')
+            assert page.locator('#page-title').inner_text()=='Спрос по сезонам'
+            page.click('[data-view=geography]');page.wait_for_selector('#map svg')
+            page.click('[data-view=ga4]');page.wait_for_selector('.ga4-import')
+            assert 'пока не загружены' in page.locator('#content').inner_text()
+            assert page.locator('.business-import-help').evaluate('(el)=>!el.open')
+            page.locator('.business-import-help summary').click();assert page.locator('.business-import-help code').is_visible();page.locator('.business-import-help summary').click()
+            page.click('[data-view=customers]');page.wait_for_selector('.customer-table')
+            page.click('[data-view=segments]');page.wait_for_selector('.segment-grid')
+            assert 'Как давно и как часто покупают' in page.locator('#content').inner_text()
+            page.click('[data-view=opportunities]');assert 'Что покупают вместе' in page.locator('#content').inner_text()
+            page.click('[data-view=duplicates]');assert page.locator('#page-title').inner_text()=='Совпадения контактов'
+            page.click('[data-view=manual]');page.wait_for_selector('.manual-start')
+            assert page.locator('#page-title').inner_text()=='Как вернуть покупателя'
+            page.click('[data-section-view=customers]');page.wait_for_selector('.customer-table')
+            assert page.locator('#navigation [data-area=customers]').get_attribute('aria-current')=='page'
+            page.set_viewport_size({'width':390,'height':844})
+            page.click('[data-view=actions]');page.wait_for_selector('.crm-queue')
+            assert page.locator('#page-title').inner_text()=='С кем связаться'
+            assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
+            page.locator('#section-navigation [data-view=segments]').focus();page.keyboard.press('Enter')
+            assert page.locator('#page-title').inner_text()=='Группы покупателей'
+            assert page.locator('#section-navigation [data-view=segments]').evaluate('el=>el===document.activeElement')
+            # Long translated labels remain inside each page on a small phone.
+            page.set_viewport_size({'width':320,'height':740})
+            for view in ['retention','opportunities','manual']:
+                page.click('[data-view='+view+']')
+                assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'),view
+            page.click('[data-view=products]');page.wait_for_selector('#content .panel')
+            assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'),'products'
+            page.click('[data-view=overview-report]');page.wait_for_selector('.mini-list')
+            for view in ['seasonality','geography','ga4']:
+                page.click('[data-view='+view+']')
+                assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'),view
+            page.click('[data-view=overview]');page.wait_for_selector('.dash-board');page.wait_for_function('() => !dashboardState.loading')
+            page.set_viewport_size({'width':1280,'height':720})
+            # A late market response must not clear a sales report opened meanwhile.
+            from urllib.parse import parse_qs,urlparse
+            held=[]
+            def hold_market(route):
+                if parse_qs(urlparse(route.request.url).query).get('route')==['/api/competitors']:
+                    held.append(route)
+                else: route.continue_()
+            page.route('**/index.php?*',hold_market)
+            page.click('[data-dash-action=reload]');page.wait_for_timeout(150)
+            assert len(held)==1
+            page.click('[data-view=customers]');page.wait_for_selector('.customer-table')
+            held[0].continue_();page.wait_for_function('() => !dashboardState.loading')
+            page.unroute('**/index.php?*',hold_market)
+            assert page.evaluate('state.report!==null'),'Late dashboard request must preserve current report'
+            page.fill('#search','Синтетический');page.wait_for_timeout(180)
+            assert page.locator('.customer-table tbody tr').count()>0
+            page.click('[data-view=overview]');page.wait_for_selector('.dash-board');page.wait_for_function('() => !dashboardState.loading')
             assert mutations==[],mutations
             # A legacy CRM exclusion invalidates the revision-keyed dashboard projection.
             cid=result['actions'][0]['customer_id']

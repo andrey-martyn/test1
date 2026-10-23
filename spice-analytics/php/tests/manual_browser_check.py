@@ -39,7 +39,7 @@ with tempfile.TemporaryDirectory() as tmp:
    assert page.evaluate('state.report.marketing.segments.every(s=>s.count===1)')
    page.on('request',lambda r:mutations.append(r.url) if r.method not in ['GET','HEAD'] else None)
    page.click('[data-view=manual]');page.wait_for_selector('.manual-start');assert page.locator('#metrics').is_hidden();assert page.locator('#year').is_disabled()
-   assert page.locator('#page-title').inner_text()=='Практика возврата и удержания'
+   assert page.locator('#page-title').inner_text()=='Как вернуть покупателя'
    out=ROOT/'test-results';out.mkdir(exist_ok=True);page.screenshot(path=str(out/'manual-start.png'),full_page=True)
    page.locator('#manual-tab-scenarios').click();assert page.locator('.manual-segment-map button').count()==8;assert page.locator('.manual-case-list>.manual-scenario').count()==8
    assert page.locator('.manual-segment-map strong').all_text_contents()==['1']*8

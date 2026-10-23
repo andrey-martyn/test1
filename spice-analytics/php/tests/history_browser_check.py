@@ -49,7 +49,7 @@ with tempfile.TemporaryDirectory() as temporary:
             page.locator('[data-action=history-year][data-year="2025"]').click();page.wait_for_function('() => state.report.year===2025')
             assert page.evaluate('state.report.metrics.amount')==200
             page.select_option('#year','0');page.wait_for_function('() => state.report.year===0')
-            page.click('[data-view=seasonality]');assert page.locator('[data-chart=months] [data-chart-bar]').count()==12
+            page.click('[data-view=overview-report]');page.click('[data-view=seasonality]');assert page.locator('[data-chart=months] [data-chart-bar]').count()==12
             page.select_option('#season-metric','amount')
             assert page.evaluate('[...document.querySelectorAll("[data-chart=months] [data-chart-bar]")].reduce((s,b)=>s+Number(b.dataset.value),0)')==500
             page.check('#season-years');assert page.locator('[data-chart=months] [data-chart-bar]').count()==72
@@ -60,7 +60,7 @@ with tempfile.TemporaryDirectory() as temporary:
             page.keyboard.press('Escape');page.evaluate('window.scrollTo(0,0)')
             page.screenshot(path=str(ROOT/'test-results/history-seasonality.png'),full_page=True)
             help_button.focus();page.keyboard.press('Escape');assert page.locator('#help-popup').is_hidden()
-            page.click('[data-view=duplicates]');assert page.locator('.pair-checkbox').count()==2
+            page.click('[data-view=customers]');page.click('[data-view=duplicates]');assert page.locator('.pair-checkbox').count()==2
             page.click('#privacy');assert page.evaluate('!state.privacy')
             page.select_option('#duplicate-kind','email');assert page.locator('.pair-checkbox').count()==2
             page.click('[data-action=duplicate-sort][data-key=left]');assert page.locator('th[aria-sort=ascending]').count()==1
@@ -117,7 +117,7 @@ with tempfile.TemporaryDirectory() as temporary:
             page.locator('#drawer .help-trigger').first.hover();assert page.locator('#drawer #help-popup').is_visible()
             page.keyboard.press('Escape');assert page.locator('#drawer').is_visible()
             page.click('[data-action=unmerge]');page.wait_for_function('() => state.report.customers.length===3')
-            page.set_viewport_size({'width':390,'height':844});page.click('[data-view=seasonality]')
+            page.set_viewport_size({'width':390,'height':844});page.click('[data-view=overview-report]');page.click('[data-view=seasonality]')
             assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
             period_help=page.locator('#period-help .help-trigger');period_help.tap();assert page.locator('#help-popup').is_visible();period_help.tap();assert page.locator('#help-popup').is_hidden()
             period_help.tap();page.keyboard.press('Escape');period_help.tap();assert page.locator('#help-popup').is_visible();period_help.tap();assert page.locator('#help-popup').is_hidden()
