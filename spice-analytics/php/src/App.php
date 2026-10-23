@@ -5,6 +5,7 @@ namespace Lavka;
 
 require_once __DIR__ . '/Analytics.php';
 require_once __DIR__ . '/Auth.php';
+require_once __DIR__ . '/Assets.php';
 require_once __DIR__ . '/Identity.php';
 require_once __DIR__ . '/Competitors.php';
 require_once __DIR__ . '/SandboxRuntime.php';
@@ -164,7 +165,7 @@ function run_app(string $directory, string $publicUrl, string $assets, string $l
         $path = substr($requestPath, strlen($base));
         if ($path === '/index.php') {
             $path = $_GET['route'] ?? '/';
-            if (!is_string($path) || !preg_match('~^/(?:[A-Za-z0-9_-]+/?)*$~D', $path)) {
+            if (!is_string($path) || (!preg_match('~^/(?:[A-Za-z0-9_-]+/?)*$~D', $path) && !(str_starts_with($path, '/static/') && valid_static_asset_name(substr($path, 8))))) {
                 fail(400, 'Неверный маршрут');
             }
         }
@@ -175,8 +176,22 @@ function run_app(string $directory, string $publicUrl, string $assets, string $l
                 fail(403, 'Недопустимый источник запроса');
             }
         }
+        if (str_starts_with($path, '/static/')) {
+            if (!in_array($method, ['GET', 'HEAD'], true)) {
+                fail(405, 'Метод не поддерживается');
+            }
+            $name = substr($path, 8);
+            if (!valid_static_asset_name($name) || !is_file($assets . '/' . $name) || is_link($assets . '/' . $name)) {
+                fail(404, 'Файл не найден');
+            }
+            $type = ['js' => 'application/javascript', 'css' => 'text/css', 'geojson' => 'application/geo+json'][pathinfo($name, PATHINFO_EXTENSION)];
+            header('Content-Type: ' . $type . '; charset=utf-8');
+            header('Cache-Control: private, max-age=60');
+            if ($method !== 'HEAD') readfile($assets . '/' . $name);
+            exit;
+        }
         $auth = new Auth($directory);
-        $public = in_array($path, ['/login', '/api/login', '/health'], true) || str_starts_with($path, '/static/');
+        $public = in_array($path, ['/login', '/api/login', '/health'], true);
         $cookieName = 'lavka_analytics_session';
         $cookieOptions = ['expires' => time() + 43200, 'path' => $base . '/', 'secure' => (bool) $publicUrl || $https, 'httponly' => true, 'samesite' => 'Strict'];
         if (!$public && !$auth->valid($_COOKIE[$cookieName] ?? null)) {
@@ -194,23 +209,12 @@ function run_app(string $directory, string $publicUrl, string $assets, string $l
                 fail(405, 'Метод не поддерживается');
             }
             header('Content-Type: text/html; charset=utf-8');
-            $html = str_replace('__ANALYTICS_BASE__', htmlspecialchars($base, ENT_QUOTES, 'UTF-8'), file_get_contents($assets . ($path === '/login' ? '/login.html' : '/index.html')));
+            $html = asset_page_html($assets . ($path === '/login' ? '/login.html' : '/index.html'), $base, $assets);
             if ($path === '/') {
                 $environment = analytics_environment_summary($directory);
                 $html = str_replace(['__ENV_MODE__', '__ENV_LABEL__', '__ENV_MESSAGE__'], array_map(function ($value) { return htmlspecialchars($value, ENT_QUOTES, 'UTF-8'); }, [$environment['mode'], $environment['label'], $environment['message']]), $html);
             }
             echo $html;
-            exit;
-        }
-        if (str_starts_with($path, '/static/')) {
-            $name = substr($path, 8);
-            if (!preg_match('/^[a-zA-Z0-9_-]+\.(?:js|css|geojson)$/', $name) || !is_file($assets . '/' . $name)) {
-                fail(404, 'Файл не найден');
-            }
-            $type = ['js' => 'application/javascript', 'css' => 'text/css', 'geojson' => 'application/geo+json'][pathinfo($name, PATHINFO_EXTENSION)];
-            header('Content-Type: ' . $type . '; charset=utf-8');
-            header('Cache-Control: private, max-age=60');
-            readfile($assets . '/' . $name);
             exit;
         }
         if ($path === '/api/login' && $method === 'POST') {

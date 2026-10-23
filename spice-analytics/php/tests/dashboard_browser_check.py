@@ -2,6 +2,7 @@
 from copy import deepcopy
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -12,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 from playwright.sync_api import sync_playwright
@@ -24,6 +26,26 @@ from sync_mysql import apply_snapshot
 ARTIFACTS = Path(os.environ.get("ANALYTICS_TEST_OUTPUT", "/workspace/work/dashboard-pilot"))
 ARTIFACTS.mkdir(parents=True, exist_ok=True)
 IMAGE = os.environ.get("ANALYTICS_PHP_IMAGE", "lavka-php73-dev")
+
+
+def assert_current_page_assets(page):
+    """HTML must bypass stale public copies and identify the source file's bytes."""
+    assets = page.locator('script[src],link[rel="stylesheet"][href]')
+    assert assets.count() > 0
+    for element in assets.all():
+        address = element.get_attribute("src") or element.get_attribute("href")
+        parsed = urlparse(address)
+        assert parsed.path == "/analytics/index.php", address
+        params = parse_qs(parsed.query)
+        assert len(params.get("route", [])) == 1, address
+        route = params["route"][0]
+        assert route.startswith("/static/") and route.endswith((".js", ".css")), address
+        source = ROOT / "php/static" / route.removeprefix("/static/")
+        assert source.parent == ROOT / "php/static" and source.is_file(), address
+        expected = hashlib.sha256(source.read_bytes()).hexdigest()[:16]
+        assert params.get("v") == [expected], address
+
+
 SEED = r'''
 require "php/src/Auth.php";
 require "php/src/Competitors.php";
@@ -83,6 +105,26 @@ with tempfile.TemporaryDirectory() as temporary:
     add(300, today, "99999", status="0")
     add(301, today, "99999", currency="USD")
     apply_snapshot(data/"analytics.sqlite3", rows, "synthetic")
+    # Reproduce hosting: PHP reads current HTML from the private checkout, but
+    # the web server may still have an old physical public/static directory.
+    # A fresh HTML query string alone would not update these copied file bytes.
+    site = data / "site"
+    published = site / "analytics"
+    public_assets = published / "static"
+    public_assets.mkdir(parents=True)
+    (published / "index.php").write_text('<?php require "/app/php/public/index.php";')
+    stale_script = 'window.__stalePublicScriptExecuted=true;throw new Error("STALE_PUBLIC_SCRIPT_EXECUTED");'
+    stale_style = 'html{--stale-public-stylesheet:1}.dash-kpis{display:block!important}'
+    (public_assets / "app.js").write_text(stale_script)
+    (public_assets / "style.css").write_text(stale_style)
+    (data / "router.php").write_text('''<?php
+$path = rawurldecode(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH));
+$file = realpath('/test-data/site' . $path);
+if ($file !== false && strpos($file, '/test-data/site/') === 0 && is_file($file)) {
+    if (pathinfo($file, PATHINFO_EXTENSION) === 'php') require $file;
+    else return false;
+} else require '/app/php/public/index.php';
+''')
     password = secrets.token_urlsafe(24)
     name = "lavka-dashboard-"+secrets.token_hex(5)
     docker = ["docker", "run", "--rm", "--user", f"{os.getuid()}:{os.getgid()}",
@@ -91,7 +133,7 @@ with tempfile.TemporaryDirectory() as temporary:
     subprocess.run(docker+["-i",IMAGE,"php","-r",SEED],input=json.dumps({"password":password}).encode(),capture_output=True,check=True)
     with socket.socket() as listener:
         listener.bind(("127.0.0.1",0)); port=listener.getsockname()[1]
-    server=subprocess.Popen(docker+["--name",name,"-p",f"127.0.0.1:{port}:8000",IMAGE,"php","-S","0.0.0.0:8000","-t","php/public","php/public/index.php"],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    server=subprocess.Popen(docker+["--name",name,"-p",f"127.0.0.1:{port}:8000",IMAGE,"php","-S","0.0.0.0:8000","-t","/test-data/site","/test-data/router.php"],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     origin=f"http://127.0.0.1:{port}";base=origin+"/analytics"
     try:
         for _ in range(300):
@@ -101,6 +143,9 @@ with tempfile.TemporaryDirectory() as temporary:
             time.sleep(.1)
         else: raise RuntimeError("Synthetic dashboard server did not start")
         assert httpx.get(base+"/index.php?route=/api/dashboard",trust_env=False).status_code==401
+        for filename, expected in [("app.js", stale_script), ("style.css", stale_style)]:
+            stale = httpx.get(base+"/static/"+filename,trust_env=False)
+            assert stale.status_code == 200 and stale.text == expected
         with sync_playwright() as playwright:
             browser=playwright.chromium.launch(executable_path="/usr/bin/chromium",args=["--no-sandbox"])
             page=browser.new_page(viewport={"width":1280,"height":720})
@@ -109,12 +154,17 @@ with tempfile.TemporaryDirectory() as temporary:
             page.on("response",lambda response:styles.append({"url":response.url.split("/")[-1],"status":response.status}) if ".css" in response.url else None)
             page.on("pageerror",lambda error:errors.append(str(error)))
             page.on("request",lambda request:external.append(request.url) if request.url.startswith(("http:","https:")) and not request.url.startswith(origin+"/") else None)
-            page.goto(base+"/");page.fill("#password",password);page.click("button[type=submit]")
+            page.goto(base+"/")
+            assert_current_page_assets(page)
+            page.fill("#password",password);page.click("button[type=submit]")
             try: page.wait_for_selector(".dash-board",timeout=15000)
             except Exception:
                 print({"errors":errors,"body":page.locator("body").inner_text()[-2400:]})
                 raise
             page.on("request",lambda request:mutations.append(request.method+" "+request.url) if request.method in ["POST","PUT","PATCH","DELETE"] else None)
+            assert_current_page_assets(page)
+            assert page.evaluate("window.__stalePublicScriptExecuted") is None
+            assert page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--stale-public-stylesheet').trim()") == ""
             page.wait_for_function("() => getComputedStyle(document.querySelector('.dash-kpis')).display === 'grid'")
             assert all(item["status"]==200 for item in styles),styles
             response=page.request.get(base+"/index.php?route=/api/dashboard&currency=UAH")
@@ -221,7 +271,6 @@ with tempfile.TemporaryDirectory() as temporary:
             page.click('[data-view=overview]');page.wait_for_selector('.dash-board');page.wait_for_function('() => !dashboardState.loading')
             page.set_viewport_size({'width':1280,'height':720})
             # A late market response must not clear a sales report opened meanwhile.
-            from urllib.parse import parse_qs,urlparse
             held=[]
             def hold_market(route):
                 if parse_qs(urlparse(route.request.url).query).get('route')==['/api/competitors']:
@@ -253,8 +302,8 @@ with tempfile.TemporaryDirectory() as temporary:
             assert not errors,errors
             assert not external,external
             browser.close()
-            (ARTIFACTS/'validation.json').write_text(json.dumps({'viewports':measures,'external_requests':external,'javascript_errors':errors,'writes_from_dashboard':mutations},ensure_ascii=False,indent=2))
-            print('Dashboard auth, real saved data, comparison, cache, CRM, market variants, privacy, navigation and responsive checks passed')
+            (ARTIFACTS/'validation.json').write_text(json.dumps({'viewports':measures,'external_requests':external,'javascript_errors':errors,'writes_from_dashboard':mutations,'stale_public_assets_bypassed':True,'source_content_fingerprints':'verified'},ensure_ascii=False,indent=2))
+            print('Dashboard auth, current fingerprinted assets despite stale public copies, saved data, comparison, cache, CRM, market variants, privacy, navigation and responsive checks passed')
     finally:
         subprocess.run(['docker','stop',name],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         try:server.wait(timeout=10)

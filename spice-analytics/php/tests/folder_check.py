@@ -4,6 +4,7 @@ This exercises the generated launcher and existing-file query routing, not a rea
 hosting vhost, Apache configuration or public TLS certificate.
 """
 import json
+import hashlib
 import os
 PHP_IMAGE = os.environ.get('ANALYTICS_PHP_IMAGE', 'lavka-php-dev')
 from pathlib import Path
@@ -15,6 +16,7 @@ import sys
 import tempfile
 import time
 from http.cookies import SimpleCookie
+from urllib.parse import quote
 
 import httpx
 
@@ -105,7 +107,7 @@ else require '/test-site/shop/index.php';
         with httpx.Client(base_url=f'http://127.0.0.1:{port}',
                           headers={'Host': 'www.shop.example.invalid'}, timeout=15, trust_env=False) as client:
             def route(path):
-                return '/analytics/index.php?route=' + path
+                return '/analytics/index.php?route=' + quote(path, safe='')
             for _ in range(600):
                 try:
                     response=client.get(route('/health'))
@@ -123,8 +125,17 @@ else require '/test-site/shop/index.php';
             assert response.status_code == 303 and response.headers['location'] == '/analytics/index.php?route=%2Flogin'
             response = client.get(response.headers['location'])
             assert response.status_code == 200
-            assert 'href="/analytics/static/style.css"' in response.text
+            style_route = route('/static/style.css') + '&v=' + hashlib.sha256((ROOT / 'php/static/style.css').read_bytes()).hexdigest()[:16]
+            assert 'href="' + style_route.replace('&', '&amp;') + '"' in response.text
             assert '__ANALYTICS_BASE__' not in response.text
+            authoritative = client.get(style_route)
+            assert authoritative.status_code == 200 and authoritative.content == (ROOT / 'php/static/style.css').read_bytes()
+            assert authoritative.headers['content-type'].startswith('text/css')
+            assert client.head(style_route).status_code == 200 and client.head(style_route).content == b''
+            assert client.post(style_route).status_code == 405
+            assert client.get(route('/static/nonexistent.js')).status_code == 404
+            for unsafe_asset in ['/static/../source.json', '/static/source.json', '/static/Auth.php', '/static/sub/app.js']:
+                assert client.get(route(unsafe_asset)).status_code in (400, 404)
             assert client.get('/analytics/static/style.css').status_code == 200
             assert client.get('/analytics/static/countries.geojson').status_code == 200
             assert client.get(route('/api/meta')).status_code == 401
