@@ -172,17 +172,19 @@ async function drawMap(){
 }
 function settingsView(){const m=state.meta,s=m.settings;return `<section class="panel">${panelHeading('Правила расчёта','Изменения сохраняются в локальной базе и применяются ко всему отчёту.')}<form id="settings-form"><div class="settings-grid"><div><h3 class="section-caption">Напоминания о повторной покупке</h3><label class="field">Базовый интервал, дней<input name="interval_days" type="number" min="1" max="730" value="${s.interval_days}" required><small>Используется, пока у покупателя мало истории.</small></label><label class="field">Допустимая задержка, дней<input name="grace_days" type="number" min="0" max="365" value="${s.grace_days}" required><small>После этой задержки покупатель попадёт в «Срок заказа прошёл».</small></label><label class="field">Минимум дат покупок для личного интервала<input name="minimum_orders" type="number" min="3" max="30" value="${s.minimum_orders}" required><small>Личный интервал — медиана последних шести промежутков между разными датами покупок. Заказы в один день не сокращают интервал.</small></label>${followupSettings(s)}<button class="button primary" type="submit">Сохранить настройки</button></div><div><h3 class="section-caption">Учитываемые статусы заказов</h3>${m.statuses.map(sx=>`<label class="status-option"><input type="checkbox" name="status_ids" value="${sx.id}" ${s.status_ids.includes(sx.id)?'checked':''}>${esc(sx.name)}<small>${num(sx.count)}</small></label>`).join('')}</div></div></form></section>${sourceSettings(m)}`;}
 function orderHTML(o,open=false){return `<details class="order-detail" ${open?'open':''}><summary><span>№${esc(o.id)}</span><span class="muted">${fmtDate(o.date)}</span><strong>${num(o.amount,2)} ${esc(o.currency)}</strong></summary><div class="order-body"><div class="order-meta">${esc(o.status)} · ${esc(o.city)}, ${esc(o.country)}<br>${esc(o.shipping_method)}<br>${esc(o.payment_method)}</div><div class="table-scroll"><table><thead><tr><th>Товар / фасовка</th><th>Кол-во</th><th>Сумма</th></tr></thead><tbody>${o.lines.map(l=>`<tr><td>${esc(l.name)}<span class="identity-meta">${esc(l.pack.label)} · ${esc(l.model)}</span></td><td>${l.quantity}</td><td>${num(l.total,2)} ${esc(o.currency)}</td></tr>`).join('')}</tbody></table></div><div style="margin-top:13px">${o.totals.map(t=>`<div class="order-total"><span>${esc(t.title)}</span><span>${num(t.value,2)} ${esc(o.currency)}</span></div>`).join('')}</div>${o.history.length?`<div class="section-caption">История статусов</div><div class="order-meta">${o.history.map(h=>fmtDate(h.date)+' · '+esc(h.status)).join('<br>')}</div>`:''}</div></details>`;}
-function openDrawer(label){if(typeof competitorState!=='undefined')competitorState.historySequence++;$('#drawer-label').textContent=label;$('#drawer-content').innerHTML='<div class="loading">Загружаем…</div>';if(!$('#drawer').open)$('#drawer').showModal();}
+let drawerSequence=0;
+function openDrawer(label){++drawerSequence;hideHelp();if(typeof competitorState!=='undefined')competitorState.historySequence++;$('#drawer-label').textContent=label;$('#drawer-content').innerHTML='<div class="loading">Загружаем…</div>';if(!$('#drawer').open)$('#drawer').showModal();}
 async function openCustomer(id){
-  openDrawer('ПОКУПАТЕЛЬ И ЕГО ЗАКАЗЫ');
+  id=navigationCustomerId(id);navigationDrawer({kind:'customer',id});
+  openDrawer('ПОКУПАТЕЛЬ И ЕГО ЗАКАЗЫ');const sequence=drawerSequence;
   try{
-    const data=await api('/api/customers/'+encodeURIComponent(id)+'/orders?'+query()),c=data.customer;c.segment_name=businessSegmentName(c.segment,c.segment_name);state.customer=data;
+    const data=await api('/api/customers/'+encodeURIComponent(id)+'/orders?'+query());if(sequence!==drawerSequence||!$('#drawer').open)return;const c=data.customer;c.segment_name=businessSegmentName(c.segment,c.segment_name);state.customer=data;
     $('#drawer-content').innerHTML=`<h2 class="drawer-name">${name(c)}${infoHelp('История')}</h2><div class="drawer-contact">${contact(c)} · ${state.privacy?'Телефон скрыт':esc(c.phone)}<br>${esc(c.city)}, ${esc(c.country)} · ${c.account_count} учётных записей</div><div class="drawer-stats"><div class="drawer-stat"><small>Заказов за всё время</small><strong>${c.lifetime_count}</strong></div><div class="drawer-stat"><small>Сумма за всё время</small><strong>${num(c.lifetime_amount,2)}</strong></div><div class="drawer-stat"><small>Обычный интервал</small><strong>${c.interval_days} дн.</strong></div></div><div class="notice">${c.personal_interval?'Индивидуальный':'Базовый'} срок: ${c.interval_days} дней. Последний заказ — ${fmtDate(c.last_order)}. Следующий ожидается ${fmtDate(c.due_on)}. ${c.reminder==='overdue'?'Задержка '+c.overdue_days+' дней.':''}</div>${c.manual?`<button class="button" data-action="unmerge" data-id="${c.id}">Отменить ручные объединения этой карточки</button>`:''}${customerActionForm(c)}<h3 class="section-caption">История заказов · ${c.lifetime_count}</h3><div id="customer-orders">${data.orders.slice(0,20).map((o,i)=>orderHTML(o,i===0)).join('')}</div>${data.orders.length>20?'<button class="button" data-action="more-orders">Показать все заказы</button>':''}`;
     enhanceHelp($('#drawer'));
-  }catch(e){$('#drawer-content').innerHTML='<div class="notice">'+esc(e.message)+'</div>';}
+  }catch(e){if(sequence===drawerSequence&&$('#drawer').open)$('#drawer-content').innerHTML='<div class="notice">'+esc(e.message)+'</div>';}
 }
 async function openWeek(ids){state.customer=null;openDrawer('ЗАКАЗЫ ЗА НЕДЕЛЮ');try{const orders=await Promise.all(ids.map(id=>api('/api/orders/'+id)));$('#drawer-content').innerHTML='<h2 class="drawer-name">Заказы за неделю</h2><p class="muted">'+orders.length+' заказов · '+cash(orders.reduce((a,o)=>a+o.amount,0))+'</p>'+orders.map(o=>orderHTML(o,true)).join('');}catch(e){toast(e.message);}}
-function navigate(view){if(state.view==='competitors')competitorCaptureDraft();state.historyOpen=null;state.duplicateCustomer=null;state.view=view;state.page=1;state.search='';render();if(view==='competitors'&&!competitorState.data&&!competitorState.loading)competitorsLoad();if(view==='overview'&&!dashboardState.loading)dashboardLoad();if(!['competitors','overview'].includes(view)&&!state.report&&state.meta&&!ordersLoading)load();window.scrollTo({top:0,behavior:'smooth'});}
+function navigate(view,options={}){if(!options.restore)navigationBefore();if(state.view==='competitors')competitorCaptureDraft();navigationHideDrawer();state.historyOpen=null;state.duplicateCustomer=null;state.view=view;state.page=1;state.search='';if(!options.restore)navigationPage();render();if(view==='competitors'&&!competitorState.data&&!competitorState.loading)competitorsLoad();if(view==='overview'&&!dashboardState.loading)dashboardLoad();if(!['competitors','overview'].includes(view)&&!state.report&&state.meta&&!ordersLoading)load();window.scrollTo({top:0,behavior:'smooth'});}
 function exportCSV(){
   const rows=customerRows(),fields=['Покупатель','Город','Заказов за период','Сумма за период','Заказов всего','Сумма всего','Последний заказ','Дней с заказа','Интервал','Ожидаемая дата','Группа покупателей','Оценка покупок','Приоритет','Контакт разрешён правилами','Email','Телефон'];
   if(!state.report.year)fields.push(...state.report.calendar.flatMap(col=>['Заказы '+col.label,'Сумма '+col.label]));
@@ -190,6 +192,7 @@ function exportCSV(){
   const csv='\ufeff'+[fields,...rows.map(c=>[state.privacy?'Покупатель '+c.id:c.name,c.city,c.order_count,c.amount,c.lifetime_count,c.lifetime_amount,c.last_order,c.days_since,c.interval_days,c.due_on,c.segment_name,c.rfm,c.priority,c.followup_eligible?'Да':c.suppression,state.privacy?'':c.email,state.privacy?'':c.phone,...(state.report.year?[]:state.report.calendar.flatMap(col=>[c.activity[col.key]?.count||0,c.activity[col.key]?.amount||0]))])].map(r=>r.map(cell).join(';')).join('\r\n');
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));const a=document.createElement('a');a.href=url;a.download='customers-'+(state.report.year||'all')+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
+$('.sidebar .brand').addEventListener('click',e=>{e.preventDefault();navigate('overview');});
 $('#navigation').addEventListener('click',e=>{const b=e.target.closest('[data-view]');if(b)navigate(b.dataset.view);});
 ['#year','#as-of','#currency'].forEach(s=>$(s).addEventListener('change',()=>{if($('#as-of').value){state.historyOpen=null;load();}}));
 $('#privacy').addEventListener('click',()=>{state.privacy=!state.privacy;render();if($('#drawer').open&&state.customer)openCustomer(state.customer.customer.id);});
@@ -215,10 +218,10 @@ document.addEventListener('click',async e=>{
       case 'customer':await openCustomer(b.dataset.id);break;
       case 'week':await openWeek(b.dataset.ids.split(','));break;
       case 'period-orders':await openPeriodOrders(b.dataset.id,b.dataset.start,b.dataset.end);break;
-      case 'close-dialog':$('#drawer').close();state.customer=null;break;
+      case 'close-dialog':navigationCloseDrawer();break;
       case 'prev-page':state.page=Math.max(1,state.page-1);render();break;
       case 'next-page':state.page++;render();break;
-      case 'show-overdue':state.view='customers';state.reminder='overdue';state.periodOnly=false;state.sort='priority';state.ordersBasis='lifetime_count';state.ordersMin=state.meta.settings.followup_min_orders;state.ordersMax='';state.eligibleOnly=true;state.segment='all';state.ids=null;state.page=1;render();break;
+      case 'show-overdue':navigate('customers');state.reminder='overdue';state.periodOnly=false;state.sort='priority';state.ordersBasis='lifetime_count';state.ordersMin=state.meta.settings.followup_min_orders;state.ordersMax='';state.eligibleOnly=true;state.segment='all';state.ids=null;state.page=1;render();break;
       case 'go-customers':navigate('customers');break;
       case 'export':exportCSV();break;
       case 'merge':b.disabled=true;await api('/api/identity/merge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:b.dataset.ids.split(','),as_of:$('#as-of').value})});await load();toast('История объединена. Отменить можно в карточке покупателя.');break;
@@ -227,9 +230,11 @@ document.addEventListener('click',async e=>{
     }
   }catch(err){toast(err.message);b.disabled=false;}
 });
-$('#drawer').addEventListener('click',e=>{if(e.target===$('#drawer')){const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right)$('#drawer').close();}});
+$('#drawer').addEventListener('click',e=>{if(e.target===$('#drawer')){const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right)navigationCloseDrawer();}});
+$('#drawer').addEventListener('cancel',e=>{e.preventDefault();navigationCloseDrawer();});
 $('#period-help').innerHTML=infoHelp('Период');
 $('#asof-help').innerHTML=infoHelp('История по дату');
 $('#currency-help').innerHTML=infoHelp('Валюта');
-init();
+navigationInit();
+init().then(navigationRemember);
 setInterval(()=>refreshSource(),60000);

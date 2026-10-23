@@ -184,8 +184,8 @@ function run_app(string $directory, string $publicUrl, string $assets, string $l
             if (!valid_static_asset_name($name) || !is_file($assets . '/' . $name) || is_link($assets . '/' . $name)) {
                 fail(404, 'Файл не найден');
             }
-            $type = ['js' => 'application/javascript', 'css' => 'text/css', 'geojson' => 'application/geo+json'][pathinfo($name, PATHINFO_EXTENSION)];
-            header('Content-Type: ' . $type . '; charset=utf-8');
+            $type = ['js' => 'application/javascript', 'css' => 'text/css', 'geojson' => 'application/geo+json', 'png' => 'image/png'][pathinfo($name, PATHINFO_EXTENSION)];
+            header('Content-Type: ' . $type . ($type === 'image/png' ? '' : '; charset=utf-8'));
             header('Cache-Control: private, max-age=60');
             if ($method !== 'HEAD') readfile($assets . '/' . $name);
             exit;

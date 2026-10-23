@@ -32,6 +32,9 @@ function assets_urls(string $html): array
         foreach ($document->getElementsByTagName('link') as $link) {
             if ($link->getAttribute('rel') === 'stylesheet') $urls[] = $link->getAttribute('href');
         }
+        foreach ($document->getElementsByTagName('img') as $img) {
+            if ($img->hasAttribute('src')) $urls[] = $img->getAttribute('src');
+        }
         return $urls;
     } finally {
         libxml_clear_errors();
@@ -62,7 +65,7 @@ function assets_remove_tree(string $directory): void
     rmdir($directory);
 }
 
-foreach (['app.js', 'business-navigation.js', 'help_2.js', 'style.css', 'countries.geojson', 'A-2_B.css'] as $name) {
+foreach (['app.js', 'business-navigation.js', 'help_2.js', 'style.css', 'countries.geojson', 'A-2_B.css', 'brand-chili.png'] as $name) {
     assets_expect(\Lavka\valid_static_asset_name($name), 'Allowed static resource: ' . $name);
 }
 foreach (['', '.', '..', '../source.json', '/etc/passwd', '.env', 'source.json', 'access-php.json',
@@ -75,7 +78,7 @@ $static = dirname(__DIR__) . '/static';
 $realTemplates = 0;
 foreach (['index.html', 'login.html'] as $name) {
     $file = $static . '/' . $name;
-    preg_match_all('~(?:src|href)="__ANALYTICS_BASE__/static/([A-Za-z0-9_-]+\.(?:js|css))(?:\?[^"]*)?"~', file_get_contents($file), $original);
+    preg_match_all('~(?:src|href)="__ANALYTICS_BASE__/static/([A-Za-z0-9_-]+\.(?:js|css|png))(?:\?[^"]*)?"~', file_get_contents($file), $original);
     assets_expect(count($original[1]) > 0, 'Real template contains JS/CSS resources');
     foreach (['', '/analytics', '/shop/reports'] as $base) {
         $html = \Lavka\asset_page_html($file, $base, $static);

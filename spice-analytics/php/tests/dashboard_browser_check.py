@@ -189,8 +189,9 @@ if ($file !== false && strpos($file, '/test-data/site/') === 0 && is_file($file)
                 page.wait_for_timeout(140)
                 page.screenshot(path=str(ARTIFACTS/f"dashboard-{width}.png"),full_page=True)
                 sizes=page.evaluate("({width:innerWidth,height:innerHeight,scrollWidth:document.documentElement.scrollWidth,scrollHeight:document.documentElement.scrollHeight,bottom:document.querySelector('.dash-note').getBoundingClientRect().bottom})")
-                assert sizes["scrollWidth"]<=width,sizes
-                if width>=1280: assert sizes["bottom"]<=height and sizes["scrollHeight"]<=height,(sizes,styles,page.evaluate("Array.from(document.styleSheets).map(s=>({href:s.href,rules:s.cssRules.length}))"))
+                assert sizes["scrollWidth"]<=width,(sizes,page.locator('body *').evaluate_all('els=>els.filter(e=>e.getBoundingClientRect().right>innerWidth+1).map(e=>({tag:e.tagName,cls:e.className,right:e.getBoundingClientRect().right})).slice(-20)'))
+                assert page.locator('.dash-task strong').first.evaluate('el=>parseFloat(getComputedStyle(el).fontSize)')>=16
+                assert page.locator('.dash-kpi small').first.evaluate('el=>parseFloat(getComputedStyle(el).fontSize)')>=14
                 measures.append(sizes)
             page.set_viewport_size({"width":1280,"height":720})
             page.click('[data-dash-action=group][data-value=weeks]')
@@ -220,7 +221,16 @@ if ($file !== false && strpos($file, '/test-data/site/') === 0 && is_file($file)
             page.click('[data-action=close-dialog]')
             page.click('[data-dash-action=market-health]');assert 'Когда обновлялись данные' in page.locator('#drawer-content').inner_text();assert page.locator('#drawer-content tbody tr').count()==4;page.click('[data-action=close-dialog]')
             page.click('[data-dash-action=inventory]');assert 'пока не подключены' in page.locator('#drawer-content').inner_text();page.click('[data-action=close-dialog]')
-            page.locator('.dash-kpi').last.click();assert 'до первого числа' in page.locator('#drawer-content').inner_text();page.click('[data-action=close-dialog]')
+            hints=[]
+            for hint in page.locator('.dash-kpi .help-trigger').all():
+                hint.hover();page.wait_for_selector('#help-popup:not([hidden])')
+                hints.append(page.locator('#help-popup').inner_text())
+                assert not page.locator('#drawer').evaluate('el=>el.open')
+                assert page.locator('#help-popup').bounding_box()['width']<=360
+                page.keyboard.press('Escape')
+            assert len(set(hints))==4
+            assert 'до первого числа' in hints[-1]
+            assert page.locator('.sidebar .brand-logo').evaluate('el=>el.complete && el.naturalWidth>0')
             page.click('[data-dash-action=reports]');page.wait_for_selector('.mini-list');assert page.locator('#year').is_visible()
             page.click('[data-view=customers]');page.wait_for_selector('.customer-table')
             page.fill('#as-of',str(previous));page.dispatch_event('#as-of','change');page.wait_for_function('(date) => state.report?.as_of===date',arg=str(previous))

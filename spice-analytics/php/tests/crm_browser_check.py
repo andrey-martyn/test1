@@ -77,10 +77,61 @@ with tempfile.TemporaryDirectory() as tmp:
    page.wait_for_function('() => crmCard?.events.some(e=>e.kind==="start"&&e.voided_at) && !crmSaving')
    assert page.evaluate('state.report.crm.stats.returned_customers')==0
    assert page.locator('.crm-event.voided').count()==1
+   # Preserve a conversation through duplicate review, browser history and a
+   # merge whose canonical id differs from the source profile (3 -> 1).
+   page.click('[data-action=close-dialog]');page.wait_for_function('() => !uiNavigation.restoring && !uiNavigation.drawer')
+   page.click('[data-view=actions]');page.select_option('#crm-scope','all');page.select_option('#crm-tier','all')
+   page.select_option('#crm-sort','priority')
+   page.locator('[data-action=crm-open][data-id="3"]').click();page.wait_for_function('() => crmCard?.customer.id==="3"')
+   page.go_back();page.wait_for_function('() => !uiNavigation.restoring && !document.querySelector("#drawer").open');assert page.locator('#crm-sort').input_value()=='priority'
+   page.go_forward();page.wait_for_function('() => !uiNavigation.restoring && crmCard?.customer.id==="3" && document.querySelector("#drawer").open')
+   page.locator('#crm-event-form [name=note]').fill('Черновик: спросить о фасовке 200 г')
+   page.locator('#crm-event-form [name=owner]').fill('Таня')
+   page.locator('#crm-event-form [name=reasons][value=stock]').check()
+   page.locator('#crm-ai-form [name=ai_text]').fill('Незаписанный ответ помощника')
+   draft_token=page.locator('#crm-event-form').get_attribute('data-token')
+   page.locator('#drawer [data-action=crm-duplicates]').click();page.wait_for_selector('.crm-return-banner')
+   assert page.locator('.pair-checkbox').count()==1
+   page.go_back();page.wait_for_function('() => !uiNavigation.restoring && document.querySelector("#crm-event-form") && document.querySelector("#drawer").open')
+   assert page.locator('#crm-event-form [name=note]').input_value().startswith('Черновик:')
+   page.go_forward();page.wait_for_selector('.crm-return-banner');page.wait_for_function('() => !uiNavigation.restoring')
+   page.locator('[data-action=crm-return]').click();page.wait_for_function('() => !uiNavigation.restoring && document.querySelector("#drawer").open')
+   page.locator('#drawer [data-action=crm-duplicates]').click();page.wait_for_selector('.crm-return-banner')
+   page.locator('.pair-checkbox').check();page.locator('.merge-toolbar [data-action=merge-selected]').first.click()
+   page.wait_for_function('() => !state.mergeBusy && !uiNavigation.restoring && document.querySelector("#drawer").open && crmCard?.customer.id==="1"')
+   assert page.locator('#crm-event-form [name=note]').input_value()=='Черновик: спросить о фасовке 200 г'
+   assert page.locator('#crm-event-form [name=owner]').input_value()=='Таня'
+   assert page.locator('#crm-event-form [name=reasons][value=stock]').is_checked()
+   assert page.locator('#crm-ai-form [name=ai_text]').input_value()=='Незаписанный ответ помощника'
+   assert page.locator('#crm-event-form').get_attribute('data-token')==draft_token
+   assert page.evaluate('crmCard.customer.lifetime_count')==5
+   assert page.evaluate('Object.keys(history.state)')==['lavkaUI']
+   page.set_viewport_size({'width':390,'height':844})
+   assert page.locator('#crm-event-form textarea').evaluate('el=>parseFloat(getComputedStyle(el).fontSize)')>=16
+   assert page.locator('.crm-template').evaluate('el=>parseFloat(getComputedStyle(el).fontSize)')>=16
+   assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
+   page.screenshot(path=str(out/'crm-return-flow-mobile.png'))
+   page.locator('[data-action=close-dialog]').click();page.wait_for_function('() => !uiNavigation.restoring && !uiNavigation.drawer')
+   assert page.locator('#crm-sort').input_value()=='priority'
+   assert page.locator('#crm-scope').input_value()=='all'
+   # An old request must not replace a different conversation opened after Back.
+   from urllib.parse import parse_qs, urlparse
+   delayed=[]
+   def hold_old_card(route):
+    if parse_qs(urlparse(route.request.url).query).get('route')==['/api/crm/customers/1']:delayed.append(route)
+    else:route.continue_()
+   page.route('**/index.php?*',hold_old_card)
+   page.locator('[data-action=crm-open][data-id="1"]').click();page.wait_for_timeout(120);assert len(delayed)==1
+   page.go_back();page.wait_for_function('() => !uiNavigation.restoring && !document.querySelector("#drawer").open')
+   page.locator('[data-action=crm-open][data-id="5"]').click();page.wait_for_function('() => crmCard?.customer.id==="5"')
+   with page.expect_response(lambda r:parse_qs(urlparse(r.url).query).get('route')==['/api/crm/customers/1']):delayed[0].continue_()
+   page.wait_for_timeout(100);assert page.evaluate('crmCard.customer.id')=='5'
+   page.unroute('**/index.php?*',hold_old_card)
+
    page.set_viewport_size({'width':390,'height':844});assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
    page.screenshot(path=str(out/'crm-mobile.png'),full_page=True)
    assert not errors,errors;assert not external,external
    browser.close()
-  print(json.dumps({'crm_warnings_tiers_and_filters':'passed','journal_checklist_and_manual_chatgpt':'passed','anonymous_prompt_and_safe_text':'passed','new_order_sync_and_return_badge':'passed','void_audit_and_mobile':'passed','php_image':IMAGE}))
+  print(json.dumps({'crm_warnings_tiers_and_filters':'passed','journal_checklist_and_manual_chatgpt':'passed','anonymous_prompt_and_safe_text':'passed','new_order_sync_and_return_badge':'passed','void_audit_and_mobile':'passed','crm_duplicate_roundtrip_merge_alias_and_drafts':'passed','browser_back_forward_and_queue_filters':'passed','php_image':IMAGE}))
  finally:
   subprocess.run(['docker','rm','-f',name],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);server.wait(timeout=15)

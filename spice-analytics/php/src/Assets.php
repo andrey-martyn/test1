@@ -7,7 +7,7 @@ require_once __DIR__ . '/common.php';
 
 function valid_static_asset_name(string $name): bool
 {
-    return (bool) preg_match('/^[A-Za-z0-9_-]+\.(?:js|css|geojson)$/D', $name);
+    return (bool) preg_match('/^[A-Za-z0-9_-]+\.(?:js|css|geojson|png)$/D', $name);
 }
 
 function asset_page_html(string $file, string $base, string $assets): string
@@ -15,7 +15,7 @@ function asset_page_html(string $file, string $base, string $assets): string
     $html = file_get_contents($file);
     // HTML comes from this checkout. Its JS/CSS must also come from this
     // checkout, even if the web server still has an older public/static copy.
-    $html = preg_replace_callback('~__ANALYTICS_BASE__/static/([A-Za-z0-9_-]+\.(?:js|css))(?:\?v=[A-Za-z0-9_-]+)?~', function ($match) use ($base, $assets) {
+    $html = preg_replace_callback('~__ANALYTICS_BASE__/static/([A-Za-z0-9_-]+\.(?:js|css|png))(?:\?v=[A-Za-z0-9_-]+)?~', function ($match) use ($base, $assets) {
         $path = $assets . '/' . $match[1];
         if (!is_file($path) || is_link($path) || !is_readable($path)) {
             throw new \RuntimeException('Не найден ресурс интерфейса');
