@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Lavka;
 
 require_once __DIR__ . '/common.php';
+require_once __DIR__ . '/CompetitorPackaging.php';
 
 final class CompetitorNotFound extends \InvalidArgumentException {}
 final class CompetitorConflict extends \InvalidArgumentException {}
@@ -79,6 +80,7 @@ function competitors_text($value, int $max, string $name, bool $allowEmpty = tru
 function competitors_default_targets(): array
 {
     return [
+        ['seed_key' => 'lavka-delivery', 'source_id' => 'lavka', 'kind' => 'terms', 'url' => 'https://lavka-speciy.com/zakaz--oplata-i-dostavka-uk', 'label' => 'Лавка специй: оплата, доставка и заказ'],
         ['seed_key' => 'deluxe-delivery', 'source_id' => 'deluxe', 'kind' => 'terms', 'url' => 'https://deluxe.com.ua/dostavka', 'label' => 'Доставка и минимальный заказ'],
         ['seed_key' => 'deluxe-sale', 'source_id' => 'deluxe', 'kind' => 'terms', 'url' => 'https://deluxe.com.ua/actions', 'label' => 'Акции и скидки'],
         ['seed_key' => 'deluxe-catalog', 'source_id' => 'deluxe', 'kind' => 'catalog', 'url' => 'https://deluxe.com.ua/', 'label' => 'Позиции на главной странице'],
@@ -120,6 +122,7 @@ function competitors_db(string $directory): \PDO
             CREATE TABLE IF NOT EXISTS competitor_runs(id INTEGER PRIMARY KEY,started_at TEXT NOT NULL,payload TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS competitor_migrations(name TEXT PRIMARY KEY,applied_at TEXT NOT NULL);
             PRAGMA user_version=1;');
+        competitors_packaging_migrate($db);
         $seeds = competitors_default_targets();
         if (is_file(__DIR__ . '/CompetitorSeed.php')) {
             require_once __DIR__ . '/CompetitorSeed.php';
@@ -158,7 +161,7 @@ function competitors_target_row(array $row): array
     return ['id' => (int) $row['id'], 'source_id' => $row['source_id'], 'kind' => $row['kind'], 'url' => $row['url'], 'label' => $row['label'],
         'enabled' => (bool) $row['enabled'], 'grams_override' => $row['grams_override'] === null ? null : (float) $row['grams_override'], 'pack_label' => $row['pack_label'],
         'match_group' => $row['match_group'], 'match_confirmed' => (bool) $row['match_confirmed'], 'next_check_at' => $row['next_check_at'], 'queued' => (bool) $row['queued'],
-        'last_success' => $row['last_success'], 'observation' => $row['observation'] === null ? null : decode($row['observation']), 'last_attempt' => $row['last_attempt'] === null ? null : decode($row['last_attempt'])];
+        'last_success' => $row['last_success'], 'observation' => $row['observation'] === null ? null : decode($row['observation']), 'last_attempt' => $row['last_attempt'] === null ? null : decode($row['last_attempt'])] + competitors_packaging_fields($row);
 }
 
 function competitors_target(\PDO $db, int $id): array
@@ -171,7 +174,7 @@ function competitors_target(\PDO $db, int $id): array
 
 function competitors_save_target(\PDO $db, array $body, ?int $id = null, bool $sandbox = false): array
 {
-    $allowed = ['source_id', 'kind', 'url', 'label', 'enabled', 'grams_override', 'pack_label', 'match_group', 'match_confirmed'];
+    $allowed = ['source_id', 'kind', 'url', 'label', 'enabled', 'grams_override', 'pack_label', 'match_group', 'match_confirmed', 'packaging'];
     if (array_diff(array_keys($body), $allowed)) throw new \InvalidArgumentException('Неизвестные поля страницы наблюдения');
     $old = $id === null ? null : competitors_target($db, $id);
     $v = array_merge(['label' => '', 'enabled' => true, 'grams_override' => null, 'pack_label' => '', 'match_group' => '', 'match_confirmed' => false], $old ?? [], $body);
@@ -179,6 +182,7 @@ function competitors_save_target(\PDO $db, array $body, ?int $id = null, bool $s
     competitors_source($sourceId);
     $kind = $v['kind'] ?? null;
     if (!in_array($kind, ['product', 'terms', 'catalog'], true)) throw new \InvalidArgumentException('Выберите тип страницы наблюдения');
+    $packaging = competitors_packaging_request($body, $old, $kind);
     $url = competitors_validate_url(competitors_text($v['url'] ?? null, 2000, 'ссылка', false), $sourceId, $sandbox && $kind === 'product');
     if ($old && ($sourceId !== $old['source_id'] || $kind !== $old['kind'] || $url !== $old['url'])) throw new CompetitorConflict('Для другой ссылки создайте новую страницу; прежнюю можно отключить с сохранением истории');
     $label = competitors_text($v['label'], 160, 'название');
@@ -212,6 +216,7 @@ function competitors_save_target(\PDO $db, array $body, ?int $id = null, bool $s
             $stmt->execute([$sourceId, $kind, $url, $label, (int) $v['enabled'], $grams, $pack, $group, (int) $v['match_confirmed'], $now, $now, $now, (int) $v['enabled']]);
             $id = (int) $db->lastInsertId();
         }
+        competitors_packaging_store($db, (int) $id, $packaging);
         $db->commit();
     } catch (\Throwable $e) { if ($db->inTransaction()) $db->rollBack(); throw $e; }
     return competitors_target($db, $id);
@@ -225,7 +230,9 @@ function competitors_overview(\PDO $db, ?string $directory = null): array
     $discoveries = [];
     foreach ($db->query('SELECT * FROM competitor_discoveries WHERE baseline=0 ORDER BY first_seen DESC,target_id,url LIMIT 100') as $r) { $r['target_id'] = (int) $r['target_id']; $r['baseline'] = (bool) $r['baseline']; $discoveries[] = $r; }
     $runs = []; foreach ($db->query('SELECT payload FROM competitor_runs ORDER BY id DESC LIMIT 10') as $r) $runs[] = decode($r['payload']);
-    $result = ['sources' => competitors_sources(), 'targets' => $targets, 'changes' => $changes, 'discoveries' => $discoveries, 'runs' => $runs, 'settings' => ['interval_hours' => 24, 'max_product_targets' => 300, 'max_targets' => 350, 'catalog_coverage' => 'watched_pages', 'comparison_basis' => 'exact_pack', 'initial_grams' => 50, 'shop_price_writes' => false], 'server_now' => utc_now()];
+    $result = ['sources' => competitors_sources(), 'targets' => $targets, 'changes' => $changes, 'discoveries' => $discoveries, 'runs' => $runs, 'settings' => ['interval_hours' => 24, 'max_product_targets' => 300, 'max_targets' => 350, 'catalog_coverage' => 'watched_pages', 'comparison_basis' => 'exact_pack', 'initial_grams' => 500, 'shop_price_writes' => false], 'server_now' => utc_now()];
+    require_once __DIR__ . '/CompetitorTerms.php';
+    $result['terms_comparison'] = competitors_terms_comparison($targets, $result['server_now']);
     if ($directory !== null) {
         require_once __DIR__ . '/CompetitorOwnCatalog.php';
         $result['own_catalog'] = competitors_own_catalog_read($directory);
@@ -285,6 +292,12 @@ function competitors_observation(array $v, array $target): array
     foreach ($v['offers'] as $offer) {
         if (!is_array($offer)) throw new \InvalidArgumentException('Неверное предложение товара');
         $o = ['key' => competitors_text($offer['key'] ?? '', 180, 'ключ фасовки'), 'label' => competitors_text($offer['label'] ?? '', 200, 'название фасовки'), 'price' => null, 'old_price' => null, 'currency' => $offer['currency'] ?? '', 'grams' => $offer['grams'] ?? null, 'availability' => $offer['availability'] ?? 'unknown', 'min_quantity' => $offer['min_quantity'] ?? null, 'unit' => $offer['unit'] ?? 'unknown', 'condition' => competitors_text($offer['condition'] ?? '', 1000, 'условие цены')];
+        $packaging = $offer['packaging'] ?? 'unknown';
+        if (!is_string($packaging) || !in_array($packaging, ['unknown', 'doypack', 'zip', 'kraft', 'jar'], true)) throw new \InvalidArgumentException('Неверный тип упаковки предложения');
+        $o['packaging'] = $packaging;
+        foreach (['variant_id', 'source_variant_id'] as $field) {
+            if (isset($offer[$field])) $o[$field] = competitors_text($offer[$field], 180, 'идентификатор варианта');
+        }
         if (!is_string($o['currency']) || !preg_match('/^(?:[A-Z]{3})?$/D', $o['currency']) || !in_array($o['availability'], ['in_stock', 'out_of_stock', 'preorder', 'unknown'], true) || !in_array($o['unit'], ['pack', 'kg', 'piece', 'unknown'], true)) throw new \InvalidArgumentException('Неверные единицы предложения');
         foreach (['price', 'old_price'] as $key) {
             $price = $offer[$key] ?? null;

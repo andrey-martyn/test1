@@ -100,6 +100,20 @@ function competitor_weight(string $label): ?float
     return count($weights) === 1 ? array_values($weights)[0] : null;
 }
 
+/** Packaging is independent of mass; a photograph is not variant evidence. */
+function competitor_packaging(string $label): string
+{
+    $label = mb_strtolower(competitor_text($label));
+    $found = [];
+    foreach ([
+        'doypack' => '/(?:дой[\s\-‐‑–—]*пак|doy[\s-]*(?:pack|pak))/u',
+        'kraft' => '/(?:крафт|kraft)/u',
+        'zip' => '/(?:пакет[\s\-‐‑–—]*струна|zip[\s-]*(?:lock|bag)?|зіп[\s-]*пак|зип[\s-]*пак)/u',
+        'jar' => '/(?:баночк|банк[аиу]|jar)/u',
+    ] as $type => $pattern) if (preg_match($pattern, $label)) $found[] = $type;
+    return count($found) === 1 ? $found[0] : 'unknown';
+}
+
 function competitor_availability($value): string
 {
     $value = mb_strtolower(competitor_text(is_scalar($value) ? (string) $value : ''));
@@ -349,7 +363,8 @@ function competitor_commercial_text(string $text, string $title): string
     $lines = [];
     foreach (explode("\n", $text) as $line) {
         // Keep commercial conditions and their exceptions; omit menus and payment requisites.
-        if (preg_match('/(?:скид|зниж|накоп|перв|перш|замов|заказ|услов|умов|исключ|винят|роздр|опт|достав|відправ|самовывоз|самовив|безкош|бесплат|мінім|миним|порог|нов[ао]я?\s+пошт|укрпоч|упаков|фасов|%|грн|UAH|HoReCa|перевіз|перевоз|промокод|купон)/iu', $line)) {
+        if (preg_match('/(?:реквизит|реквізит|IBAN|МФО|ЄДРПОУ|ЕДРПОУ|(?<![\p{L}\d])[A-Z]{2}\s*\d{2}(?:[\s-]*[A-Z\d]){11,30}(?![\p{L}\d])|(?<!\d)(?:\d[\s-]*){13,19}(?!\d))/iu', $line)) continue;
+        if (preg_match('/(?:скид|зниж|накоп|перв|перш|замов|заказ|услов|умов|исключ|винят|роздр|опт|достав|відправ|отправ|самовывоз|самовив|безкош|бесплат|мінім|миним|порог|нов[ао]я?\s+пошт|укрпоч|укрпошт|Meest|упаков|фасов|оплат|плат[еі]ж|карт|Visa|Mastercard|Apple\s*Pay|Google\s*Pay|LiqPay|PayPal|WayForPay|готів|наличн|наложен|післяплат|предоплат|повернен|возврат|обмін|обмен|робоч|рабоч|термін|срок|%|грн|UAH|HoReCa|перевіз|перевоз|промокод|купон)/iu', $line)) {
             $lines[] = $line;
         }
     }
@@ -374,6 +389,132 @@ function competitor_related_node(\DOMNode $node, ?\DOMNode $currentProduct, \DOM
         if ($parent->isSameNode($scope)) break;
     }
     return false;
+}
+
+/** Currency-bearing absolute text, never an option surcharge or a "from" price. */
+function competitor_variant_money(string $text): ?array
+{
+    $text = competitor_text($text);
+    if (!preg_match('/^(\d[\d\s\x{00a0}\x{202f}]*(?:[.,]\d{1,6})?)\s*(грн\.?|UAH|₴)$/iuD', $text, $match)) return null;
+    $price = competitor_decimal($match[1]);
+    $currency = competitor_currency($match[2]);
+    return $price !== null && $currency !== '' ? ['price' => $price, 'currency' => $currency] : null;
+}
+
+function competitor_variant_offer(string $label, array $money, string $availability, string $variantId, string $nativeId, ?float $grams = null, float $minimum = 1, string $condition = ''): array
+{
+    return ['key' => $variantId, 'label' => $label, 'price' => $money['price'], 'old_price' => null,
+        'currency' => $money['currency'], 'grams' => $grams ?? competitor_weight($label),
+        'packaging' => competitor_packaging($label), 'variant_id' => $variantId, 'source_variant_id' => $nativeId,
+        'availability' => $availability, 'min_quantity' => $minimum, 'unit' => 'pack',
+        'condition' => $condition, '_paired_variant' => true];
+}
+
+/** Known public storefront structures, restricted to their own current product. */
+function competitor_source_variants(\DOMXPath $xpath, \DOMNode $scope, string $title, string $url): array
+{
+    $host = preg_replace('/^www\./i', '', strtolower(parse_url($url, PHP_URL_HOST) ?: ''));
+    $offers = []; $warnings = [];
+    if ($host === 'spiceryshop.com.ua') {
+        $selects = []; $priceGroups = 0;
+        foreach ($xpath->query('//*[@id="product"]//select[@data-product and starts-with(@name,"option[")]') as $select) {
+            if ($xpath->query('./option[@data-price]', $select)->length) $priceGroups++;
+            foreach ($xpath->query('./option[@data-price]', $select) as $option) if (competitor_weight($option->textContent) !== null) { $selects[] = $select; break; }
+        }
+        if ($priceGroups > 1) return [[], 'spicery_option_prices', ['option_combination_unsupported']];
+        if (count($selects) !== 1) return [[], '', []];
+        $select = $selects[0]; $productId = $select->getAttribute('data-product');
+        if (!preg_match('/^[1-9][0-9]{0,11}$/D', $productId) || !preg_match('/^option\[([1-9][0-9]{0,11})\]$/D', $select->getAttribute('name'), $group)) return [[], '', []];
+        $details = null;
+        for ($parent = $select->parentNode, $depth = 0; $parent instanceof \DOMElement && $depth++ < 5; $parent = $parent->parentNode) {
+            if (normalize(competitor_first_text($xpath, ['.//h1'], $parent)) === normalize($title) && $title !== '') { $details = $parent; break; }
+        }
+        if (!$details) return [[], '', []];
+        $availability = competitor_availability(competitor_first_text($xpath, ['.//table[contains(concat(" ",normalize-space(@class)," ")," product-info ")]//tr[td[contains(.,"Наличие") or contains(.,"Наявність")]]/td[last()]', './/*[@itemprop="availability"]'], $details));
+        foreach ($xpath->query('./option[@data-price and @value]', $select) as $option) {
+            if (!preg_match('/^[1-9][0-9]{0,11}$/D', $option->getAttribute('value'))) continue;
+            if ($option->hasAttribute('data-price-prefix') && $option->getAttribute('data-price-prefix') !== '=') continue;
+            $money = competitor_variant_money($option->getAttribute('data-price'));
+            if (!$money) { $warnings[] = 'variant_prices_unavailable'; continue; }
+            $label = competitor_text($option->textContent); $nativeId = $option->getAttribute('value');
+            $stock = $option->hasAttribute('disabled') || $option->getAttribute('data-preorder-quantity') === '0' ? 'unknown' : $availability;
+            $offers[] = competitor_variant_offer($label, $money, $stock, 'spicery:'.$productId.':'.$group[1].':'.$nativeId, $nativeId);
+        }
+        return [$offers, 'spicery_option_prices', $warnings];
+    }
+    if ($host === 'deluxe.com.ua') {
+        foreach ($xpath->query('//*[contains(concat(" ",normalize-space(@class)," ")," priceblock ")]') as $block) {
+            if ($title === '' || normalize(competitor_first_text($xpath, ['.//h1'], $block)) !== normalize($title)) continue;
+            $availability = competitor_availability(competitor_first_text($xpath, ['.//*[contains(concat(" ",normalize-space(@class)," ")," available-pr ")]', './/*[@itemprop="availability"]'], $block));
+            foreach ($xpath->query('.//ul[contains(concat(" ",normalize-space(@class)," ")," itemPriceList ")]/li[@data-price-id and @data-price]', $block) as $node) {
+                $nativeId = $node->getAttribute('data-price-id');
+                if (!preg_match('/^[1-9][0-9]{0,11}$/D', $nativeId)) continue;
+                $label = competitor_first_text($xpath, ['.//*[contains(concat(" ",normalize-space(@class)," ")," weight-amount ")]'], $node);
+                $price = competitor_decimal($node->getAttribute('data-price'));
+                $visible = competitor_variant_money(competitor_first_text($xpath, ['.//*[contains(concat(" ",normalize-space(@class)," ")," weight-price ")]'], $node));
+                if ($price === null || !$visible || $price !== $visible['price'] || competitor_weight($label) === null) continue;
+                // Nonzero data-price-new has not yet been verified against a sale page.
+                $newPrice = trim($node->getAttribute('data-price-new'));
+                if ($newPrice !== '' && !preg_match('/^0(?:[.,]0+)?$/D', $newPrice)) { $warnings[] = 'variant_sale_unresolved'; continue; }
+                $offers[] = competitor_variant_offer($label, $visible, $availability, 'deluxe:'.substr(hash('sha256', $url), 0, 16).':'.$nativeId, $nativeId);
+            }
+            return [$offers, 'deluxe_variant_prices', $warnings];
+        }
+        return [[], '', $warnings];
+    }
+    if ($host === 'banka-speciy.in.ua') {
+        foreach ($xpath->query('//section[contains(concat(" ",normalize-space(@class)," ")," product ") and @data-product-id]') as $block) {
+            $productId = $block->getAttribute('data-product-id');
+            if (!preg_match('/^[1-9][0-9]{0,11}$/D', $productId) || $title === '' || normalize(competitor_first_text($xpath, ['.//h1'], $block)) !== normalize($title)) continue;
+            $availability = competitor_availability(competitor_first_text($xpath, ['.//*[@itemprop="availability"]', './/*[contains(concat(" ",normalize-space(@class)," ")," product-availability ")]'], $block));
+            foreach ($xpath->query('.//input[@type="radio" and @data-price and @data-description and contains(concat(" ",normalize-space(@class)," ")," product-option-value ")]', $block) as $node) {
+                $nativeId = $node->getAttribute('value');
+                if (!preg_match('/^[1-9][0-9]{0,11}$/D', $nativeId) || !preg_match('/^option\[([1-9][0-9]{0,11})\]$/D', $node->getAttribute('name'), $group)) continue;
+                if ($node->hasAttribute('id') && strpos($node->getAttribute('id'), 'product-size-'.$productId.'-') !== 0) continue;
+                $money = competitor_variant_money($node->getAttribute('data-price'));
+                $grams = competitor_weight($node->getAttribute('data-description'));
+                $min = $node->getAttribute('data-min-quantity');
+                if (!$money || $grams === null || !preg_match('/^[1-9][0-9]{0,5}$/D', $min)) continue;
+                if (trim($node->getAttribute('data-special')) !== '') { $warnings[] = 'variant_sale_unresolved'; continue; }
+                $name = competitor_text($node->getAttribute('data-name'));
+                $label = $name !== '' ? $name : competitor_text($node->getAttribute('data-description'));
+                $condition = (int) $min > 1 ? 'От '.$min.' упаковок' : '';
+                if (preg_match('/(?:опт|wholesale)/iu', $label)) $condition = $condition !== '' ? $condition.'; оптовое предложение' : 'Оптовое предложение';
+                $stock = $node->hasAttribute('disabled') ? 'unknown' : $availability;
+                $offers[] = competitor_variant_offer($label, $money, $stock, 'banka:'.$productId.':'.$group[1].':'.$nativeId, $nativeId, $grams, (float) $min, $condition);
+            }
+            return [$offers, 'banka_option_prices', $warnings];
+        }
+        return [[], '', $warnings];
+    }
+    if ($host === 'specii.in.ua') {
+        foreach ($xpath->query('//*[@itemtype="http://schema.org/Product" or @itemtype="https://schema.org/Product"]') as $block) {
+            $productUrl = competitor_first_text($xpath, ['.//*[@itemprop="url"]'], $block);
+            if ($title === '' || normalize(competitor_first_text($xpath, ['.//h1', './/*[@itemprop="name"]'], $block)) !== normalize($title)
+                && competitor_absolute_url($productUrl, $url) !== $url) continue;
+            $active = $xpath->query('.//li[@data-treevalue and contains(concat(" ",normalize-space(@class)," ")," bx_active ") and not(contains(concat(" ",normalize-space(@class)," ")," bx_missing "))]', $block);
+            if ($active->length !== 1) {
+                if ($xpath->query('.//li[@data-treevalue]', $block)->length) return [[], 'specii_selected_variant', ['variant_prices_unavailable']];
+                continue;
+            }
+            $node = $active->item(0); $list = $node->parentNode;
+            if (!$list instanceof \DOMElement || !preg_match('/^(bx_[0-9]+_([0-9]+))_prop_[0-9]+_list$/D', $list->getAttribute('id'), $prefix)
+                || !preg_match('/^[0-9]+_[0-9]+$/D', $node->getAttribute('data-treevalue'))) continue;
+            $label = competitor_first_text($xpath, ['.//*[contains(concat(" ",normalize-space(@class)," ")," cnt ")]'], $node);
+            $here = competitor_first_text($xpath, ['.//*[contains(concat(" ",normalize-space(@class)," ")," here ")]'], $list->parentNode);
+            if ($label === '' || normalize($here) !== normalize($label) || competitor_weight($label) === null) continue;
+            $priceNode = competitor_first_node($xpath, ['.//*[@id="'.$prefix[1].'_price" and @itemprop="price"]'], $block);
+            if (!$priceNode) continue;
+            $price = competitor_decimal(competitor_node_value($priceNode));
+            $currency = competitor_currency(competitor_first_text($xpath, ['.//*[@itemprop="priceCurrency"]'], $priceNode->parentNode));
+            if ($price === null || $currency === '') continue;
+            $stock = competitor_availability(competitor_first_text($xpath, ['.//*[@itemprop="availability"]'], $priceNode->parentNode));
+            $nativeId = $node->getAttribute('data-treevalue');
+            $offers[] = competitor_variant_offer($label, ['price' => $price, 'currency' => $currency], $stock, 'specii:'.$prefix[2].':'.$nativeId, $nativeId);
+            return [$offers, 'specii_selected_variant', ['variant_prices_unavailable']];
+        }
+    }
+    return [[], '', []];
 }
 
 function competitor_dom_offers(\DOMXPath $xpath, \DOMNode $scope, string $title, string $url): array
@@ -580,8 +721,14 @@ function competitors_parse_document(array $target, string $html, string $finalUr
         return $base;
     }
     if ($kind !== 'product') throw new CompetitorParseError('parse_error');
-    list($offers, $jsonTitle, $warnings) = competitor_product_json($json, $title, $finalUrl);
-    $method = $offers ? 'json_ld' : '';
+    list($offers, $method, $warnings) = competitor_source_variants($xpath, $scope, $title, $finalUrl);
+    $jsonTitle = '';
+    if (!$offers && $method !== '') throw new CompetitorParseError('variant_prices_unavailable');
+    if (!$offers) {
+        list($offers, $jsonTitle, $jsonWarnings) = competitor_product_json($json, $title, $finalUrl);
+        $warnings = array_merge($warnings, $jsonWarnings);
+        $method = $offers ? 'json_ld' : '';
+    }
     if (!$offers) {
         list($offers, $method, $domWarnings) = competitor_dom_offers($xpath, $scope, $title, $finalUrl);
         $warnings = array_merge($warnings, $domWarnings);
@@ -612,8 +759,11 @@ function competitors_parse_document(array $target, string $html, string $finalUr
         if ($offer['availability'] === 'unknown') $warnings[] = 'availability_unknown';
         if ($offer['old_price'] !== null && bccomp($offer['old_price'], $offer['price'], 2) <= 0) $offer['old_price'] = null;
         $offer['label'] = mb_substr($offer['label'], 0, 200);
+        $offer['packaging'] = $offer['packaging'] ?? competitor_packaging($offer['label']);
         unset($offer['_paired_variant']);
-        $key = hash('sha256', encode([$offer['label'], $offer['grams'], $offer['currency'], $offer['min_quantity'], $offer['condition']]));
+        $identity = [$offer['label'], $offer['grams'], $offer['currency'], $offer['min_quantity'], $offer['condition']];
+        if (isset($offer['variant_id'])) $identity[] = $offer['variant_id'];
+        $key = hash('sha256', encode($identity));
         if (isset($unique[$key]) && ($unique[$key]['price'] !== $offer['price'] || $unique[$key]['availability'] !== $offer['availability'])) {
             throw new CompetitorParseError('variant_prices_unavailable');
         }

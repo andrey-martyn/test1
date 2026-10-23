@@ -242,9 +242,10 @@ with tempfile.TemporaryDirectory() as temporary:
             assert page.locator("#competitor-tab-changes").get_attribute("aria-selected") == "true"
             assert page.locator(".competitor-changes article").count() >= 2
             page.click("#competitor-tab-terms")
-            assert "Синтетические условия доставки" in page.locator("#competitor-tabpanel").inner_text()
-            page.locator(".competitor-watcher").filter(has_text="Синтетические условия").locator("summary").click()
-            assert "Минимальный заказ 200 грн." in page.locator("#competitor-tabpanel").inner_text()
+            assert page.locator(".competitor-terms-table").is_visible()
+            page.locator("tr[data-terms-row=minimum_order] td[data-terms-source=deluxe] .competitor-terms-open").click()
+            assert "Минимальный заказ 200 грн." in page.locator("#drawer-content").inner_text()
+            page.click("[data-action=close-dialog]")
             page.click("#competitor-tab-discoveries")
             assert page.locator(".competitor-discovery-list article").count() == 1
             assert "Синтетический новый товар" in page.locator(".competitor-discovery-list").inner_text()

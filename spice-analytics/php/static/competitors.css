@@ -78,3 +78,13 @@
 .competitor-sandbox-result.attention{background:#fff0e6;border-color:#d5ab8e}.competitor-sandbox-result.attention>strong,.competitor-sandbox-result.attention p{color:#763309}
 .competitor-sandbox-footnote{margin:15px 0 0!important;color:#46554d!important}
 @media(max-width:720px){.competitor-pack-chain,.competitor-sandbox-panel{padding:15px 12px;margin:17px 0}.competitor-pack-chain h3,.competitor-sandbox-panel h3{font-size:16px}.competitor-sandbox-actions{display:block}.competitor-sandbox-actions .button{display:flex;width:100%;font-size:13px;margin:9px 0;min-height:46px}.competitor-server-plan>.button{display:flex;width:100%;font-size:13px}.competitor-sandbox-confirm{font-size:13px!important;padding:11px}.competitor-chain-table th,.competitor-chain-table td{padding:12px 10px}.competitor-server-plan .competitor-chain-table{min-width:580px}.competitor-chain-table strong{font-size:15px}}
+
+/* A visible pack label keeps jars and pouches from looking interchangeable. */
+.competitor-cell-packaging{display:block;margin:7px 0 4px;color:#33463e;font-size:13px;line-height:1.45;font-weight:600}
+.competitor-packaging-choice{padding:12px 14px;border:1px solid #b8cbc1;border-radius:9px;color:#233d31;background:#f3f7f4;font-size:14px;line-height:1.55}
+.competitor-detail-variant{padding:12px 0;border-bottom:1px solid #d9e1dc}
+.competitor-detail-variant.selected-variant{padding:12px 14px;border:2px solid #26704d;border-radius:10px;background:#f4f8f5;margin:12px 0}
+.competitor-variant-scope{display:block;color:#44564c;font-size:13px;line-height:1.4;font-weight:650;margin-bottom:8px}
+.competitor-detail-variant.selected-variant .competitor-variant-scope{color:#155635}
+.competitor-suggestion .competitor-suggestion-base{font-size:13px;font-weight:650;color:#173e2b}
+.competitor-suggestion span{line-height:1.5}

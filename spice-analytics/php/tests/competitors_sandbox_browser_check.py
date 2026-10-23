@@ -270,6 +270,7 @@ with tempfile.TemporaryDirectory() as temporary:
             page.route("**/index.php?route=**", intercept)
             page.click("[data-view=competitors]")
             page.wait_for_selector(".competitor-matrix")
+            page.select_option("#competitor-matrix-pack", "50")
             assert page.locator(".competitor-sandbox-panel").get_attribute("data-sandbox-enabled") == "false"
             assert page.locator("[data-comp-action=sandbox-apply]").count() == 0
             row(page).locator("[data-matrix-select]").check()
@@ -280,7 +281,7 @@ with tempfile.TemporaryDirectory() as temporary:
             assert not requests
             page.select_option("#competitor-matrix-pack", "all")
             assert row(page, grams=200).locator("[data-matrix-select]").is_disabled()
-            assert "База — 50 г" in row(page, grams=200).inner_text()
+            assert "Расчёт от 50 или 500 г" in row(page, grams=200).inner_text()
             page.select_option("#competitor-matrix-pack", "50")
 
             # A client-visible database name alone cannot enable a write control.
@@ -439,6 +440,7 @@ with tempfile.TemporaryDirectory() as temporary:
             page.wait_for_selector(".customer-table")
             page.click("[data-view=competitors]")
             page.wait_for_selector(".competitor-matrix")
+            page.select_option("#competitor-matrix-pack", "50")
             assert page.locator("[data-comp-action=sandbox-plan]").is_disabled()
             page.locator(".competitor-sandbox-jobs summary").click()
             scenario["hold_job"] = False

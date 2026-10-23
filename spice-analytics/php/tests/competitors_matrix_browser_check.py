@@ -53,6 +53,10 @@ function offer($price,$grams=50,$currency="UAH",$unit="pack",$condition="",$stoc
         "condition"=>$condition,"availability"=>$stock,"min_quantity"=>$minimum];
 }
 function record($db,$target,$offers,$at) {
+    foreach($offers as &$value) {
+        $value["packaging"]=$target["source_id"]==="spicery"?"doypack":($target["source_id"]==="specii"?"kraft":"unknown");
+    }
+    unset($value);
     \Lavka\competitors_record_attempt($db,$target["id"],[
         "kind"=>"product","title"=>$target["label"],"offers"=>$offers,"text"=>"","links"=>[],
         "warnings"=>[],"method"=>"synthetic"
@@ -206,7 +210,8 @@ with tempfile.TemporaryDirectory() as temporary:
             assert page.locator("#competitor-tab-products").get_attribute("aria-selected") == "true"
             assert page.locator(".competitor-product-card").count() == 0
             page.fill("#competitor-search", "Матрица")
-            assert page.locator("#competitor-matrix-pack").input_value() == "50"
+            assert page.locator("#competitor-matrix-pack").input_value() == "500"
+            page.select_option("#competitor-matrix-pack", "50")
 
             main = matrix_row(page, "matrix-main")
             assert main.count() == 1
@@ -423,7 +428,7 @@ with tempfile.TemporaryDirectory() as temporary:
             body = json.loads(mutations[0]["body"])
             assert body["match_confirmed"] is True and body["match_group"] == "matrix-confirm"
             assert set(body) <= {"source_id", "kind", "url", "label", "enabled", "grams_override",
-                                 "pack_label", "match_group", "match_confirmed"}
+                                 "pack_label", "match_group", "match_confirmed", "packaging"}
             assert observation_digest(data) == before_prices
 
             # Errors remain discoverable in their own view; normal navigation

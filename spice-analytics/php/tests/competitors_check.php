@@ -18,7 +18,7 @@ function change_count(PDO $db): int { return (int) $db->query('SELECT count(*) F
 function competitor_legacy_specii_db(string $directory, array $overrides = []): PDO {
     \Lavka\private_dir($directory);
     $db = \Lavka\competitors_db($directory);
-    $db->exec("DELETE FROM competitor_targets WHERE seed_key='specii-whole-spices-catalog'; DROP TABLE competitor_migrations");
+    $db->exec("DELETE FROM competitor_targets WHERE seed_key IN ('specii-whole-spices-catalog','lavka-delivery'); DROP TABLE competitor_migrations");
     $row = array_merge(['seed_key' => 'specii-catalog', 'source_id' => 'specii', 'kind' => 'catalog', 'url' => 'https://www.specii.in.ua/ua/',
         'label' => 'Позиции на главной странице', 'enabled' => 1, 'grams_override' => null, 'pack_label' => '', 'match_group' => '', 'match_confirmed' => 0,
         'created_at' => '2026-09-01T10:00:00Z', 'updated_at' => '2026-09-01T10:00:00Z', 'next_check_at' => '2026-09-01T10:00:00Z'], $overrides);
@@ -51,8 +51,8 @@ function competitor_specii_source_migration_check(string $directory): void {
             && $old['observation'] === $history['target']['observation'] && $old['last_attempt'] === $history['target']['last_attempt'], 'Legacy observations, failed attempts and current snapshot survive migration');
         cck($discoveries === $db->query('SELECT * FROM competitor_discoveries ORDER BY target_id,url')->fetchAll()
             && $changes === $db->query('SELECT * FROM competitor_changes ORDER BY id')->fetchAll(), 'Legacy discoveries and change evidence survive migration');
-        cck((int) $db->query('SELECT count(*) FROM competitor_targets')->fetchColumn() === 91
-            && (int) $db->query('SELECT count(*) FROM competitor_targets WHERE enabled=1')->fetchColumn() === 90, 'Upgrade adds separate source and retains one archived target');
+        cck((int) $db->query('SELECT count(*) FROM competitor_targets')->fetchColumn() === 92
+            && (int) $db->query('SELECT count(*) FROM competitor_targets WHERE enabled=1')->fetchColumn() === 91, 'Upgrade adds category and own terms, retaining one archived target');
         $newId = (int) $db->query("SELECT id FROM competitor_targets WHERE seed_key='specii-whole-spices-catalog'")->fetchColumn();
         $new = \Lavka\competitors_target($db, $newId);
         cck($newId !== $oldId && $new['enabled'] && $new['observation'] === null && $new['last_success'] === null, 'Replacement category starts without borrowed homepage history');
@@ -64,7 +64,7 @@ function competitor_specii_source_migration_check(string $directory): void {
         $db = null; $db = \Lavka\competitors_db($legacyDirectory);
         cck(\Lavka\competitors_target($db, $oldId)['enabled'] && !\Lavka\competitors_target($db, $newId)['enabled']
             && \Lavka\competitors_target($db, $newId)['label'] === 'Мой архив раздела'
-            && (int) $db->query('SELECT count(*) FROM competitor_targets')->fetchColumn() === 91, 'One-time migration respects explicit re-enable and replacement customization');
+            && (int) $db->query('SELECT count(*) FROM competitor_targets')->fetchColumn() === 92, 'One-time migration respects explicit re-enable and replacement customization');
     } finally {
         $db = null;
         foreach (glob($legacyDirectory . '/*') as $file) if (is_file($file)) unlink($file);
@@ -144,7 +144,7 @@ function competitor_http_routes_check(string $directory): void {
         foreach ($login['headers'] as $header) if (preg_match('/^Set-Cookie:\s*(lavka_analytics_session=[^;]+)/i', $header, $match)) $cookie = $match[1];
         cck($cookie !== '', 'Login supplies existing cabinet session cookie');
         $overview = competitor_http_test_request($base, '/api/competitors', 'GET', null, $cookie);
-        cck($overview['status'] === 200 && count(\Lavka\decode($overview['body'])['targets']) === 90, 'Competitor API works independently of orders database');
+        cck($overview['status'] === 200 && count(\Lavka\decode($overview['body'])['targets']) === 91, 'Competitor API works independently of orders database');
         cck(!is_file($httpDirectory . '/analytics.sqlite3'), 'Monitoring API does not create orders database');
         cck(competitor_http_test_request($base, '/api/meta', 'GET', null, $cookie)['status'] === 503, 'Orders API still reports missing order data normally');
         $body = ['source_id' => 'deluxe', 'kind' => 'product', 'url' => 'https://deluxe.com.ua/fixture-http.html', 'label' => 'Synthetic HTTP product'];
@@ -178,9 +178,11 @@ try {
     \Lavka\bump($orders); $ordersRevision = \Lavka\revision($orders);
     $db = \Lavka\competitors_db($directory); $overview = \Lavka\competitors_overview($db);
     cck(count($overview['sources']) === 5 && $overview['settings']['interval_hours'] === 24, 'Fixed sources and daily cadence');
-    cck(count(array_filter($overview['targets'], function ($t) { return $t['source_id'] === 'lavka'; })) === 56, 'Priority seed is deduplicated by product id');
+    cck(count(array_filter($overview['targets'], function ($t) { return $t['source_id'] === 'lavka' && $t['kind'] === 'product'; })) === 56, 'Priority seed is deduplicated by product id');
     cck(count(array_filter($overview['targets'], function ($t) { return $t['source_id'] !== 'lavka' && $t['kind'] === 'product'; })) === 22, 'Initial competitor candidates are included without claiming equivalence');
-    cck(count($overview['targets']) === 90, 'Seed includes all56 own22 competitor and12 commercial/catalog watchers');
+    cck(count($overview['targets']) === 91, 'Seed includes all56 own22 competitor and13 commercial/catalog watchers');
+    cck(count(array_filter($overview['targets'], function ($t) { return $t['source_id'] === 'lavka' && $t['kind'] === 'terms'
+        && $t['url'] === 'https://lavka-speciy.com/zakaz--oplata-i-dostavka-uk'; })) === 1, 'User-provided own terms source is watched without inventing its contents');
     cck((int) $db->query("SELECT count(*) FROM competitor_targets WHERE seed_key='specii-whole-spices-catalog' AND url='https://www.specii.in.ua/ua/catalog/tselye-pryanosti/' AND enabled=1")->fetchColumn() === 1
         && (int) $db->query("SELECT count(*) FROM competitor_targets WHERE seed_key='specii-catalog'")->fetchColumn() === 0, 'Fresh seed watches actual Specii category without unsuitable homepage');
     cck(count(array_filter($overview['targets'], function ($t) { return $t['source_id'] === 'spicery' && $t['enabled'] && $t['kind'] === 'terms'; })) === 2, 'Verified Spicery delivery and discount page URLs are enabled');
