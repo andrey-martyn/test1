@@ -31,6 +31,7 @@ name = "lavka-matrix-browser-" + secrets.token_hex(5)
 SEED = r'''
 require "php/src/Auth.php";
 require "php/src/Competitors.php";
+require "php/src/CompetitorParser.php";
 $input=json_decode(stream_get_contents(STDIN),true);
 \Lavka\Auth::setPassword("/test-data",$input["password"]);
 $db=\Lavka\competitors_db("/test-data");
@@ -117,6 +118,15 @@ $ids["found_higher"]=target($db,"banka","found-higher","Хмели-сунели 
 record($db,$ids["found_higher"],[offer("130",500,"UAH","pack","","unknown")],$now);
 $ids["found_unknown"]=target($db,"banka","found-unknown","Хмели-сунели — наличие не распознано","matrix-low-found");
 record($db,$ids["found_unknown"],[offer("110",500,"UAH","pack","","unknown")],gmdate("Y-m-d\TH:i:s\Z",time()-3600));
+$ids["policy_own"]=target($db,"lavka","policy-own","Матрица Л — правило магазина","matrix-stock-policy",false);
+record($db,$ids["policy_own"],[offer("40"),offer("293",500)],$now);
+$ids["policy_available"]=target($db,"deluxe","policy-available","Матрица Л — обычное наличие","matrix-stock-policy");
+record($db,$ids["policy_available"],[offer("189",500)],$now);
+$ids["policy_remote"]=target($db,"banka","policy-remote","Матрица Л — магазин без индикации","matrix-stock-policy");
+$policyPage='<html><head><meta charset="utf-8"></head><body><main><section class="product" data-product-id="17"><h1>Матрица Л — магазин без индикации</h1><input type="radio" class="product-option-value" name="option[9]" value="201" data-price="110 грн" data-description="500 г" data-min-quantity="1" data-special="0"><button>Купити</button></section></main></body></html>';
+\Lavka\competitors_record_attempt($db,$ids["policy_remote"]["id"],\Lavka\competitors_parse($ids["policy_remote"],$policyPage,$ids["policy_remote"]["url"]),null,$now,200);
+$ids["policy_blocked"]=target($db,"banka","policy-blocked","Матрица Л — заблокированная фасовка","matrix-stock-policy");
+\Lavka\competitors_record_attempt($db,$ids["policy_blocked"]["id"],\Lavka\competitors_parse($ids["policy_blocked"],str_replace(['data-price="110 грн"','type="radio"'],['data-price="80 грн"','disabled type="radio"'],$policyPage),$ids["policy_blocked"]["url"]),null,$now,200);
 $ids["tie_own"]=target($db,"lavka","tie-own","Матрица Г — равные цены","matrix-tie",false);
 record($db,$ids["tie_own"],[offer("90")],$now);
 $ids["tie_deluxe"]=target($db,"deluxe","tie-deluxe","Матрица Г — равная цена конкурента","matrix-tie");
@@ -549,12 +559,12 @@ with tempfile.TemporaryDirectory() as temporary:
             unknown=found.locator("td[data-source=banka]")
             assert price(available)==189 and price(unknown)==110
             assert available.evaluate("el=>el.classList.contains('is-best')")
-            assert "минимум с наличием" in available.inner_text()
+            assert "минимум для сравнения" in available.inner_text()
             assert unknown.evaluate("el=>el.classList.contains('is-found-minimum')")
             assert not unknown.evaluate("el=>el.classList.contains('is-best')")
             assert "Минимальная найденная цена" in unknown.inner_text()
             assert "Наша выше на 55%" in found.inner_text()
-            assert "минимум конкурентов 189 UAH с подтверждённым наличием" in found.inner_text()
+            assert "минимум конкурентов 189 UAH по правилам наличия магазинов" in found.inner_text()
             assert "Найдена цена ниже: 110 UAH" in found.inner_text()
             assert page.evaluate("(()=>{const r=competitorMatrixRows().find(r=>r.group==='matrix-low-found'&&r.grams===500);return {found:r.foundMinimum,calculation:r.competitorMinimum}})()") == {"found":110,"calculation":189}
             # Every displayed price carries its actual successful reading date,
@@ -568,6 +578,38 @@ with tempfile.TemporaryDirectory() as temporary:
             page.fill("#competitor-search","Матрица К")
             page.locator(".competitor-matrix-scroll").scroll_into_view_if_needed()
             page.screenshot(path=str(ARTIFACTS / "found-minimum-and-reading-dates.png"))
+            page.fill("#competitor-search","Матрица")
+            policy=matrix_row(page,"matrix-stock-policy",500)
+            policy_cell=policy.locator("td[data-source=banka]")
+            assert price(policy_cell)==110 and policy_cell.get_attribute("data-price")=="110.00"
+            assert policy_cell.evaluate("el=>el.classList.contains('is-best')")
+            assert not policy_cell.evaluate("el=>el.classList.contains('is-found-minimum')")
+            assert "Наличие не указано · правило магазина" in policy_cell.inner_text()
+            assert "Наша выше на 166%" in policy.inner_text()
+            assert page.evaluate("(()=>{const r=competitorMatrixRows().find(r=>r.group==='matrix-stock-policy'&&r.grams===500);return r.competitorMinimum})()")==110
+            stored=page.evaluate("id=>competitorState.data.targets.find(t=>t.id===id).observation.offers[0]",ids["policy_remote"])
+            assert stored['availability']=='unknown' and stored['availability_basis']=='not_listed'
+            assert not policy.locator("[data-matrix-select]").is_disabled()
+            policy_cell.locator("[data-comp-action=matrix-detail]").click()
+            assert "по правилу магазина" in page.locator("#drawer .competitor-explanation").inner_text()
+            assert "Покупка этой фасовки недоступна" in page.locator("#drawer").inner_text()
+            page.click("[data-action=close-dialog]")
+            page.select_option("#competitor-matrix-status","above")
+            assert matrix_row(page,"matrix-stock-policy",500).count()==1
+            page.select_option("#competitor-matrix-status","lowest")
+            assert matrix_row(page,"matrix-stock-policy",500).count()==0
+            page.select_option("#competitor-matrix-status","all")
+            page.fill("#competitor-search","Матрица Л")
+            policy.locator("[data-matrix-cut]").fill("0")
+            policy.locator("[data-matrix-select]").check()
+            page.click("[data-comp-action=matrix-preview]")
+            assert policy.locator(".competitor-suggestion").get_attribute("data-price")=="109.95"
+            for width in [390,320,1440]:
+                page.set_viewport_size({"width":width,"height":900})
+                assert page.evaluate("document.documentElement.scrollWidth<=innerWidth")
+            page.locator(".competitor-matrix-scroll").scroll_into_view_if_needed()
+            page.screenshot(path=str(ARTIFACTS / "listed-offer-policy-minimum.png"))
+            page.click("[data-comp-action=matrix-clear]")
             page.fill("#competitor-search","Матрица")
             assert len(mutations) == 4 and all(json.loads(m["body"]) == {"match_confirmed": True} for m in mutations), mutations
             assert observation_digest(data) == before_prices
@@ -590,6 +632,7 @@ with tempfile.TemporaryDirectory() as temporary:
                           "own_price_cap_and_no_price_writes": "passed", "explicit_link_confirmation": "passed",
                           "confirmed_unknown_out_of_stock_and_preorder_prices_remain_visible": "passed",
                           "found_minimum_outline_and_all_price_reading_dates": "passed",
+                          "source_policy_without_false_stock_and_blocked_variant_exclusion": "passed",
                           "own_db_catalog_and_no_missing_product_fallback": "passed",
                           "unmapped_seo_and_independent_own_rows": "passed",
                           "mobile_and_source_evidence": "passed"}))

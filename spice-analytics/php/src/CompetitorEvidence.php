@@ -205,7 +205,7 @@ function lavka_competitor_diagnostic_offers(array $offers): array
     $result=[];
     foreach(array_slice($offers,0,6) as $offer){
         $row=[];foreach(['price','old_price','grams','min_quantity'] as $key)if(isset($offer[$key])&&is_numeric($offer[$key]))$row[$key]=0+$offer[$key];
-        foreach(['availability','packaging','currency','unit'] as $key)if(isset($offer[$key])&&preg_match('/^[a-zA-Z_]{1,30}$/D',(string)$offer[$key]))$row[$key]=$offer[$key];
+        foreach(['availability','availability_basis','packaging','currency','unit'] as $key)if(isset($offer[$key])&&preg_match('/^[a-zA-Z_]{1,30}$/D',(string)$offer[$key]))$row[$key]=$offer[$key];
         foreach(['label','condition'] as $key)if(is_string($offer[$key]??null))$row[$key]=lavka_competitor_diagnostic_text($offer[$key],120);
         $result[]=$row;
     }

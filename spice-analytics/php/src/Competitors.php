@@ -5,6 +5,7 @@ namespace Lavka;
 
 require_once __DIR__ . '/common.php';
 require_once __DIR__ . '/CompetitorPackaging.php';
+require_once __DIR__ . '/CompetitorAvailability.php';
 const COMPETITOR_MAX_PRODUCTS = 5000;
 const COMPETITOR_MAX_TARGETS = 5500;
 
@@ -14,13 +15,16 @@ final class CompetitorConflict extends \InvalidArgumentException {}
 /** Public sources only. Shop credentials and the orders database are never used. */
 function competitors_sources(): array
 {
-    return [
+    $sources = [
         ['id' => 'lavka', 'name' => 'Лавка специй', 'base_url' => 'https://lavka-speciy.com', 'role' => 'own', 'notes' => '', 'notes_status' => null],
         ['id' => 'deluxe', 'name' => 'Deluxe', 'base_url' => 'https://deluxe.com.ua', 'role' => 'competitor', 'notes' => 'По сведениям пользователя: распродажи и несколько фасовок. Условия требуют проверки по источнику.', 'notes_status' => 'user_provided_unverified'],
         ['id' => 'spicery', 'name' => 'Spicery Shop', 'base_url' => 'https://spiceryshop.com.ua', 'role' => 'competitor', 'notes' => 'По сведениям пользователя: скидки 5–10% при выполнении условий по сумме заказов. Условия требуют проверки по источнику.', 'notes_status' => 'user_provided_unverified'],
         ['id' => 'banka', 'name' => 'Банка Спецій', 'base_url' => 'https://banka-speciy.in.ua', 'role' => 'competitor', 'notes' => 'По сведениям пользователя: скидка 10% на первый заказ за подписку. Условия требуют проверки по источнику.', 'notes_status' => 'user_provided_unverified'],
         ['id' => 'specii', 'name' => 'Лавка прянощів (specii.in.ua)', 'base_url' => 'https://www.specii.in.ua', 'role' => 'competitor', 'notes' => 'По сведениям пользователя: скидки 3%, 5%, 10% при суммах 1000, 2000, 3000 грн. Условия требуют проверки по источнику.', 'notes_status' => 'user_provided_unverified'],
     ];
+    foreach ($sources as &$source) $source['availability_policy'] = competitors_availability_policy($source['id']);
+    unset($source);
+    return $sources;
 }
 
 function competitors_source(string $id): array
@@ -152,6 +156,7 @@ function competitors_db(string $directory): \PDO
             $archive->execute([$now]);
             $db->prepare('INSERT INTO competitor_migrations(name,applied_at) VALUES(?,?)')->execute([$migration, $now]);
         }
+        competitors_availability_migrate($db, $now);
         $db->commit();
     } catch (\Throwable $e) {
         if ($db->inTransaction()) $db->rollBack();
@@ -315,6 +320,10 @@ function competitors_observation(array $v, array $target): array
         $packaging = $offer['packaging'] ?? 'unknown';
         if (!is_string($packaging) || !in_array($packaging, ['unknown', 'doypack', 'zip', 'kraft', 'jar'], true)) throw new \InvalidArgumentException('Неверный тип упаковки предложения');
         $o['packaging'] = $packaging;
+        $basis = $offer['availability_basis'] ?? ($o['availability'] === 'unknown' ? 'unknown' : 'explicit');
+        if (!is_string($basis) || !in_array($basis, ['unknown', 'explicit', 'not_listed', 'blocked'], true)
+            || $basis === 'not_listed' && $o['availability'] !== 'unknown') throw new \InvalidArgumentException('Неверное основание наличия');
+        $o['availability_basis'] = $basis;
         foreach (['variant_id', 'source_variant_id'] as $field) {
             if (isset($offer[$field])) $o[$field] = competitors_text($offer[$field], 180, 'идентификатор варианта');
         }

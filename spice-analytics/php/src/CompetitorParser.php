@@ -118,11 +118,11 @@ function competitor_availability($value): string
 {
     $value = mb_strtolower(competitor_text(is_scalar($value) ? (string) $value : ''));
     if (preg_match('~(?:^|[/#])(?:outofstock|soldout|discontinued)$~', $value)
-        || preg_match('/(?:нет в наличии|немає в наявності|нема[єа]? в наявност|відсутн|закінчився|закончился)/u', $value)) return 'out_of_stock';
+        || preg_match('/(?:нет в наличии|не в наличии|нет на складе|немає на складі|немає в наявності|нема[єа]? в наявност|відсутн|закінчився|закончился|отсутствует|out of stock|not in stock|sold out|unavailable|not available)/u', $value)) return 'out_of_stock';
     if (preg_match('~(?:^|[/#])(?:preorder|presale|backorder)$~', $value)
-        || preg_match('/(?:под заказ|під замовлення|передзамовлення|предзаказ)/u', $value)) return 'preorder';
+        || preg_match('/(?:под заказ|під замовлення|передзамовлення|предзаказ|pre[- ]?order|back[- ]?order)/u', $value)) return 'preorder';
     if (preg_match('~(?:^|[/#])(?:instock|limitedavailability|onlineonly)$~', $value)
-        || preg_match('/(?:есть в наличии|в наличии|є в наявності|в наявності|у наявності)/u', $value)) return 'in_stock';
+        || preg_match('/(?:есть в наличии|в наличии|є в наявності|в наявності|у наявності|in stock|^available(?: now)?$)/u', $value)) return 'in_stock';
     return 'unknown';
 }
 
@@ -445,6 +445,91 @@ function competitor_selected_json_stock(array $offers, array $money, float $gram
     return count($states) === 1 ? (string)array_keys($states)[0] : 'unknown';
 }
 
+/** Primary-product evidence only; absence is not converted into an inventory fact. */
+function competitor_stock_variant_context(\DOMNode $node, \DOMNode $block): bool
+{
+    for ($parent = $node; $parent instanceof \DOMElement && !$parent->isSameNode($block); $parent = $parent->parentNode) {
+        if ($parent->hasAttribute('data-price') && (in_array($parent->nodeName, ['input', 'option', 'li'], true) || $parent->hasAttribute('data-description'))) return true;
+        if ($parent->nodeName === 'label' && preg_match('/^product-size-\d+-/', $parent->getAttribute('for'))) return true;
+    }
+    return false;
+}
+
+function competitor_page_stock(\DOMXPath $xpath, \DOMNode $block): array
+{
+    $states = []; $indicator = false; $blocked = false;
+    $lower = 'translate(@class,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz")';
+    $paths = './/*[@itemprop="availability" or @data-availability or @data-stock-status or @data-stock or contains('.$lower.',"stock") or contains('.$lower.',"avail") or contains('.$lower.',"product-status")]';
+    foreach ($xpath->query($paths, $block) as $node) {
+        if (competitor_related_node($node, $block, $block)) continue;
+        // A status attached to one option must not become all variants' stock.
+        if (competitor_stock_variant_context($node, $block)) continue;
+        $indicator = true;
+        foreach (['content', 'href', 'data-availability', 'data-stock-status'] as $attribute) {
+            $state = competitor_availability($node->getAttribute($attribute));
+            if ($state !== 'unknown') $states[$state] = true;
+        }
+        $state = competitor_availability(competitor_scoped_text($xpath, $node));
+        if ($state !== 'unknown') $states[$state] = true;
+        if ($node->hasAttribute('data-stock') && preg_match('/^\d+$/D', trim($node->getAttribute('data-stock')))) {
+            $states[(int)$node->getAttribute('data-stock') > 0 ? 'in_stock' : 'out_of_stock'] = true;
+        }
+    }
+    foreach ($xpath->query('.//tr[td[contains(.,"Наличие") or contains(.,"Наявність")]]/td[last()]', $block) as $node) {
+        if (competitor_related_node($node, $block, $block) || competitor_stock_variant_context($node, $block)) continue;
+        $indicator = true; $state = competitor_availability($node->textContent);
+        if ($state !== 'unknown') $states[$state] = true;
+    }
+    // Some shops publish plain text without a stock class or schema attribute.
+    foreach ($xpath->query('.//*[self::span or self::p or self::strong or self::div][not(*)]', $block) as $node) {
+        if (competitor_related_node($node, $block, $block) || competitor_stock_variant_context($node, $block)) continue;
+        $text = mb_strtolower(competitor_text($node->textContent));
+        if (mb_strlen($text) > 100 || !preg_match('/^(?:(?:наличие|наявність|availability)\s*:\s*)?(?:нет в наличии|не в наличии|нет на складе|немає|нема в наявності|відсутн|отсутствует|временно отсутствует|есть в наличии|в наличии|є в наявності|в наявності|у наявності|под заказ|під замовлення|предзаказ|передзамовлення|out of stock|not in stock|sold out|unavailable|not available|in stock|available|pre[- ]?order|back[- ]?order)(?:\s|[.!:]|$)/u', $text)) continue;
+        $state = competitor_availability($text);
+        if ($state !== 'unknown') { $indicator = true; $states[$state] = true; }
+    }
+    foreach ($xpath->query('.//button|.//a|.//input[@type="submit"]', $block) as $button) {
+        if (competitor_related_node($button, $block, $block)) continue;
+        $text = mb_strtolower(competitor_text($button->textContent.' '.$button->getAttribute('value')));
+        if (preg_match('/(?:сообщить о наличии|повідомити про наявність|сповістити про наявність|notify.*(?:stock|available))/u', $text)) $states['out_of_stock'] = true;
+        $identity = mb_strtolower($button->getAttribute('id').' '.$button->getAttribute('class').' '.$button->getAttribute('onclick'));
+        if (!preg_match('/(?:купити|купить|buy|add to cart|в корзину|у кошик|в кошик)/u', $text) && !preg_match('/(?:cart|basket|buy)/u', $identity)) continue;
+        if ($button->hasAttribute('disabled') || $button->getAttribute('aria-disabled') === 'true' || preg_match('/(?:^|\s)disabled(?:\s|$)/u', $button->getAttribute('class'))) $blocked = true;
+    }
+    foreach (['out_of_stock', 'preorder'] as $state) if (isset($states[$state])) return [$state, 'explicit'];
+    if ($blocked) return ['unknown', 'blocked'];
+    if (isset($states['in_stock'])) return ['in_stock', 'explicit'];
+    return ['unknown', $indicator ? 'unknown' : 'not_listed'];
+}
+
+function competitor_variant_stock(\DOMElement $node, array $page, \DOMXPath $xpath, \DOMNode $block): array
+{
+    $states = [];
+    foreach (['data-availability', 'data-stock-status'] as $attribute) {
+        $state = competitor_availability($node->getAttribute($attribute));
+        if ($state !== 'unknown') $states[$state] = true;
+    }
+    foreach (['data-name', 'data-description'] as $attribute) {
+        $state = competitor_availability($node->getAttribute($attribute));
+        if ($state !== 'unknown') $states[$state] = true;
+    }
+    $state = competitor_availability($node->textContent);
+    if ($state !== 'unknown') $states[$state] = true;
+    if ($node->hasAttribute('id')) foreach ($xpath->query('.//label[@for]', $block) as $label) {
+        if ($label->getAttribute('for') !== $node->getAttribute('id') || competitor_related_node($label, $block, $block)) continue;
+        $state = competitor_availability(competitor_scoped_text($xpath, $label));
+        if ($state !== 'unknown') $states[$state] = true;
+    }
+    foreach (['data-stock', 'data-stock-quantity'] as $attribute) if ($node->hasAttribute($attribute) && preg_match('/^\d+$/D', trim($node->getAttribute($attribute)))) {
+        $states[(int)$node->getAttribute($attribute) > 0 ? 'in_stock' : 'out_of_stock'] = true;
+    }
+    foreach (['out_of_stock', 'preorder'] as $state) if (isset($states[$state]) || $page[0] === $state) return [$state, 'explicit'];
+    if ($node->hasAttribute('disabled') || $node->getAttribute('aria-disabled') === 'true' || preg_match('/(?:^|\s)disabled(?:\s|$)/u', $node->getAttribute('class')) || $node->getAttribute('data-preorder-quantity') === '0' || $page[1] === 'blocked') return ['unknown', 'blocked'];
+    if (isset($states['in_stock'])) return ['in_stock', 'explicit'];
+    if ($page[1] === 'not_listed' && ($node->hasAttribute('data-availability') || $node->hasAttribute('data-stock-status') || $node->hasAttribute('data-stock') || $node->hasAttribute('data-stock-quantity'))) return ['unknown', 'unknown'];
+    return $page;
+}
+
 /** Known public storefront structures, restricted to their own current product. */
 function competitor_source_variants(\DOMXPath $xpath, \DOMNode $scope, string $title, string $url): array
 {
@@ -465,15 +550,16 @@ function competitor_source_variants(\DOMXPath $xpath, \DOMNode $scope, string $t
             if (normalize(competitor_first_text($xpath, ['.//h1'], $parent)) === normalize($title) && $title !== '') { $details = $parent; break; }
         }
         if (!$details) return [[], '', []];
-        $availability = competitor_availability(competitor_first_text($xpath, ['.//table[contains(concat(" ",normalize-space(@class)," ")," product-info ")]//tr[td[contains(.,"Наличие") or contains(.,"Наявність")]]/td[last()]', './/*[@itemprop="availability"]'], $details));
+        $pageStock = competitor_page_stock($xpath, $details);
         foreach ($xpath->query('./option[@data-price and @value]', $select) as $option) {
             if (!preg_match('/^[1-9][0-9]{0,11}$/D', $option->getAttribute('value'))) continue;
             if ($option->hasAttribute('data-price-prefix') && $option->getAttribute('data-price-prefix') !== '=') continue;
             $money = competitor_variant_money($option->getAttribute('data-price'));
             if (!$money) { $warnings[] = 'variant_prices_unavailable'; continue; }
             $label = competitor_text($option->textContent); $nativeId = $option->getAttribute('value');
-            $stock = $option->hasAttribute('disabled') || $option->getAttribute('data-preorder-quantity') === '0' ? 'unknown' : $availability;
-            $offers[] = competitor_variant_offer($label, $money, $stock, 'spicery:'.$productId.':'.$group[1].':'.$nativeId, $nativeId);
+            list($stock, $basis) = competitor_variant_stock($option, $pageStock, $xpath, $details);
+            $offer = competitor_variant_offer($label, $money, $stock, 'spicery:'.$productId.':'.$group[1].':'.$nativeId, $nativeId);
+            $offer['availability_basis'] = $basis; $offers[] = $offer;
         }
         return [$offers, 'spicery_option_prices', $warnings];
     }
@@ -481,7 +567,7 @@ function competitor_source_variants(\DOMXPath $xpath, \DOMNode $scope, string $t
         $primaryJson = competitor_primary_json_offers($xpath, $title, $url);
         foreach ($xpath->query('//*[contains(concat(" ",normalize-space(@class)," ")," priceblock ")]') as $block) {
             if ($title === '' || normalize(competitor_first_text($xpath, ['.//h1'], $block)) !== normalize($title)) continue;
-            $availability = competitor_availability(competitor_first_text($xpath, ['.//*[contains(concat(" ",normalize-space(@class)," ")," available-pr ")]', './/*[@itemprop="availability"]'], $block));
+            $pageStock = competitor_page_stock($xpath, $block);
             foreach ($xpath->query('.//ul[contains(concat(" ",normalize-space(@class)," ")," itemPriceList ")]/li[@data-price]', $block) as $node) {
                 $nativeId = $node->getAttribute('data-price-id');
                 $label = competitor_first_text($xpath, ['.//*[contains(concat(" ",normalize-space(@class)," ")," weight-amount ")]'], $node);
@@ -505,7 +591,9 @@ function competitor_source_variants(\DOMXPath $xpath, \DOMNode $scope, string $t
                     foreach ($primaryJson as $jsonOffer) if (competitor_json_price_matches($jsonOffer, $visible)) $confirmed = true;
                     if (competitor_decimal($newPrice) === null || !$confirmed) { $warnings[] = 'variant_sale_unresolved'; continue; }
                 }
-                $offers[] = competitor_variant_offer($label, $visible, $availability, 'deluxe:'.substr(hash('sha256', $url), 0, 16).':'.$nativeId, $nativeId);
+                list($stock, $basis) = competitor_variant_stock($node, $pageStock, $xpath, $block);
+                $offer = competitor_variant_offer($label, $visible, $stock, 'deluxe:'.substr(hash('sha256', $url), 0, 16).':'.$nativeId, $nativeId);
+                $offer['availability_basis'] = $basis; $offers[] = $offer;
             }
             return [$offers, 'deluxe_variant_prices', $warnings];
         }
@@ -516,7 +604,9 @@ function competitor_source_variants(\DOMXPath $xpath, \DOMNode $scope, string $t
         foreach ($xpath->query('//section[contains(concat(" ",normalize-space(@class)," ")," product ") and @data-product-id]') as $block) {
             $productId = $block->getAttribute('data-product-id');
             if (!preg_match('/^[1-9][0-9]{0,11}$/D', $productId) || $title === '' || normalize(competitor_first_text($xpath, ['.//h1'], $block)) !== normalize($title)) continue;
-            $availability = competitor_availability(competitor_first_text($xpath, ['.//*[@itemprop="availability"]', './/*[contains(concat(" ",normalize-space(@class)," ")," product-availability ")]'], $block));
+            $pageStock = competitor_page_stock($xpath, $block);
+            $jsonNegative = false;
+            foreach ($primaryJson as $jsonOffer) if (in_array($jsonOffer['availability'], ['out_of_stock', 'preorder'], true)) $jsonNegative = true;
             $pageCurrency=competitor_meta_currency($xpath)?:competitor_currency(competitor_first_text($xpath,['.//*[@itemprop="priceCurrency"]'],$block));
             $selected = $xpath->query('.//input[@type="radio" and @checked and contains(concat(" ",normalize-space(@class)," ")," product-option-value ")] | .//select[starts-with(@name,"option[")]/option[@selected]', $block);
             $visiblePrice = competitor_variant_money(competitor_first_text($xpath, ['.//*[contains(concat(" ",normalize-space(@class)," ")," product-price ")]'], $block));
@@ -538,12 +628,17 @@ function competitor_source_variants(\DOMXPath $xpath, \DOMNode $scope, string $t
                 $label = $name !== '' ? $name : competitor_text($node->getAttribute('data-description'));
                 $condition = (int) $min > 1 ? 'От '.$min.' упаковок' : '';
                 if (preg_match('/(?:опт|wholesale)/iu', $label)) $condition = $condition !== '' ? $condition.'; оптовое предложение' : 'Оптовое предложение';
-                $stock = $node->hasAttribute('disabled') ? 'unknown' : $availability;
-                if ($stock === 'unknown' && !$node->hasAttribute('disabled') && $selected->length === 1 && $selected->item(0)->isSameNode($node)
+                list($stock, $basis) = competitor_variant_stock($node, $pageStock, $xpath, $block);
+                if ($basis !== 'blocked' && !$node->hasAttribute('disabled') && $selected->length === 1 && $selected->item(0)->isSameNode($node)
                     && (int)$min === 1 && $condition === '' && $visiblePrice && $visiblePrice === $money) {
-                    $stock = competitor_selected_json_stock($primaryJson, $money, $grams);
+                    $jsonStock = competitor_selected_json_stock($primaryJson, $money, $grams);
+                    if (in_array($jsonStock, ['out_of_stock', 'preorder'], true) || $stock === 'unknown' && $jsonStock === 'in_stock') {
+                        $stock = $jsonStock; $basis = 'explicit';
+                    }
                 }
-                $offers[] = competitor_variant_offer($label, $money, $stock, 'banka:'.$productId.':'.$group[1].':'.$nativeId, $nativeId, $grams, (float) $min, $condition);
+                if ($stock === 'unknown' && $basis === 'not_listed' && $jsonNegative) $basis = 'blocked';
+                $offer = competitor_variant_offer($label, $money, $stock, 'banka:'.$productId.':'.$group[1].':'.$nativeId, $nativeId, $grams, (float) $min, $condition);
+                $offer['availability_basis'] = $basis; $offers[] = $offer;
             }
             return [$offers, 'banka_option_prices', $warnings];
         }
@@ -825,7 +920,7 @@ function competitors_parse_document(array $target, string $html, string $finalUr
             $warnings[] = 'weight_set_manually';
         }
         if ($offer['grams'] === null) $warnings[] = 'weight_unknown';
-        if ($offer['availability'] === 'unknown') $warnings[] = 'availability_unknown';
+        if ($offer['availability'] === 'unknown') $warnings[] = ($offer['availability_basis'] ?? '') === 'not_listed' ? 'availability_not_listed' : (($offer['availability_basis'] ?? '') === 'blocked' ? 'purchase_unavailable' : 'availability_unknown');
         if ($offer['old_price'] !== null && bccomp($offer['old_price'], $offer['price'], 2) <= 0) $offer['old_price'] = null;
         $offer['label'] = mb_substr($offer['label'], 0, 200);
         $offer['packaging'] = $offer['packaging'] ?? competitor_packaging($offer['label']);
