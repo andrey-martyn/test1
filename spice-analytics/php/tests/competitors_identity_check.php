@@ -11,6 +11,12 @@ try{
         ['Укроп семена','Укроп семена молотые',false],['Укроп молотый','Укроп сушёный',false],
         ['Укроп семена','Укроп зелень сушеная',false],['Укроп семена','Кориандр семена',false],
         ['Перец черный молотый','Перець чорний цілий',false],
+        ['Перец белый горошек','Перець білий горошок',true],
+        ['Перец белый горошек','Перець білий мелений',false],
+        ['Кориця Цейлонська палички С4','Корица цейлонская палочки С4',true],
+        ['Кориця Цейлонська палички','Корица цейлонская молотая',false],
+        ['Горчица черная зерно','Гірчиця чорна насіння',true],
+        ['Горчица зерно','Горчица зернистая',false],
     ] as $case){$result=\Lavka\competitors_identity_compare($case[0],$case[1]);identity_verify($result['exact']===$case[2],'Product, language and form: '.$case[1]);}
     identity_verify(\Lavka\competitors_identity_compare('Укроп семена','Укроп семена в банке')['score']===0,'Jar title rejected');
     identity_verify(\Lavka\competitors_identity_compare('Укроп семена','Укроп семена','https://banka-speciy.in.ua/ukrop-semena-v-banke')['score']===0,'Jar URL rejected');

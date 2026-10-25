@@ -4,7 +4,7 @@ declare(strict_types=1);
 namespace Lavka;
 require_once __DIR__.'/CompetitorDiscovery.php';
 
-const COMPETITOR_MATCHING_RULE = 'read-product-v1';
+const COMPETITOR_MATCHING_RULE = 'read-product-v2';
 
 /** Preserve meaningful numbers (agar strength, grade, cut size), excluding pack weights. */
 function competitors_matching_signature(string $title,string $url=''): ?string

@@ -240,6 +240,32 @@ with tempfile.TemporaryDirectory() as temporary:
             assert duplicate_b.locator("td[data-source=lavka]").evaluate("el=>el.classList.contains('is-best')")
             assert price(matrix_row(page, "matrix-seo").locator("td[data-source=lavka]")) == 77
 
+            # Only usable offers determine price position; the unconfirmed,
+            # stale, wholesale and unavailable 1 UAH offers above stay excluded.
+            page.select_option('#competitor-matrix-status','lowest')
+            assert matrix_row(page,'matrix-own-cheap').count()==1 and matrix_row(page,'matrix-tie').count()==1
+            assert matrix_row(page,'matrix-main').count()==0 and matrix_row(page,'matrix-none').count()==0
+            assert 'Наша ниже на 30%' in matrix_row(page,'matrix-own-cheap').inner_text()
+            assert 'Разница: 30 UAH' in matrix_row(page,'matrix-own-cheap').inner_text()
+            page.select_option('#competitor-matrix-status','below')
+            assert matrix_row(page,'matrix-tie').count()==0
+            page.select_option('#competitor-matrix-sort','below')
+            gaps=page.evaluate('competitorVisibleRows().map(r=>r.priceGapPercent)')
+            assert gaps==sorted(gaps) and all(x<0 for x in gaps),gaps
+            page.select_option('#competitor-matrix-status','above')
+            assert matrix_row(page,'matrix-main').count()==1 and matrix_row(page,'matrix-own-cheap').count()==0
+            assert 'Наша выше на 11%' in matrix_row(page,'matrix-main').inner_text()
+            page.select_option('#competitor-matrix-sort','above')
+            gaps=page.evaluate('competitorVisibleRows().map(r=>r.priceGapPercent)')
+            assert gaps==sorted(gaps,reverse=True) and all(x>0 for x in gaps),gaps
+            page.select_option('#competitor-matrix-status','equal')
+            assert matrix_row(page,'matrix-tie').count()==1
+            assert page.evaluate('competitorVisibleRows().every(r=>r.equal && r.priceGapPercent===0)')
+            page.select_option('#competitor-matrix-status','all')
+            page.select_option('#competitor-matrix-sort','below')
+            assert page.evaluate('() => {const rows=competitorVisibleRows(),first=rows.findIndex(r=>!r.comparable);return first<0||rows.slice(first).every(r=>!r.comparable)}')
+            page.select_option('#competitor-matrix-sort','name')
+
             # Other actual packs get their own rows; a 200g price is never
             # divided into a fictitious 50g offer in the primary comparison.
             page.select_option("#competitor-matrix-pack", "all")

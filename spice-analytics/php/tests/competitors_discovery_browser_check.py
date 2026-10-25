@@ -147,11 +147,49 @@ with tempfile.TemporaryDirectory() as temporary:
     assert (funnel['loaded'],funnel['confirmed'],funnel['unconfirmed'],funnel['ready_rows_500'])==(110,53,57,53),funnel
     assert prices_digest()==prices_before,'Confirming links must not change downloaded prices'
     assert page.evaluate('diagnosticsClient().price_comparison.ready_rows_500')==53
+   # A watched product must remain reviewable after it disappears from discovery.
+   orphan=r'''require 'php/src/Competitors.php';$db=\Lavka\competitors_db('/test-data');
+   $t=$db->query("SELECT * FROM competitor_targets WHERE source_id='deluxe' AND match_group='bulk-1'")->fetch();
+   \Lavka\competitors_save_target($db,['match_confirmed'=>false,'match_group'=>''],(int)$t['id']);
+   $q=$db->prepare('SELECT id FROM competitor_search_index WHERE source_id=? AND url=?');$q->execute([$t['source_id'],$t['url']]);$id=$q->fetchColumn();
+   if($id){$db->prepare('DELETE FROM competitor_suggestions WHERE candidate_id=?')->execute([$id]);$db->prepare('DELETE FROM competitor_search_index WHERE id=?')->execute([$id]);}
+   echo json_encode(['target_id'=>(int)$t['id']]);'''
+   orphan_data=json.loads(subprocess.run(docker+['-i',IMAGE,'php','-r',orphan],capture_output=True,check=True).stdout)
+   page.evaluate('competitorsLoad()');page.wait_for_function('() => !competitorState.loading')
+   page.evaluate('Object.assign(monitoringState,{search:"does not exist",source:"specii",own:99999,page:999,status:"confirmed"})')
+   assert '${' not in page.locator('.competitor-readiness').inner_text()
+   page.click('[data-comp-action=matching-loaded]');page.wait_for_function('() => !monitoringState.loading')
+   assert page.locator('#monitoring-search [name=status]').input_value()=='review'
+   assert page.locator('#monitoring-search [name=source]').input_value()=='all' and page.input_value('#monitoring-search [name=search]')==''
+   assert page.evaluate('monitoringState.own===0 && monitoringState.page===1')
+   row=page.evaluate('(id)=>monitoringState.data.rows.find(r=>r.target_id===id)',orphan_data['target_id'])
+   assert row and row['candidate_id'] is None and row['own_id'] is None,row
+   key=page.evaluate('(row)=>monitoringRowKey(row)',row)
+   assert page.locator('[data-monitoring-pair="'+key+'"]').is_disabled()
+   page.get_by_role('button',name='Выбрать наш товар',exact=True).click()
+   page.fill('#competitor-target-form [name=match_group]','bulk-1')
+   page.locator('#competitor-target-form button[type=submit]').click()
+   page.wait_for_function('(id)=>!competitorState.saving && !monitoringState.loading && monitoringState.data.rows.some(r=>r.target_id===id && r.own_id)',arg=orphan_data['target_id'])
+   assert page.locator('#competitor-target-form').count()==0
+   row=page.evaluate('(id)=>monitoringState.data.rows.find(r=>r.target_id===id)',orphan_data['target_id'])
+   assert row['own_id'] and row['candidate_id'] is None
+   total_before=page.evaluate('monitoringState.data.total')
+   key=page.evaluate('(row)=>monitoringRowKey(row)',row)
+   page.check('[data-monitoring-pair="'+key+'"]')
+   with page.expect_request(lambda request:request.method=='POST' and 'discovery%2Freview' in request.url) as confirming:
+    page.locator('[data-comp-action=matching-confirm]').first.click()
+   assert confirming.value.post_data_json['target_pairs']==[[row['own_id'],row['target_id']]]
+   page.wait_for_function('() => !monitoringState.busy && !monitoringState.loading')
+   assert page.evaluate('monitoringState.data.total')==total_before-1
+   assert prices_digest()==prices_before
+   page.select_option('#monitoring-search [name=status]','confirmed');page.locator('#monitoring-search button[type=submit]').click()
+   page.wait_for_function('(id)=>!monitoringState.loading && monitoringState.data.rows.some(r=>r.target_id===id && r.match_confirmed)',arg=orphan_data['target_id'])
+   page.click('[data-tab=products]')
    for width in [390,320]:
     page.set_viewport_size({'width':width,'height':844});assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'),width
    page.screenshot(path=str(OUT/'comparison-funnel-320.png'),full_page=True)
    assert not errors,errors;assert not external,external
    browser.close()
-   print(json.dumps({'green_kpi_and_identical_menu_layout':'passed','400_products_paged_and_cached':'passed','render_seconds':round(render_seconds,3),'runner_visibility':'passed','human_batch_confirmation_and_queue':'passed','comparison_flow':('236_loaded_3_to_236_compared_automatically' if AUTOMATIC else '110_loaded_3_to_53_manual'),'source_prices_unchanged':'passed','mobile_320_390':'passed','external_requests':external,'javascript_errors':errors,'php_image':IMAGE}))
+   print(json.dumps({'green_kpi_and_identical_menu_layout':'passed','400_products_paged_and_cached':'passed','render_seconds':round(render_seconds,3),'runner_visibility':'passed','human_batch_confirmation_and_queue':'passed','comparison_flow':('236_loaded_3_to_236_compared_automatically' if AUTOMATIC else '110_loaded_3_to_53_manual'),'source_prices_unchanged':'passed','full_manual_review_without_search_index':'passed','mobile_320_390':'passed','external_requests':external,'javascript_errors':errors,'php_image':IMAGE}))
  finally:
   subprocess.run(['docker','rm','-f',name],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);server.wait(timeout=15)

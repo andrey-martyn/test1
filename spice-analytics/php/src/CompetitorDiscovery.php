@@ -185,6 +185,9 @@ function competitors_name_tokens(string $name): array
     $s=strtr($s,['koritsya'=>'koritsa','korica'=>'koritsa','tseilons'=>'ceylons','tsejlons'=>'ceylons','chorn'=>'chern','tsil'=>'tsel','chasnik'=>'chesnok','kmin'=>'tmin','kurkum'=>'kurkum','pryanosti'=>'','spetsii'=>'','spetsiyi'=>'','spices'=>'']);
     preg_match_all('/[a-z]{3,}/',$s,$matches);$tokens=[];
     foreach($matches[0] as $token){if(in_array($token,['kupit','kupiti','kupyty','kupiti','kupit','tsena','cena','price','product','catalog','content','html','gramm','gram','premium','quality','paket','upakovka','natural','online','shop','ru','ua','doypack','doy','pack','zip','kraft','rossip','rossyp','rozsip','fasovka','fasovki','ves','weight','vag','rozvazhniy','nasipom'],true))continue;
+        // Exact bilingual word forms only: "зернистая" prepared mustard must
+        // not become "зерно", and sticks must not become ground cinnamon.
+        $token=['goroshek'=>'whole','goroshok'=>'whole','goroshkom'=>'whole','palichki'=>'sticks','palochki'=>'sticks','zerno'=>'seed','zerna'=>'seed','gorchitsa'=>'mustard','girchitsya'=>'mustard','mustard'=>'mustard'][$token]??$token;
         foreach(['turmeric'=>'kurkum','clove'=>'clove','nutmeg'=>'muskat','ginger'=>'imbir','caraway'=>'tmin','cumin'=>'zira','kumin'=>'zira','rosemary'=>'rozmarin','basil'=>'bazilik','sesame'=>'kunzhut','vanilla'=>'vanil','garlic'=>'chesnok','dill'=>'ukrop','krip'=>'ukrop','fennel'=>'fenhel','cocoa'=>'kakao','cacao'=>'kakao','coconut'=>'kokos','kokos'=>'kokos','sugar'=>'sahar','semya'=>'seed','semen'=>'seed','simin'=>'seed','nasin'=>'seed','seed'=>'seed','zelen'=>'leaf','list'=>'leaf','leaf'=>'leaf','sushen'=>'dried','sushon'=>'dried','sush'=>'dried','drobl'=>'crushed','podrib'=>'crushed','crush'=>'crushed','granul'=>'granulated','hlop'=>'flakes','plastiv'=>'flakes','molot'=>'ground','melen'=>'ground','ground'=>'ground','tsel'=>'whole','whole'=>'whole','ceylon'=>'ceylon','kassi'=>'cassia','cassia'=>'cassia','kurkum'=>'kurkum','gvozdik'=>'clove','koriandr'=>'coriander','coriander'=>'coriander','cinnamon'=>'koritsa','paprik'=>'paprika','kardamon'=>'cardamom','cardamom'=>'cardamom','chern'=>'black','black'=>'black','bel'=>'white','bil'=>'white','white'=>'white','krasn'=>'red','red'=>'red','kopchen'=>'smoked','kopchen'=>'smoked','smoked'=>'smoked'] as $prefix=>$canonical)if(strpos($token,$prefix)===0){$token=$canonical;break;}
         $token=preg_replace('/(?:skaya|skii|skiy|skyi|skaya|naya|nii|nyi|aya|oyu|ogo|aya|yaya|yi|iy|ya)$/','',$token);
         if(strlen($token)>=3)$tokens[$token]=true;
@@ -239,10 +242,13 @@ function competitors_discovery_review(\PDO $db,array $body): array
 }
 function competitors_discovery_review_locked(\PDO $db,array $body): array
 {
-    if(array_diff(array_keys($body),['pairs','confirm'])||!is_array($body['pairs']??null)||!array_is_list($body['pairs'])||count($body['pairs'])<1||count($body['pairs'])>100||!is_bool($body['confirm']??null))throw new \InvalidArgumentException('Выберите от 1 до 100 сопоставлений');
+    $targetMode=array_key_exists('target_pairs',$body);$pairKey=$targetMode?'target_pairs':'pairs';
+    if(array_diff(array_keys($body),[$pairKey,'confirm'])||!is_array($body[$pairKey]??null)||!array_is_list($body[$pairKey])||count($body[$pairKey])<1||count($body[$pairKey])>100||!is_bool($body['confirm']??null))throw new \InvalidArgumentException('Выберите от 1 до 100 сопоставлений');
     $prepared=[];$urls=[];
-    foreach($body['pairs'] as $pair){if(!is_array($pair)||count($pair)!==2||!array_is_list($pair)||!is_int($pair[0])||!is_int($pair[1]))throw new \InvalidArgumentException('Неверное сопоставление');
-        $stmt=$db->prepare("SELECT o.id AS own_id,o.match_group,i.* FROM competitor_suggestions s JOIN competitor_targets o ON o.id=s.own_id JOIN competitor_search_index i ON i.id=s.candidate_id WHERE s.own_id=? AND s.candidate_id=? AND o.enabled=1 AND o.source_id='lavka'");$stmt->execute($pair);$row=$stmt->fetch();if(!$row)throw new CompetitorConflict('Список изменился. Обновите найденные товары');
+    foreach($body[$pairKey] as $pair){if(!is_array($pair)||count($pair)!==2||!array_is_list($pair)||!is_int($pair[0])||!is_int($pair[1])||min($pair)<1)throw new \InvalidArgumentException('Неверное сопоставление');
+        $sql=$targetMode?"SELECT o.id AS own_id,o.match_group,t.source_id,t.url,t.label AS title FROM competitor_targets o JOIN competitor_targets t ON t.match_group=o.match_group AND t.match_group<>'' WHERE o.id=? AND t.id=? AND o.enabled=1 AND o.source_id='lavka' AND o.kind='product' AND t.enabled=1 AND t.kind='product' AND t.source_id<>'lavka'":
+            "SELECT o.id AS own_id,o.match_group,i.* FROM competitor_suggestions s JOIN competitor_targets o ON o.id=s.own_id JOIN competitor_search_index i ON i.id=s.candidate_id WHERE s.own_id=? AND s.candidate_id=? AND o.enabled=1 AND o.source_id='lavka'";
+        $stmt=$db->prepare($sql);$stmt->execute($pair);$row=$stmt->fetch();if(!$row)throw new CompetitorConflict('Список изменился. Обновите найденные товары');
         if(isset($urls[$row['url']])&&$urls[$row['url']]!==$row['match_group'])throw new CompetitorConflict('Одна ссылка выбрана для разных наших товаров');$urls[$row['url']]=$row['match_group'];
         $stmt=$db->prepare("SELECT * FROM competitor_targets WHERE source_id=? AND kind='product' AND url=?");$stmt->execute([$row['source_id'],$row['url']]);$old=$stmt->fetch();
         if($old && (!$old['enabled']||$old['match_group']!==$row['match_group']))throw new CompetitorConflict('Ссылка уже настроена для другого товара или отключена. Проверьте её отдельно');
@@ -272,8 +278,21 @@ function competitors_discovery_results(\PDO $db,string $search='',string $source
     if($status!=='all')$where.=' AND t.enabled=1 AND t.last_success IS NOT NULL AND t.error_count=0';
     if($status==='review')$where.=' AND t.match_confirmed=0 AND t.match_group=o.match_group';
     if($status==='confirmed')$where.=' AND t.match_confirmed=1 AND t.match_group=o.match_group';
+    $select='SELECT o.id AS own_id,o.label AS own_title,o.match_group,i.id AS candidate_id,i.source_id,i.url,i.title,i.title_source,s.score,t.id AS target_id,t.match_confirmed,t.match_method,t.match_group AS target_group,t.enabled AS target_enabled,t.last_success,t.last_attempt,t.observation';
+    $order=' ORDER BY o.label,i.source_id,s.score DESC,i.id';
+    if($status!=='all'){
+        // A loaded target must remain reviewable even if discovery dropped it
+        // from the top three suggestions or never indexed its URL.
+        $from=" FROM competitor_targets t LEFT JOIN competitor_targets o ON o.enabled=1 AND o.source_id='lavka' AND o.kind='product' AND o.match_group=t.match_group AND o.match_group<>'' LEFT JOIN competitor_search_index i ON i.source_id=t.source_id AND i.url=t.url LEFT JOIN competitor_suggestions s ON s.own_id=o.id AND s.candidate_id=i.id";
+        $where=" WHERE t.enabled=1 AND t.kind='product' AND t.source_id<>'lavka' AND t.last_success IS NOT NULL AND t.error_count=0 AND t.last_success>=? AND t.last_success<=? AND (?='all' OR t.source_id=?) AND (o.label LIKE ? ESCAPE '\\' OR t.label LIKE ? ESCAPE '\\') AND (CAST(? AS INTEGER)=0 OR o.id=?)";
+        if($status==='review')$where.=' AND (t.match_confirmed=0 OR o.id IS NULL)';
+        if($status==='confirmed')$where.=' AND t.match_confirmed=1 AND o.id IS NOT NULL';
+        $args=[gmdate('Y-m-d\TH:i:s\Z',time()-172800),gmdate('Y-m-d\TH:i:s\Z',time()+300),$source,$source,$pattern,$pattern,$ownId,$ownId];
+        $select="SELECT o.id AS own_id,COALESCE(o.label,'Наш товар не выбран') AS own_title,t.match_group,i.id AS candidate_id,t.source_id,t.url,COALESCE(i.title,t.label) AS title,COALESCE(i.title_source,'page') AS title_source,COALESCE(s.score,0) AS score,t.id AS target_id,t.match_confirmed,t.match_method,t.match_group AS target_group,t.enabled AS target_enabled,t.last_success,t.last_attempt,t.observation";
+        $order=' ORDER BY o.label,t.source_id,t.id';
+    }
     $stmt=$db->prepare('SELECT count(*)'.$from.$where);$stmt->execute($args);$total=(int)$stmt->fetchColumn();
-    $stmt=$db->prepare('SELECT o.id AS own_id,o.label AS own_title,o.match_group,i.id AS candidate_id,i.source_id,i.url,i.title,i.title_source,s.score,t.id AS target_id,t.match_confirmed,t.match_method,t.match_group AS target_group,t.enabled AS target_enabled,t.last_success,t.last_attempt,t.observation'.$from.$where.' ORDER BY o.label,i.source_id,s.score DESC,i.id LIMIT 50 OFFSET '.(($page-1)*50));$stmt->execute($args);$rows=$stmt->fetchAll();
+    $stmt=$db->prepare($select.$from.$where.$order.' LIMIT 50 OFFSET '.(($page-1)*50));$stmt->execute($args);$rows=$stmt->fetchAll();
     foreach($rows as &$row){foreach(['own_id','candidate_id','score','target_id'] as $field)$row[$field]=$row[$field]===null?null:(int)$row[$field];$row['match_confirmed']=(bool)$row['match_confirmed'];$row['target_enabled']=$row['target_enabled']===null?null:(bool)$row['target_enabled'];$observation=$row['observation']?decode($row['observation']):null;$row['read_title']=$observation['title']??null;$row['identity']=competitors_identity_compare($row['own_title'],$row['read_title']?:$row['title'],$row['url']);$row['score']=$row['identity']['score'];$row['offers']=$observation['offers']??[];unset($row['observation']);$row['last_attempt']=$row['last_attempt']?decode($row['last_attempt']):null;}
     return ['rows'=>$rows,'total'=>$total,'page'=>$page,'page_size'=>50,'status'=>$status];
 }
