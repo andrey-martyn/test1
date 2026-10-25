@@ -17,3 +17,5 @@
 .gender-comparison .panel-heading h2{line-height:1.5}
 @media(max-width:1200px){.gender-cards{grid-template-columns:1fr}.gender-card dl{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:720px){.gender-cards{padding:0 18px 18px;gap:12px}.gender-card dl{grid-template-columns:1fr 1fr}.report-controls #gender-control{flex:1 1 175px;min-width:0}.report-controls #gender{width:100%;min-width:0}.gender-comparison .panel-heading>div{min-width:0}}
+
+.gender-unknown{margin:20px 22px;line-height:1.7;font-size:16px}.gender-unknown>summary{cursor:pointer;color:var(--green-dark);min-height:44px;font-weight:600}.gender-reasons{display:flex;flex-wrap:wrap;gap:10px 20px;margin:12px 0}.gender-unknown table{min-width:560px}.gender-unknown>.button{margin:8px 0 16px}.gender-customer-note{padding:14px 18px;background:#f1f6f2;border-radius:9px;font-size:16px;line-height:1.6;margin:16px 0}

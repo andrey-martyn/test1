@@ -69,7 +69,7 @@ $ids["main_own"]=target($db,"lavka","main-own","Матрица А — кориа
 record($db,$ids["main_own"],[offer("100",50),offer("300",200)],$now);
 $ids["main_deluxe"]=target($db,"deluxe","main-deluxe","Матрица А — кориандр Deluxe","matrix-main");
 record($db,$ids["main_deluxe"],[offer("90",50),offer("260",200)],$now);
-$ids["main_banka"]=target($db,"banka","main-banka","Матрица А — кориандр Банки","matrix-main");
+$ids["main_banka"]=target($db,"banka","main-b-source","Матрица А — кориандр источник B","matrix-main");
 record($db,$ids["main_banka"],[offer("90",50),offer("250",200)],$now);
 $invalid=[
     ["deluxe","stale","Матрица А — устаревшее предложение",[offer("1")],$old,true],
@@ -104,11 +104,11 @@ $ids["tie_deluxe"]=target($db,"deluxe","tie-deluxe","Матрица Г — ра�
 record($db,$ids["tie_deluxe"],[offer("90")],$now);
 $ids["none_own"]=target($db,"lavka","none-own","Матрица Д — нет сопоставимой цены","matrix-none",false);
 record($db,$ids["none_own"],[offer("60")],$now);
-$ids["none_other"]=target($db,"banka","none-banka","Матрица Д — фасовка 200 г","matrix-none");
+$ids["none_other"]=target($db,"banka","none-vendor-b","Матрица Д — фасовка 200 г","matrix-none");
 record($db,$ids["none_other"],[offer("30",200)],$now);
 $ids["near_own"]=target($db,"lavka","near-own","Матрица Е — нужен полный отступ два процента","matrix-near",false);
 record($db,$ids["near_own"],[offer("99")],$now);
-$ids["near_other"]=target($db,"banka","near-banka","Матрица Е — базовая цена конкурента","matrix-near");
+$ids["near_other"]=target($db,"banka","near-vendor-b","Матрица Е — базовая цена конкурента","matrix-near");
 record($db,$ids["near_other"],[offer("100")],$now);
 $ids["dup_a"]=target($db,"lavka","dup-a","Матрица Ж — отдельный товар первый","matrix-duplicate",false);
 record($db,$ids["dup_a"],[offer("120")],$now);
@@ -200,6 +200,7 @@ with tempfile.TemporaryDirectory() as temporary:
             page.goto(base + "/")
             page.fill("#password", password)
             page.click("button[type=submit]")
+            page.wait_for_selector(".dash-board")
             page.click("[data-view=customers]")
             page.wait_for_selector(".customer-table")
             order_amount = page.evaluate("state.report.metrics.amount")

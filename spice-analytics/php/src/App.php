@@ -76,7 +76,7 @@ function cached_report(\PDO $db, string $directory, int $year, string $asof, str
 {
     $cache = $directory . '/cache';
     private_dir($cache);
-    $key = hash('sha256', revision($db) . ':php-v7-loyalty:' . $year . ':' . $asof . ':' . $currency . ':' . $gender);
+    $key = hash('sha256', revision($db) . ':php-v8-diagnostics:' . $year . ':' . $asof . ':' . $currency . ':' . $gender);
     $file = $cache . '/report-' . $key . '.json';
     if (is_file($file)) {
         return decode(file_get_contents($file));
@@ -335,6 +335,21 @@ function run_app(string $directory, string $publicUrl, string $assets, string $l
         if ($path === '/api/report' && $method === 'GET') {
             [$year, $asof, $currency] = report_params();
             respond(cached_report($db, $directory, $year, $asof, $currency, report_gender()));
+        }
+        if ($path === '/api/diagnostics/export') {
+            if ($method !== 'POST') fail(405, 'Метод не поддерживается');
+            $body=request_json();
+            if (strlen(encode($body))>65536) fail(413,'Слишком большой запрос диагностики');
+            if (array_diff(array_keys($body),['include_names','client']) || isset($body['include_names'])&&!is_bool($body['include_names']) || isset($body['client'])&&!is_array($body['client'])) fail(422,'Неверные параметры диагностики');
+            [$year,$asof,$currency]=report_params();$gender=report_gender();
+            require_once __DIR__.'/Diagnostics.php';
+            $db->beginTransaction();
+            try{$store=new Analytics($db,$directory);if(!in_array($currency,$store->metadata()['currencies'],true))fail(422,'Неизвестная валюта');$result=diagnostic_build($store,$year,$asof,$currency,$gender,$body['include_names']??false,$body['client']??[]);}
+            catch(HttpError $error){throw $error;}
+            catch(\Throwable $error){$result=diagnostic_fallback($db,$year,$asof,$currency,$error,$body['client']??[]);}
+            finally{$db->rollBack();}
+            header('Content-Disposition: attachment; filename="lavka-diagnostics-'.gmdate('Y-m-d').'.json"');
+            respond($result);
         }
         if ($path === '/api/dashboard') {
             if ($method !== 'GET') fail(405, 'Метод не поддерживается');

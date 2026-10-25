@@ -13,7 +13,7 @@ function name_gender_key(string $name): string
 }
 
 /** A local, deliberately conservative name dictionary; never a confirmed profile attribute. */
-function name_gender_estimate(string $firstName): string
+function name_gender_dictionary(): array
 {
     static $names = null;
     if ($names === null) {
@@ -35,27 +35,66 @@ function name_gender_estimate(string $firstName): string
         // Shared short forms and names with more than one common interpretation.
         foreach (explode(' ', 'саша сашенька женя валя шура слава алекс сэнди сэм сэмми лесли sasha sacha zhenya valya shura slava alex sandy sam sammy leslie') as $name) $names[$name] = 'unknown';
     }
-    $firstName = trim($firstName);
-    if ($firstName === '' || mb_strlen($firstName, 'UTF-8') > 200 || !preg_match("/^[\\p{L}\\p{M}\\s.'’ʼ`-]+$/uD", $firstName)) return 'unknown';
-    $parts = preg_split('/[\s-]+/u', name_gender_key($firstName));
-    if (array_intersect($parts, ['тов', 'фоп', 'ооо', 'іп', 'ип', 'пп', 'llc', 'shop', 'магазин', 'компания', 'компанія'])) return 'unknown';
-    $gender = $names[$parts[0]] ?? 'unknown';
-    if ($gender === 'unknown') return 'unknown';
-    foreach (array_slice($parts, 1) as $part) {
-        if (isset($names[$part]) && $names[$part] !== 'unknown' && $names[$part] !== $gender) return 'unknown';
-    }
-    return $gender;
+    return $names;
 }
 
-/** Use the resolved customer's complete eligible history, not the latest name or selected year. */
-function customer_gender_estimate(array $orders): string
+const NAME_GENDER_REASONS = [
+    'recognized'=>'Имя найдено в словаре', 'recognized_component'=>'Имя найдено внутри полного имени',
+    'missing'=>'Поле «Имя» пустое', 'initials'=>'Указаны инициалы',
+    'ambiguous'=>'Имя подходит и мужчинам, и женщинам', 'dictionary_missing'=>'Написания пока нет в словаре',
+    'organization'=>'Указана организация', 'invalid_format'=>'В поле есть посторонние символы или текст',
+    'conflicting_name'=>'В одном поле разные мужские и женские имена',
+    'conflicting_profile'=>'В заказах объединённого профиля есть мужские и женские имена',
+];
+
+function name_gender_details(string $firstName): array
 {
-    $signals = [];
-    foreach ($orders as $order) {
-        $gender = name_gender_estimate((string)($order['firstname'] ?? ''));
-        if ($gender !== 'unknown') $signals[$gender] = true;
+    $names=name_gender_dictionary();
+    $name=trim(str_replace(["\xc2\xa0","\xe2\x80\x8b","\xef\xbb\xbf",'–','—','‑'],[' ','','','-','-','-'],$firstName));
+    $result=function(string $gender,string $reason): array{return ['gender'=>$gender,'reason'=>$reason];};
+    if($name==='')return $result('unknown','missing');
+    if(mb_strlen($name,'UTF-8')>200||!preg_match("/^[\\p{L}\\p{M}\\s.'’ʼ`-]+$/uD",$name))return $result('unknown','invalid_format');
+    // Repair visual Latin/Cyrillic lookalikes only in a mixed-script field.
+    $name=preg_replace_callback('/[\p{L}\p{M}]+/u',function($match){$word=$match[0];return preg_match('/\p{Cyrillic}/u',$word)&&preg_match('/[A-Za-z]/',$word)?strtr($word,['A'=>'А','B'=>'В','C'=>'С','E'=>'Е','H'=>'Н','K'=>'К','M'=>'М','O'=>'О','P'=>'Р','T'=>'Т','X'=>'Х','Y'=>'У','a'=>'а','c'=>'с','e'=>'е','o'=>'о','p'=>'р','x'=>'х','y'=>'у']):$word;},$name);
+    $parts=preg_split('/[\\s-]+/u',name_gender_key($name));
+    if(array_intersect(array_map(function($p){return trim($p,'.');},$parts),['тов','фоп','ооо','іп','ип','пп','llc','shop','магазин','компания','компанія']))return $result('unknown','organization');
+    $signals=[];$ambiguous=false;$initials=true;
+    foreach($parts as $part){$clean=trim($part,'.');if(mb_strlen($clean,'UTF-8')>1)$initials=false;
+        if(isset($names[$clean])){if($names[$clean]==='unknown')$ambiguous=true;else $signals[$names[$clean]]=true;}}
+    if(count($signals)>1)return $result('unknown','conflicting_name');
+    // A shared short form is never guessed from a surname or a nearby name.
+    if($ambiguous)return $result('unknown','ambiguous');
+    if(count($signals)===1){$gender=(string)key($signals);return $result($gender,($names[trim($parts[0],'.')]??null)===$gender?'recognized':'recognized_component');}
+    $initials=$initials||(bool)preg_match('/^\p{L}\./u',$parts[0]);
+    return $result('unknown',$initials?'initials':'dictionary_missing');
+}
+function name_gender_estimate(string $firstName): string{return name_gender_details($firstName)['gender'];}
+
+/** Use the resolved customer's complete eligible history, not just its latest name. */
+function customer_gender_details(array $orders): array
+{
+    $signals=[];$reasons=[];$examples=[];
+    foreach($orders as $order){$name=(string)($order['firstname']??'');$detail=name_gender_details($name);
+        if($detail['gender']!=='unknown')$signals[$detail['gender']]=true;
+        $reasons[$detail['reason']]=($reasons[$detail['reason']]??0)+1;
+        if(count($examples)<6)$examples[$name]=true;
     }
-    return count($signals) === 1 ? (string)key($signals) : 'unknown';
+    if(count($signals)>1)$reason='conflicting_profile';
+    elseif(count($signals)===1)$reason='recognized';
+    else{arsort($reasons);$reason=(string)(key($reasons)??'missing');}
+    return ['gender'=>count($signals)===1?(string)key($signals):'unknown','reason'=>$reason,'examples'=>array_map('strval',array_keys($examples))];
+}
+function customer_gender_estimate(array $orders): string{return customer_gender_details($orders)['gender'];}
+
+function gender_diagnostics(array $groups,array $details,array $period,DSU $dsu): array
+{
+    $ids=[];foreach($period as $order)$ids[$dsu->find($order['order_id'])]=true;
+    $result=['customer_count'=>0,'reasons'=>[],'samples'=>[]];
+    foreach($ids as $id=>$unused){$detail=$details[$id];if($detail['gender']!=='unknown')continue;
+        ++$result['customer_count'];$reason=$detail['reason'];$result['reasons'][$reason]=($result['reasons'][$reason]??0)+1;
+        if(count($result['samples'])<30)$result['samples'][]=['customer_id'=>(string)$id,'reason'=>$reason,'names'=>$detail['examples'],'order_ids'=>array_map('strval',array_slice(array_column($groups[$id],'order_id'),0,6))];
+    }
+    return $result;
 }
 
 function gender_sales_breakdown(array $orders, DSU $dsu, array $genders): array

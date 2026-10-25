@@ -4,6 +4,7 @@ declare(strict_types=1);
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
 require_once dirname(__DIR__) . '/src/Competitors.php';
 require_once dirname(__DIR__) . '/src/CompetitorHttp.php';
+require_once dirname(__DIR__) . '/src/CompetitorEvidence.php';
 
 final class LavkaCompetitorDeferred extends RuntimeException {}
 
@@ -96,14 +97,15 @@ function lavka_competitors_run(array $args, ?callable $transport = null, ?callab
                 try {
                     $response=\Lavka\competitors_http_fetch($scan['url'],$transport,$guard,$scan['kind']==='sitemap');
                     $found=\Lavka\competitors_scan_parse($db,$scan,$response['body'],$response['url']);
+                    lavka_competitor_evidence_capture($db,$scan,$response,null,$stamp());
                     $db->prepare("UPDATE competitor_scan_pages SET checked_at=?,next_check_at=?,state='ok',error_code=NULL,errors=0 WHERE id=?")->execute([$stamp(),gmdate('Y-m-d\TH:i:s\Z',(int)$clock()+604800),$scan['id']]);
                     if($scan['kind']==='product'){
                         // Reuse this very HTTP response for existing watched pages.
                         // A catalogue scan must not immediately download it again.
                         $watched=$db->prepare("SELECT * FROM competitor_targets WHERE enabled=1 AND kind='product' AND source_id=? AND url=?");$watched->execute([$scan['source_id'],$scan['url']]);
                         foreach($watched->fetchAll() as $target){
-                            try{$observation=\Lavka\competitors_parse($target,$response['body'],$response['url']);\Lavka\competitors_record_attempt($db,(int)$target['id'],$observation,null,$stamp(),$response['status']);$summary['discovery']['prices_loaded']=($summary['discovery']['prices_loaded']??0)+1;}
-                            catch(\Lavka\CompetitorParseError $error){\Lavka\competitors_record_attempt($db,(int)$target['id'],null,$error->errorCode,$stamp(),$response['status']);}
+                            try{$observation=\Lavka\competitors_parse($target,$response['body'],$response['url']);\Lavka\competitors_record_attempt($db,(int)$target['id'],$observation,null,$stamp(),$response['status']);lavka_competitor_evidence_capture($db,$target,$response,null,$stamp());$summary['discovery']['prices_loaded']=($summary['discovery']['prices_loaded']??0)+1;}
+                            catch(\Lavka\CompetitorParseError $error){\Lavka\competitors_record_attempt($db,(int)$target['id'],null,$error->errorCode,$stamp(),$response['status']);lavka_competitor_evidence_capture($db,$target,$response,$error->errorCode,$stamp());}
                         }
                     }
                     $summary['discovery']['checked']++;$summary['discovery']['links']+=$found['links'];$summary['discovery']['pages']+=$found['pages'];
@@ -123,12 +125,13 @@ function lavka_competitors_run(array $args, ?callable $transport = null, ?callab
             // A fresh robots check and product each have their own 12s total
             // timeout; reserve enough budget before starting the next target.
             if ($deadline - $clock() < 27.0) { $summary['deferred'] += count($targets) - $position; break; }
-            $status = null;
+            $status = null;$response=null;
             try {
                 $response = \Lavka\competitors_http_fetch($target['url'], $transport, $guard);
                 $status = $response['status'];
                 $observation = \Lavka\competitors_parse($target, $response['body'], $response['url']);
                 \Lavka\competitors_record_attempt($db, (int)$target['id'], $observation, null, $stamp(), $status);
+                lavka_competitor_evidence_capture($db,$target,$response,null,$stamp());
                 $summary['succeeded']++;
                 if($discoveryOn && $target['source_id']!=='lavka' && $target['kind']==='product')\Lavka\competitors_index_link($db,$target['source_id'],$target['url'],$observation['title'],'page');
             } catch (LavkaCompetitorDeferred $error) {
@@ -137,11 +140,13 @@ function lavka_competitors_run(array $args, ?callable $transport = null, ?callab
             } catch (\Lavka\CompetitorHttpError $error) {
                 \Lavka\competitors_record_attempt($db, (int)$target['id'], null, $error->errorCode, $stamp(), $error->httpStatus);
                 $summary['failed']++;
+                if($response)lavka_competitor_evidence_capture($db,$target,$response,$error->errorCode,$stamp());
             } catch (\Lavka\CompetitorParseError $error) {
                 $code = isset($error->errorCode) ? $error->errorCode : $error->getMessage();
                 if (!is_string($code) || !preg_match('/^[a-z_]{1,50}$/D', $code)) $code = 'parse_error';
                 \Lavka\competitors_record_attempt($db, (int)$target['id'], null, $code, $stamp(), $status);
                 $summary['failed']++;
+                if($response)lavka_competitor_evidence_capture($db,$target,$response,$code,$stamp());
             }
             $summary['checked']++;
         }

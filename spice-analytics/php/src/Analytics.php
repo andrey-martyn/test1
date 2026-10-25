@@ -157,14 +157,15 @@ final class Analytics
         }));
         $allGroups = [];
         foreach ($valid as $o) $allGroups[$dsu->find($o['order_id'])][] = $o;
-        $genders = [];
-        foreach ($allGroups as $cid => $orders) $genders[$cid] = customer_gender_estimate($orders);
+        $genders = [];$genderDetails=[];
+        foreach ($allGroups as $cid => $orders){$genderDetails[$cid]=customer_gender_details($orders);$genders[$cid]=$genderDetails[$cid]['gender'];}
         $genderLoyalty=$includeRegional?loyalty_report($this->geo,$allGroups,$asof,$year,true):null;
-        unset($allGroups, $orders);
+        unset($orders);
         $unfilteredPeriod = array_values(array_filter($valid, function ($o) use ($year) {
             return $year === 0 || calendar_year($o['date_added']) === $year;
         }));
         $genderBreakdown = gender_sales_breakdown($unfilteredPeriod, $dsu, $genders);
+        $genderDiagnostics=gender_diagnostics($allGroups,$genderDetails,$unfilteredPeriod,$dsu);unset($allGroups);
         if ($gender !== 'all') $valid = array_values(array_filter($valid, function ($o) use ($gender, $genders, $dsu) {
             return ($genders[$dsu->find($o['order_id'])] ?? 'unknown') === $gender;
         }));
@@ -258,7 +259,7 @@ final class Analytics
             $customers[] = ['id' => (string) $cid, 'name' => trim($latest['firstname'] . ' ' . $latest['lastname']) ?: 'Гость', 'email' => $latest['email'], 'phone' => $latest['telephone'], 'emails' => $emails, 'phones' => $phones, 'city' => $latest['shipping_city'] ?: $latest['payment_city'], 'country' => $latest['shipping_country'] ?: $latest['payment_country'], 'order_count' => count($selected), 'lifetime_count' => count($orders), 'amount' => money(sum_orders($selected)), 'lifetime_amount' => money(sum_orders($orders)), 'average' => $selected ? money(bcdiv(sum_orders($selected), (string) count($selected), 12)) : 0, 'last_order' => end($dates), 'days_since' => $since, 'interval_days' => $interval, 'personal_interval' => $personal, 'due_on' => add_days(end($dates), $interval), 'overdue_days' => max(0, $overdue), 'reminder' => $reminder, 'followup_eligible' => $eligible, 'action' => $action ?: new \stdClass(), 'suppression' => $suppression, 'account_count' => count($accounts), 'manual' => $manual, 'activity' => (object) $customerActivity, 'weeks' => (object) $weeks, 'order_ids' => $ids];
         }
         unset($orders);
-        foreach ($customers as &$customer) $customer['gender_estimate'] = $genders[$customer['id']] ?? 'unknown';
+        foreach ($customers as &$customer){$detail=$genderDetails[$customer['id']]??['gender'=>'unknown','reason'=>'missing','examples'=>[]];$customer['gender_estimate']=$detail['gender'];$customer['gender_reason']=$detail['reason'];$customer['gender_examples']=$detail['examples'];}
         unset($customer);
         usort($customers, function ($a, $b) {
             return $b['amount'] <=> $a['amount'];
@@ -346,7 +347,7 @@ final class Analytics
             $coverageStart='';foreach($before as $order)if($order['currency_code']===$currency){$date=substr($order['date_added'],0,10);if($coverageStart===''||$date<$coverageStart)$coverageStart=$date;}
             $regional=regional_report($this,$valid,$groups,$dsu,$asof,$coverageStart);
         }
-        return ['loyalty' => $includeRegional?['gender'=>$genderLoyalty,'regional'=>loyalty_report($this->geo,$groups,$asof,$year)]:null, 'regional' => $regional, 'gender_filter' => $gender, 'gender_breakdown' => $genderBreakdown, 'year' => $year, 'as_of' => $asof, 'currency' => $currency, 'week_count' => $year ? week($year . '-12-28') : 0, 'scope' => $year ? 'year' : 'all', 'crm' => $crm, 'annual' => $annual, 'history_totals' => $historyTotals, 'calendar' => $columns, 'activity' => (object) $activity, 'duplicate_pairs' => identity_pairs($customers), 'customers' => $customers, 'products' => $productRows, 'locations' => $locations['mixed'], 'location_modes' => $locations, 'geoip' => $this->geo->metadata(), 'marketing' => $marketing, 'ga4' => $gender === 'all' ? ga4_report($this->db, $year, $asof, $currency, $period) : null, 'geo_quality' => geo_quality($this->geo, $period), 'weekly' => (object) $weekly, 'metrics' => ['amount' => money($total), 'order_count' => count($period), 'customer_count' => count($periodCustomers), 'average' => $period ? money(bcdiv($total, (string) count($period), 12)) : 0, 'overdue' => $overdue, 'repeat_customers' => $repeat, 'quantity' => array_sum(array_column($productRows, 'quantity')), 'kilograms' => even_round(array_sum(array_column($productRows, 'grams')) / 1000, 3)], 'duplicates' => $this->duplicates($customers)];
+        return ['loyalty' => $includeRegional?['gender'=>$genderLoyalty,'regional'=>loyalty_report($this->geo,$groups,$asof,$year)]:null, 'regional' => $regional, 'gender_filter' => $gender, 'gender_breakdown' => $genderBreakdown, 'gender_diagnostics'=>$genderDiagnostics, 'year' => $year, 'as_of' => $asof, 'currency' => $currency, 'week_count' => $year ? week($year . '-12-28') : 0, 'scope' => $year ? 'year' : 'all', 'crm' => $crm, 'annual' => $annual, 'history_totals' => $historyTotals, 'calendar' => $columns, 'activity' => (object) $activity, 'duplicate_pairs' => identity_pairs($customers), 'customers' => $customers, 'products' => $productRows, 'locations' => $locations['mixed'], 'location_modes' => $locations, 'geoip' => $this->geo->metadata(), 'marketing' => $marketing, 'ga4' => $gender === 'all' ? ga4_report($this->db, $year, $asof, $currency, $period) : null, 'geo_quality' => geo_quality($this->geo, $period), 'weekly' => (object) $weekly, 'metrics' => ['amount' => money($total), 'order_count' => count($period), 'customer_count' => count($periodCustomers), 'average' => $period ? money(bcdiv($total, (string) count($period), 12)) : 0, 'overdue' => $overdue, 'repeat_customers' => $repeat, 'quantity' => array_sum(array_column($productRows, 'quantity')), 'kilograms' => even_round(array_sum(array_column($productRows, 'grams')) / 1000, 3)], 'duplicates' => $this->duplicates($customers)];
     }
     public function geography(array $orders, DSU $dsu, string $mode): array
     {

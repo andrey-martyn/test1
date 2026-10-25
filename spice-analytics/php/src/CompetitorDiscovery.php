@@ -21,6 +21,7 @@ function competitors_discovery_schema(\PDO $db): void
         CREATE TABLE IF NOT EXISTS competitor_suggestions(own_id INTEGER NOT NULL,candidate_id INTEGER NOT NULL,score INTEGER NOT NULL,
         PRIMARY KEY(own_id,candidate_id));
         CREATE TABLE IF NOT EXISTS competitor_discovery_settings(id INTEGER PRIMARY KEY CHECK(id=1),enabled INTEGER NOT NULL DEFAULT 0);");
+    $db->exec('CREATE TABLE IF NOT EXISTS competitor_page_evidence(source_id TEXT NOT NULL,url TEXT NOT NULL,captured_at TEXT NOT NULL,error_code TEXT,payload TEXT NOT NULL,PRIMARY KEY(source_id,url))');
     $columns=array_column($db->query('PRAGMA table_info(competitor_search_index)')->fetchAll(),'name');
     if(!in_array('details',$columns,true))$db->exec('ALTER TABLE competitor_search_index ADD COLUMN details TEXT');
     $db->exec('CREATE TABLE IF NOT EXISTS competitor_price_lists(source_id TEXT NOT NULL,url TEXT NOT NULL,label TEXT NOT NULL,found_at TEXT NOT NULL,PRIMARY KEY(source_id,url))');

@@ -102,7 +102,7 @@ document.addEventListener('click',async event=>{
  if(kind==='geo-data'){navigate('settings');nextStepReveal('.geo-diagnostics');const details=document.querySelector('.geo-diagnostics');if(details)details.open=true;return;}
  if(kind==='competitor-matches'){monitoringOpen();return;}
  if(kind==='competitor-above'){document.querySelector('[data-comp-action="matrix-show-above"]')?.click();return;}
- if(kind==='competitor-changes'){competitorState.tab='changes';competitorsRender();return;}
+ if(kind==='competitor-changes'){competitorSwitchTab('changes');competitorsRender();return;}
  if(kind==='delivery'){state.regionalChannel='delivery';render();return;}
  if(kind==='regional-test'){nextStepExperiment(data);return;}
  if(kind==='regional-focus'){state.regionalRegions=[data.region];state.regionalYears=[data.year,data.year+1];state.regionalWindow=data.window||'same';render();nextStepReveal('.regional-trends');return;}
