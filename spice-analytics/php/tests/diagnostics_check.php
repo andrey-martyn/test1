@@ -13,7 +13,7 @@ try{
  $monitor=\Lavka\competitors_db($dir);$before=(int)$monitor->query('SELECT count(*) FROM competitor_attempts')->fetchColumn();
  $response=['body'=>'<main><h1>Укроп семена</h1><span class="price">20.50 грн</span><section class="reviews"><p>PRIVATE_REVIEW +380991234567</p></section><script>PRIVATE_SCRIPT</script></main>','url'=>'https://banka-speciy.in.ua/ukrop-semena'];
  lavka_competitor_evidence_capture($monitor,['source_id'=>'banka','kind'=>'product','url'=>$response['url']],$response,'price_unknown','2026-10-25T12:00:00Z');
- $saved=['schema'=>'lavka-public-pages-v1','collected_at'=>'2026-10-25T12:00:00Z','report'=>['state'=>'ok','targets'=>[['id'=>72,'source'=>'deluxe','http'=>['status'=>200],'document'=>['h1'=>'Synthetic spice'],'body'=>'PRIVATE_SENTINEL_NEVER_READ','scope'=>['text'=>'support@example.test +380 99 123 45 67']]]]];
+ $saved=['schema'=>'lavka-public-pages-v1','collected_at'=>'2026-10-25T12:00:00Z','collector_revision'=>'ab72e123456789e9','report'=>['state'=>'ok','targets'=>[['id'=>72,'source'=>'deluxe','http'=>['status'=>200],'document'=>['h1'=>'Synthetic spice'],'body'=>'PRIVATE_SENTINEL_NEVER_READ','scope'=>['id'=>'bx_1234567890_1161_price','text'=>'support@example.test +380 99 123 45 67']]]]];
  file_put_contents($dir.'/public-page-diagnostics.json',\Lavka\encode($saved));
  $cadence=\Lavka\competitors_run_cadence([['started_at'=>'2026-10-25T12:00:00Z'],['started_at'=>'2026-10-25T11:45:00Z'],['started_at'=>'2026-10-25T11:30:00Z']]);
  dx_expect($cadence['interval_seconds']===900,'Observed fifteen-minute cadence is reported');
@@ -29,6 +29,11 @@ try{
  dx_expect($report['unknown_gender']['count']===5,'Unknown report covers actual unresolved profiles');
  dx_expect(!empty($report['competitors']['evidence']),'Saved parser evidence is exported');
  dx_expect($report['competitors']['collected_pages']['available']===true,'Targeted support file is included in one export');
+ dx_expect($report['competitors']['collected_pages']['collected_at']==='2026-10-25T12:00:00Z','UTC support metadata survives redaction');
+ dx_expect($report['competitors']['collected_pages']['collector_revision']==='ab72e123456789e9','Collector hash survives redaction');
+ dx_expect($report['competitors']['collected_pages']['report']['targets'][0]['scope']['id']==='bx_1234567890_1161_price','Known public SKU ID survives redaction');
+ dx_expect(strpos(\Lavka\encode($report['competitors']['collected_pages']),'support@example')===false,'Free-text contact redaction remains active');
+
  dx_expect(isset($report['competitors']['terms']['rows'][0]['cells']['deluxe']['page_count']),'Terms sources participate in diagnostics');
  foreach(['PRIVATE_SENTINEL','PRIVATE_REVIEW','PRIVATE_SCRIPT','private@secret.test','Саша','firstname','telephone','shipping_address','csrf'] as $private)dx_expect(strpos($json,$private)===false,'Private field omitted: '.$private);
  dx_expect(strpos($report['samples']['customers'][0]['customer_ref'],'C-')===0,'Customer IDs are pseudonymized');

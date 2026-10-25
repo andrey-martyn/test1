@@ -25,12 +25,18 @@ function lavka_competitor_diagnostic_excluded(DOMNode $node): bool
     return false;
 }
 
+/** Public component IDs with a known product/SKU grammar, never arbitrary tokens. */
+function lavka_competitor_diagnostic_id(string $value): ?string
+{
+    return strlen($value)<=120 && preg_match('/^(?:bx_[0-9]{1,20}_[0-9]{1,12}(?:_[a-z0-9_]{1,50})?|product-size-[0-9]{1,12}-[0-9]{1,12}|input-option[0-9]{1,12})$/D',$value)?$value:null;
+}
+
 function lavka_competitor_diagnostic_shape(DOMElement $node): array
 {
     $result = ['tag' => strtolower($node->tagName)];
     foreach (['id', 'class', 'itemprop'] as $attribute) {
         $value = $node->getAttribute($attribute);
-        if ($value !== '') $result[$attribute] = lavka_competitor_diagnostic_text($value, 120);
+        if ($value !== '') $result[$attribute] = ($attribute==='id'?lavka_competitor_diagnostic_id($value):null)??lavka_competitor_diagnostic_text($value, 120);
     }
     return $result;
 }
@@ -63,7 +69,7 @@ function lavka_competitor_diagnostic_url(string $value, string $base): ?string
 function lavka_competitor_diagnostic_numeric_attributes(DOMElement $node): array
 {
     $attributes = [];
-    foreach (['content', 'data-price', 'data-price-value', 'data-base-price', 'data-weight', 'data-grams', 'data-option-value-id', 'data-product-option-value-id'] as $key) {
+    foreach (['content', 'data-price-id', 'data-price-new', 'data-price', 'data-price-value', 'data-base-price', 'data-weight', 'data-grams', 'data-option-value-id', 'data-product-option-value-id'] as $key) {
         $value = trim($node->getAttribute($key));
         if (preg_match('/^[+\-]?\d{1,10}(?:[.,]\d{1,6})?$/D', $value)) $attributes[$key] = $value;
     }
@@ -71,6 +77,8 @@ function lavka_competitor_diagnostic_numeric_attributes(DOMElement $node): array
         $value = $node->getAttribute($key);
         if ($value === '+' || $value === '-') $attributes[$key] = $value;
     }
+    $tree=$node->getAttribute('data-treevalue');
+    if(preg_match('/^[0-9]{1,12}_[0-9]{1,12}$/D',$tree))$attributes['data-treevalue']=$tree;
     return $attributes;
 }
 
@@ -120,6 +128,25 @@ function lavka_competitor_diagnostic_document(string $html, string $url, string 
         $result['availability_nodes'][]=lavka_competitor_diagnostic_shape($node)+['text'=>$text,'recognized'=>$stock];
     }
     if ($kind === 'product') {
+        // Reuse the parser's primary-product matching; related JSON-LD offers
+        // cannot become evidence for the requested product.
+        list($jsonOffers,$jsonTitle,$jsonWarnings)=\Lavka\competitor_product_json(\Lavka\competitor_json_nodes($xpath),$result['document']['h1'],$url);
+        $result['structured_offers']=lavka_competitor_diagnostic_offers($jsonOffers);
+        $result['sku_options']=[];
+        foreach($xpath->query('.//li[@data-treevalue]',$main) as $node){
+            if(count($result['sku_options'])>=12)break;
+            if(lavka_competitor_diagnostic_excluded($node))continue;
+            $label=lavka_competitor_diagnostic_node_text($node,120);
+            if(\Lavka\competitor_weight($label)===null)continue;
+            $shape=lavka_competitor_diagnostic_shape($node)+lavka_competitor_diagnostic_numeric_attributes($node)+['label'=>$label];
+            if($node->parentNode instanceof DOMElement){
+                $shape['control']=lavka_competitor_diagnostic_shape($node->parentNode);
+                $current=$xpath->query('.//*[contains(concat(" ",normalize-space(@class)," ")," here ")]',$node->parentNode->parentNode)->item(0);
+                if($current)$shape['current_label']=lavka_competitor_diagnostic_node_text($current,120);
+            }
+            $result['sku_options'][]=$shape;
+        }
+
         foreach ($xpath->query('.//select/option | .//input[@type="radio"]', $main) as $node) {
             if (count($result['purchase_options']) >= 12) break;
             if (lavka_competitor_diagnostic_excluded($node)) continue;
@@ -191,9 +218,9 @@ function lavka_competitor_evidence_capture(PDO $db, array $target, array $respon
     if (!in_array($target['kind'] ?? '', ['product','catalog'], true) || empty($response['body'])) return ['state'=>'skipped'];
     try {
         $evidence=lavka_competitor_diagnostic_document($response['body'],$response['url'],$target['kind']);
-        foreach (['price_nodes','purchase_options','catalog_anchors','availability_nodes'] as $key) $evidence[$key]=array_slice($evidence[$key]??[],0,8);
+        foreach (['price_nodes','purchase_options','catalog_anchors','availability_nodes','sku_options','structured_offers'] as $key) $evidence[$key]=array_slice($evidence[$key]??[],0,8);
         $payload=\Lavka\encode($evidence);
-        if(strlen($payload)>16000){foreach(['price_nodes','purchase_options','catalog_anchors','availability_nodes'] as $key)$evidence[$key]=array_slice($evidence[$key],0,3);$payload=\Lavka\encode($evidence);}
+        if(strlen($payload)>16000){foreach(['price_nodes','purchase_options','catalog_anchors','availability_nodes','sku_options','structured_offers'] as $key)$evidence[$key]=array_slice($evidence[$key],0,3);$payload=\Lavka\encode($evidence);}
         if(strlen($payload)>16000)return ['state'=>'skipped','error_code'=>'evidence_size_limit'];
         $db->prepare('INSERT OR REPLACE INTO competitor_page_evidence(source_id,url,captured_at,error_code,payload) VALUES(?,?,?,?,?)')->execute([$target['source_id'],$target['url'],$at,$error,$payload]);
         $db->exec('DELETE FROM competitor_page_evidence WHERE rowid NOT IN (SELECT rowid FROM competitor_page_evidence ORDER BY (error_code IS NOT NULL) DESC,captured_at DESC LIMIT 300)');

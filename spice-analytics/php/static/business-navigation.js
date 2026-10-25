@@ -36,9 +36,21 @@ function businessReport(report){
 function businessArea(view){return Object.keys(businessAreas).find(key=>businessAreas[key].views.includes(view))||'overview';}
 function businessNavigation(view){
   const area=businessArea(view),views=businessAreas[area].views,container=document.getElementById('section-navigation');
+  const previous=container.querySelector('.section-tabs'),left=container.dataset.area===area?(previous?.scrollLeft||0):0;
   document.querySelectorAll('#navigation [data-area]').forEach(button=>{const active=button.dataset.area===area;button.classList.toggle('active',active);if(active)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');});
-  container.hidden=views.length<2;
-  container.innerHTML=views.length<2?'':views.map((item,index)=>`<button type="button" ${index===0?'data-section-view':'data-view'}="${item}" ${item===view?'aria-current="page"':''}>${esc(businessViewTitles[item][0])}</button>`).join('');
-  if(views.length>1)requestAnimationFrame(()=>{const active=container.querySelector('[aria-current]');if(active&&container.scrollWidth>container.clientWidth)container.scrollLeft=Math.max(0,active.offsetLeft-container.offsetLeft-12);});
+  container.hidden=views.length<2;container.dataset.area=area;
+  container.innerHTML=views.length<2?'':`<button class="competitor-tab-arrow" type="button" data-section-scroll="-1" aria-label="Прокрутить вкладки влево">‹</button><div class="section-tabs">${views.map((item,index)=>`<button type="button" ${index===0?'data-section-view':'data-view'}="${item}" ${item===view?'aria-current="page"':''}>${esc(businessViewTitles[item][0])}</button>`).join('')}</div><button class="competitor-tab-arrow" type="button" data-section-scroll="1" aria-label="Прокрутить вкладки вправо">›</button>`;
+  if(views.length>1)requestAnimationFrame(()=>{const strip=container.querySelector('.section-tabs'),active=strip?.querySelector('[aria-current]');if(!active)return;strip.scrollLeft=left;const a=active.getBoundingClientRect(),b=strip.getBoundingClientRect();if(a.left<b.left)strip.scrollLeft-=b.left-a.left;else if(a.right>b.right)strip.scrollLeft+=a.right-b.right;});
 }
-document.addEventListener('click',event=>{const button=event.target.closest('[data-section-view],#section-navigation [data-view]');if(button){const view=button.dataset.sectionView||button.dataset.view;navigate(view);document.querySelector('#section-navigation [data-view="'+view+'"],#section-navigation [data-section-view="'+view+'"]')?.focus({preventScroll:true});}});
+document.addEventListener('click',event=>{
+  const arrow=event.target.closest('#section-navigation [data-section-scroll]');
+  if(arrow){const strip=arrow.parentElement.querySelector('.section-tabs');strip.scrollBy({left:Number(arrow.dataset.sectionScroll)*strip.clientWidth*.75,behavior:'smooth'});return;}
+  const button=event.target.closest('[data-section-view],#section-navigation [data-view]');
+  if(button){const view=button.dataset.sectionView||button.dataset.view;navigate(view,{sectionTab:true});document.querySelector('#section-navigation [data-view="'+view+'"],#section-navigation [data-section-view="'+view+'"]')?.focus({preventScroll:true});}
+});
+document.addEventListener('keydown',event=>{
+  const button=event.target.closest('#section-navigation .section-tabs button');
+  if(!button||!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+  event.preventDefault();const tabs=[...button.parentElement.children],current=tabs.indexOf(button),next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(current+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;
+  tabs[next].click();
+});

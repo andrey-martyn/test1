@@ -8,7 +8,7 @@ function geoVariants(location){
  return `<details class="geo-variants"><summary>Написания: ${num(location.variant_count||variants.length)}</summary><ul>${variants.map(([label,count])=>`<li>${esc(label)} · ${num(count)} заказов</li>`).join('')}</ul>${location.variant_count>variants.length?'<p>Показаны первые 20 вариантов.</p>':''}</details>`;
 }
 function geoAuditView(){
- const q=state.report?.geo_quality;if(!q?.modes)return '';
+ const q=state.report?.geo_quality;if(!q?.modes?.mixed)return '';
  return `<details class="report-detail geo-diagnostics"><summary>Техническая проверка адресов${q.needs_review?' · '+num(q.needs_review)+' для уточнения':''}</summary><div class="geo-diagnostics-body"><p>Самовывоз в Одесе: ${num(q.pickup_odesa)} заказов. После восстановления без города: ${num(q.modes.mixed.city_missing)}; без области: ${num(q.modes.mixed.region_missing)}. Населённый пункт вне справочника с указанной областью учитывается в этой области.</p>${q.needs_review?`<div class="table-scroll"><table><thead><tr><th>Заказ</th><th>Доставка</th><th>Место</th><th>Что проверить</th></tr></thead><tbody>${q.unknown_orders.map(row=>`<tr><td><button class="button" data-geo-order="${esc(row.id)}">№ ${esc(row.id)}</button></td><td>${esc(row.shipping_method||'Не указан')}</td><td>${esc(row.city)}, ${esc(row.zone||'Область не определена')}</td><td>${esc(row.reason)}</td></tr>`).join('')}</tbody></table></div>`:'<p>Критичных пропусков для текущей проверки нет.</p>'}</div></details>`;
 }
 

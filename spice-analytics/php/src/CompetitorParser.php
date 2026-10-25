@@ -364,7 +364,7 @@ function competitor_commercial_text(string $text, string $title): string
     foreach (explode("\n", $text) as $line) {
         // Keep commercial conditions and their exceptions; omit menus and payment requisites.
         if (preg_match('/(?:реквизит|реквізит|IBAN|МФО|ЄДРПОУ|ЕДРПОУ|(?<![\p{L}\d])[A-Z]{2}\s*\d{2}(?:[\s-]*[A-Z\d]){11,30}(?![\p{L}\d])|(?<!\d)(?:\d[\s-]*){13,19}(?!\d))/iu', $line)) continue;
-        if (preg_match('/(?:скид|зниж|накоп|перв|перш|замов|заказ|услов|умов|исключ|винят|роздр|опт|достав|відправ|отправ|самовывоз|самовив|безкош|бесплат|мінім|миним|порог|нов[ао]я?\s+пошт|укрпоч|укрпошт|Meest|упаков|фасов|оплат|плат[еі]ж|карт|Visa|Mastercard|Apple\s*Pay|Google\s*Pay|LiqPay|PayPal|WayForPay|готів|наличн|наложен|післяплат|предоплат|повернен|возврат|обмін|обмен|робоч|рабоч|термін|срок|%|грн|UAH|HoReCa|перевіз|перевоз|промокод|купон)/iu', $line)) {
+        if (preg_match('/(?:скид|зниж|накоп|перв|перш|замов|заказ|услов|умов|исключ|винят|роздр|опт|достав|відправ|отправ|самовывоз|самовив|безкош|бесплат|мінім|миним|порог|нов[ао]я?\s+пошт|укрпоч|укрпошт|Meest|упаков|фасов|оплат|плат[еі]ж|карт|Visa|Mastercard|Apple\s*Pay|Google\s*Pay|LiqPay|PayPal|WayForPay|готів|наличн|рахунок|переказ|перевод|термінал|терминал|наложен|післяплат|предоплат|повернен|возврат|обмін|обмен|робоч|рабоч|термін|срок|%|грн|UAH|HoReCa|перевіз|перевоз|промокод|купон)/iu', $line)) {
             $lines[] = $line;
         }
     }
@@ -446,13 +446,20 @@ function competitor_source_variants(\DOMXPath $xpath, \DOMNode $scope, string $t
         foreach ($xpath->query('//*[contains(concat(" ",normalize-space(@class)," ")," priceblock ")]') as $block) {
             if ($title === '' || normalize(competitor_first_text($xpath, ['.//h1'], $block)) !== normalize($title)) continue;
             $availability = competitor_availability(competitor_first_text($xpath, ['.//*[contains(concat(" ",normalize-space(@class)," ")," available-pr ")]', './/*[@itemprop="availability"]'], $block));
-            foreach ($xpath->query('.//ul[contains(concat(" ",normalize-space(@class)," ")," itemPriceList ")]/li[@data-price-id and @data-price]', $block) as $node) {
+            foreach ($xpath->query('.//ul[contains(concat(" ",normalize-space(@class)," ")," itemPriceList ")]/li[@data-price]', $block) as $node) {
                 $nativeId = $node->getAttribute('data-price-id');
-                if (!preg_match('/^[1-9][0-9]{0,11}$/D', $nativeId)) continue;
                 $label = competitor_first_text($xpath, ['.//*[contains(concat(" ",normalize-space(@class)," ")," weight-amount ")]'], $node);
                 $price = competitor_decimal($node->getAttribute('data-price'));
                 $visible = competitor_variant_money(competitor_first_text($xpath, ['.//*[contains(concat(" ",normalize-space(@class)," ")," weight-price ")]'], $node));
-                if ($price === null || !$visible || $price !== $visible['price'] || competitor_weight($label) === null) continue;
+                // Some current pages omit the native ID/weight span. The primary
+                // list row itself still binds exactly one mass to one visible price.
+                if(preg_match('/^(\d{1,6}(?:[.,]\d{1,3})?\s*(?:кг|kg|гр\.?|г|g))\s+(.+)$/iuD',competitor_text(competitor_scoped_text($xpath,$node)),$pair)){
+                    if($label==='')$label=$pair[1];
+                    if(!$visible)$visible=competitor_variant_money($pair[2]);
+                }
+                $grams=competitor_weight($label);
+                if ($price === null || !$visible || $price !== $visible['price'] || $grams === null) continue;
+                if(!preg_match('/^[1-9][0-9]{0,11}$/D',$nativeId))$nativeId='mass-'.(string)$grams;
                 // Nonzero data-price-new has not yet been verified against a sale page.
                 $newPrice = trim($node->getAttribute('data-price-new'));
                 if ($newPrice !== '' && !preg_match('/^0(?:[.,]0+)?$/D', $newPrice)) { $warnings[] = 'variant_sale_unresolved'; continue; }
@@ -624,6 +631,13 @@ function competitor_banka_card(\DOMXPath $xpath, \DOMElement $anchor, \DOMNode $
         if (in_array(strtolower($card->nodeName), ['main', 'body'], true)) break;
         $text = competitor_text($card->textContent);
         if (mb_strlen($text) > 2000) continue;
+        $names=$xpath->query('.//a[contains(concat(" ",normalize-space(@class)," ")," card-name ")]', $card);
+        $prices=$xpath->query('.//*[contains(concat(" ",normalize-space(@class)," ")," card-price ")]', $card);
+        if($names->length===1 && $names->item(0)->isSameNode($anchor) && parse_url($wanted??'',PHP_URL_QUERY)===null){
+            $pairedPrice=false;foreach($prices as $priceNode)if(competitor_variant_money($priceNode->textContent))$pairedPrice=true;
+            $packs=false;foreach($xpath->query('.//label|.//select/option',$card) as $control)if(competitor_weight($control->textContent)!==null)$packs=true;
+            if($pairedPrice&&$packs)return true;
+        }
         $urls = [];
         foreach ($xpath->query('.//a[@href]', $card) as $link) {
             $href = competitor_absolute_url($link->getAttribute('href'), $url);

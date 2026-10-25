@@ -51,7 +51,7 @@ function competitors_terms_state(array $target,int $now): string
 /** A clause with negated delivery/payment is not an affirmative service list. */
 function competitors_terms_negated(string $line): bool
 {
-    return (bool)preg_match('/(?:\bне\s+(?:здійсню|зд[іi]йсню|відправ|отправ|достав|працю|работ|прийма|принима|оплачу|має|маємо|передбач|предусмотр)|(?:недоступ|не\s+доступ)|(?:відсутн|отсутств))/iu',$line);
+    return (bool)preg_match('/(?:\bне\s+(?:здійсню|зд[іi]йсню|відправ|отправ|достав|працю|работ|прийма|принима|провод|оплачу|має|маємо|передбач|предусмотр)|(?:недоступ|не\s+доступ)|(?:відсутн|отсутств))/iu',$line);
 }
 
 function competitors_terms_money_pattern(): string
@@ -66,10 +66,10 @@ function competitors_terms_ordinary_free_clause(string $line): bool
         '/'.competitors_terms_money_pattern().'/iu',
         '/(?:на\s+(?:будь[- ]?яку|любую)\s+сум\pL*|без\s+(?:мінімальн|минимальн)\pL*\s+сум\pL*)/iu',
         '/(?:нов\pL*\s+(?:пошт|почт)\pL*|\bНП\b|\bNP\b|Nova\s*Poshta)/iu',
-        '/(?:безкоштов\pL*|бесплат\pL*|коштом\s+магазину|за\s+наш\s+рахунок)/iu',
-        '/(?:відділен\pL*|отделен\pL*|достав\pL*|пересил\pL*|замовлен\pL*|заказ\pL*|сум\pL*|вартіст\pL*|стоимост\pL*)/iu',
+        '/(?:безкоштов\pL*|бесплат\pL*|коштом\s+магазину|за\s+наш\s+(?:рахунок|сч[её]т))/iu',
+        '/(?:відділен\pL*|отделен\pL*|поштомат\pL*|почтомат\pL*|достав\pL*|пересил\pL*|замовлен\pL*|заказ\pL*|сум\pL*|вартіст\pL*|стоимост\pL*)/iu',
         '/(?:Україн\pL*|Украин\pL*|територі\pL*|территори\pL*|становить|складає|составляет|включно|включительно)/iu',
-        '/(?<!\pL)(?:при|на|от|від|до|у|в|для|по|за|з|із|і|и|всій|всей|всю)(?!\pL)/iu',
+        '/(?<!\pL)(?:при|на|от|від|до|у|в|для|по|за|з|із|і|и|или|або|всій|всей|всю)(?!\pL)/iu',
     ];
     $remaining=preg_replace($patterns,' ',$line);
     return !preg_match('/[\pL\d%]/u',$remaining);
@@ -133,18 +133,27 @@ function competitors_terms_extract(string $text): array
             $prefix=substr($line,0,(int)strpos($line,$m[1]));
             $historicalOrNegated=preg_match('/(?:ранее|раньше|раніш|раніше|був|було|була|был|было|была|скасован|отмен[её]н|не\s+установ|не\s+встанов|не\s+передбач)/iu',$prefix);
             $amount=competitors_terms_amount($m[3]);
-            $connector=trim($m[2]," \t:—–-=");
+            $connector=preg_replace('/^\s*для\s+(?:доставки|відправки|отправки)\s+по\s+Укра[їи]н[іе]\s*/iu','',$m[2]);
+            $connector=trim($connector," \t:—–-=");
             $ordinary=$connector==='' || preg_match('/^(?:від|от|становить|складає|составляет|не\s+менее|не\s+менше|не\s+нижче|не\s+ниже)$/iuD',$connector);
             if ($amount!==null && $ordinary && !$historicalOrNegated) $put('minimum_order',$amount,competitors_terms_money_display($amount),$line);
+        }
+        // Price-first wording is used by the Deluxe delivery page.
+        if(!$wholesale && preg_match('/^'.$money.'\s*[:—–-]?\s*(?:мінімальн|минимальн)\pL*\s+(?:(?:сума|сумма|вартість|стоимость)\s+)?(?:заказ|замовлен)\pL*\s*[.!?]?$/iuD',$line,$m)){
+            $amount=competitors_terms_amount($m[1]);if($amount!==null)$put('minimum_order',$amount,competitors_terms_money_display($amount),$line);
         }
         if (!$wholesale && !preg_match('/'.$money.'/iu',$line) && preg_match('/^(?:(?:без|немає|нет)\s+(?:(?:мінімальн|минимальн)\pL*\s+)(?:(?:суми|суммы|сума|сумма)\s+)?(?:замовлен|заказ)\pL*|(?:мінімальн|минимальн)\pL*\s+(?:(?:сума|сумма)\s+)?(?:замовлен|заказ)\pL*\s*[:—–-]?\s*(?:не\s+обмеж\pL*|не\s+огранич\pL*|відсутн\pL*|нет|немає))\s*[.!?]?\s*$/iu',$line)) {
             $put('minimum_order',0.0,'Без минимальной суммы',$line);
         }
+        // A list of other delivery methods after a complete national NP clause
+        // must not turn the NP branch threshold into a Kyiv-only threshold.
+        $freeLine=$line;
+        if(preg_match('/^(.+(?:Новой\s+Почты|Нової\s+Пошти)),\s*(?:в\s+Укрпочту|у\s+Укрпошту)\s+(?:и|і)\s+курьером\s+по\s+Киеву[.!]?$/iuD',$line,$clause))$freeLine=$clause[1];
         $np=(bool)preg_match('/(?:нов\pL*\s+(?:пошт|почт)\pL*|\bНП\b|\bNP\b|Nova\s*Poshta)/iu',$line);
         $branch=(bool)preg_match('/(?:відділен|отделен)/iu',$line);
-        $free=(bool)preg_match('/(?:безкоштов|бесплат|коштом\s+магазину|за\s+наш\s+рахунок)/iu',$line);
-        $shippingRestrictions=(bool)preg_match('/(?:кур[’\x{0027}]?єр|курьер|адресн|Ки[еє]в|Киев|Льв[іо]в|Одес|Дн[іе]пр|Харк[іо]в|Харьков|тільки|только|крім|кроме|передоплат|предоплат|перш|перв|оптов|гуртов|підпис|подпис|купон|промокод|акці|акци|накоп|%)/iu',$line);
-        if ($np && $branch && $free && !$shippingRestrictions && competitors_terms_ordinary_free_clause($line) && !competitors_terms_negated($line) && !preg_match('/(?:не\s+(?:є\s+)?(?:безкоштов|бесплат))/iu',$line)) {
+        $free=(bool)preg_match('/(?:безкоштов|бесплат|коштом\s+магазину|за\s+наш\s+(?:рахунок|сч[её]т))/iu',$line);
+        $shippingRestrictions=(bool)preg_match('/(?:кур[’\x{0027}]?єр|курьер|адресн|Ки[еє]в|Киев|Льв[іо]в|Одес|Дн[іе]пр|Харк[іо]в|Харьков|тільки|только|крім|кроме|передоплат|предоплат|перш|перв|оптов|гуртов|підпис|подпис|купон|промокод|акці|акци|накоп|%)/iu',$freeLine);
+        if ($np && $branch && $free && !$shippingRestrictions && competitors_terms_ordinary_free_clause($freeLine) && !competitors_terms_negated($line) && !preg_match('/(?:не\s+(?:є\s+)?(?:безкоштов|бесплат))/iu',$line)) {
             if (preg_match_all('/'.$money.'/iu',$line,$allMoney)===1 && preg_match('/(?:від|от)\s*'.$money.'/iu',$line,$m)) {
                 $amount=competitors_terms_amount($m[1]);
                 if ($amount!==null) $put('free_delivery_np_branch',$amount,'От '.competitors_terms_money_display($amount),$line);
@@ -152,7 +161,7 @@ function competitors_terms_extract(string $text): array
                 $put('free_delivery_np_branch',0.0,'На любую сумму',$line);
             }
         }
-        if (preg_match('/(?:відправ|отправ|оброб|обработ)/iu',$line) && preg_match('/(?:день|днів|дней|дн[яі]|доб|годин|час|сьогодні|сегодня|щодня|ежеднев|робоч|рабоч)/iu',$line)) {
+        if (preg_match('/(?:відправ|отправ)/iu',$line) && preg_match('/(?:день|днів|дней|дн[яі]|доб|годин|час|сьогодні|сегодня|щодня|ежеднев|робоч|рабоч)/iu',$line)) {
             $put('dispatch',$line,$line,$line);
         }
         if (!competitors_terms_negated($line)) {
@@ -163,9 +172,9 @@ function competitors_terms_extract(string $text): array
             if (preg_match('/(?:самовив|самовывоз)/iu',$line)) $delivery[]='Самовывоз';
             if (preg_match('/(?:кур[’\x{0027}]?єр|курьер)/iu',$line)) $delivery[]='Курьер';
             foreach ($delivery as $item) $put('delivery_methods',$item,$item,$line);
-            if (preg_match('/(?:оплат|плат[еі]ж|банків|банков|готів|наличн|післяплат|наложен|visa|mastercard|liqpay|wayforpay)/iu',$line)) {
+            if (preg_match('/(?:оплат|плат[еі]ж|банків|банков|готів|наличн|післяплат|наложен|карт|рахунок|сч[её]т|переказ|перевод|термінал|терминал|visa|mastercard|liqpay|wayforpay)/iu',$line)) {
                 $payment=[];
-                if (preg_match('/(?:карт|visa|mastercard|liqpay|wayforpay)/iu',$line)) $payment[]='Картой';
+                if (preg_match('/(?:карт|термінал|терминал|visa|mastercard|liqpay|wayforpay)/iu',$line)) $payment[]='Картой';
                 if (preg_match('/(?:післяплат|наложен|при\s+(?:отриман|получен))/iu',$line)) $payment[]='При получении';
                 if (preg_match('/(?<!\pL)(?:готів\pL*|наличн\pL*)(?!\pL)/iu',$line)) $payment[]='Наличными';
                 if (preg_match('/(?:безготів|безналич|рахунок|сч[её]т|IBAN|банківськ\pL*\s+переказ|банковск\pL*\s+перевод)/iu',$line)) $payment[]='На счёт';
@@ -180,7 +189,7 @@ function competitors_terms_extract(string $text): array
             $put($first?'first_order_discount':'regular_discounts',$quote,$quote,$quote);
         }
         if (preg_match('/(?:акці|акци|розпрод|распрод|\bSale\b|промокод|купон)/iu',$line) && mb_strlen($line)>12) $put('promotions',$line,$line,$line);
-        if (preg_match('/(?:повернен|возврат|обмін|обмен)/iu',$line) && mb_strlen($line)>14) $put('returns',$line,$line,$line);
+        if (preg_match('/(?:повернен|возврат|обмін|обмен)/iu',$line) && !preg_match('/(?:повернен\pL*|возврат)\s+(?:грошей|денег|коштів)\s+(?:продавц|відправник|отправител)/iu',$line) && mb_strlen($line)>14) $put('returns',$line,$line,$line);
     }
     return $facts;
 }

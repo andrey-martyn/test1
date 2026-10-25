@@ -10,13 +10,13 @@ final class LavkaCompetitorDiagnosticDeferred extends RuntimeException {}
 
 require_once dirname(__DIR__) . '/src/CompetitorEvidence.php';
 
-function lavka_competitors_diagnostics_json(array $report): string
+function lavka_competitors_diagnostics_json(array $report,int $maxBytes=16000): string
 {
     $flags = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE;
-    while (strlen($json = json_encode($report, $flags)) > 16000) {
+    while (strlen($json = json_encode($report, $flags)) > $maxBytes) {
         $largest = 0; $position = null; $section = null;
         foreach ($report['targets'] ?? [] as $index => $target) {
-            foreach (['catalog_anchors', 'price_nodes', 'purchase_options', 'product_meta','availability_nodes'] as $key) {
+            foreach (['catalog_anchors', 'price_nodes', 'purchase_options', 'product_meta','availability_nodes','sku_options','structured_offers'] as $key) {
                 $size = strlen(json_encode($target[$key] ?? [], $flags));
                 if (!empty($target[$key]) && $size > $largest) { $largest = $size; $position = $index; $section = $key; }
             }
@@ -149,7 +149,7 @@ try {
     $json=lavka_competitors_diagnostics_json($report);
     if(array_key_exists('save-report',$args)&&($report['state']??'')!=='skipped'){
         $directory=realpath($args['data']);
-        $saved=['schema'=>'lavka-public-pages-v1','collected_at'=>\Lavka\utc_now(),'collector_revision'=>substr(hash_file('sha256',__FILE__),0,16),'report'=>json_decode($json,true)];
+        $saved=['schema'=>'lavka-public-pages-v1','collected_at'=>\Lavka\utc_now(),'collector_revision'=>substr(hash_file('sha256',__FILE__),0,16),'report'=>json_decode(lavka_competitors_diagnostics_json($report,128000),true)];
         \Lavka\atomic_write($directory.'/public-page-diagnostics.json',\Lavka\encode($saved));
     }
     echo $json . "\n";

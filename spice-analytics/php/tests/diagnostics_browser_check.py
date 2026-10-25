@@ -110,7 +110,9 @@ with tempfile.TemporaryDirectory() as temporary:
                 page.wait_for_function('(tab)=>competitorState.tab===tab',arg=tab)
                 page.evaluate('document.documentElement.style.scrollBehavior="auto";window.scrollTo({top:0,behavior:"instant"})')
                 page.wait_for_function('()=>scrollY===0')
-                positions.append(page.locator('.competitor-nav').evaluate('(el)=>el.getBoundingClientRect().top+scrollY'))
+                position=page.locator('.competitor-nav').evaluate('(el)=>({top:el.getBoundingClientRect().top+scrollY,display:getComputedStyle(el).display,height:el.getBoundingClientRect().height,scroll:scrollY,parent:getComputedStyle(el.parentElement).display,content:document.getElementById("content").innerText.slice(0,100)})')
+                assert position['height']>0,(tab,position)
+                positions.append(position['top'])
                 assert page.locator('.competitor-tabpanel > .next-step').count()==(1 if tab=='products' else 0)
                 assert page.locator('[role=tab][aria-selected=true]').count()==1
             assert max(positions)-min(positions)<=1,positions

@@ -75,14 +75,19 @@ function diagnostic_terms(array $targets): array
 function diagnostic_saved_pages(string $directory): array
 {
     $file=$directory.'/public-page-diagnostics.json';
-    if(!is_file($file)||is_link($file)||filesize($file)>65536)return ['available'=>false];
+    if(!is_file($file)||is_link($file)||filesize($file)>131072)return ['available'=>false];
     try{$input=decode(file_get_contents($file));}catch(\Throwable $ignored){return ['available'=>false,'reason'=>'invalid_saved_report'];}
     if(($input['schema']??'')!=='lavka-public-pages-v1'||!is_array($input['report']??null))return ['available'=>false,'reason'=>'invalid_saved_report'];
-    $keys=array_fill_keys(explode(' ','schema collected_at collector_revision report state reason read_only selected checked deferred seconds targets id source kind label url http status final_url bytes parser method error_code offers_count links_count offers document title h1 canonical og_url scope tag class itemprop has_h1 product_meta name value price_nodes text content data-price data-price-value data-base-price data-weight data-grams data-option-value-id data-product-option-value-id data-price-prefix data-prefix price-prefix purchase_options control selected catalog_anchors href ancestors depth context availability_nodes recognized price old_price grams min_quantity availability packaging currency unit condition document_error truncated'),true);
-    $walk=function($value,int $depth=0)use(&$walk,$keys){
+    $keys=array_fill_keys(explode(' ','schema collected_at collector_revision report state reason read_only selected checked deferred seconds targets id source kind label url http status final_url bytes parser method error_code offers_count links_count offers document title h1 canonical og_url scope tag class itemprop has_h1 product_meta name value price_nodes text content data-price data-price-value data-base-price data-weight data-grams data-option-value-id data-product-option-value-id data-price-prefix data-prefix price-prefix purchase_options control selected catalog_anchors href ancestors depth context availability_nodes recognized price old_price grams min_quantity availability packaging currency unit condition document_error truncated sku_options structured_offers current_label data-treevalue data-price-id data-price-new'),true);
+    $walk=function($value,int $depth=0,string $field='')use(&$walk,$keys){
         if($depth>10)return null;
-        if(is_array($value)){$out=[];foreach(array_slice($value,0,40,true) as $key=>$part){if(!is_int($key)&&!isset($keys[$key]))continue;$out[$key]=$walk($part,$depth+1);}return $out;}
-        if(is_string($value))return \lavka_competitor_diagnostic_text($value,700);
+        if(is_array($value)){$out=[];foreach(array_slice($value,0,40,true) as $key=>$part){if(!is_int($key)&&!isset($keys[$key]))continue;$out[$key]=$walk($part,$depth+1,(string)$key);}return $out;}
+        if(is_string($value)){
+            if($field==='collected_at' && competitors_terms_timestamp($value)!==null)return $value;
+            if($field==='collector_revision' && preg_match('/^[a-f0-9]{16}$/D',$value))return $value;
+            if($field==='id' && ($publicId=\lavka_competitor_diagnostic_id($value))!==null)return $publicId;
+            return \lavka_competitor_diagnostic_text($value,700);
+        }
         return is_numeric($value)||is_bool($value)||$value===null?$value:null;
     };
     return ['available'=>true]+$walk($input);

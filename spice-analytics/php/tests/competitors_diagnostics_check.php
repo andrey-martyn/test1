@@ -119,6 +119,10 @@ try {
     $second = $report['targets'][1];
     diagnostic_expect(count($second['catalog_anchors']) === 2 && $second['catalog_anchors'][0]['class'] === 'novel-name', 'Unknown catalog markup still supplies product anchor shapes');
     diagnostic_expect($second['catalog_anchors'][0]['ancestors'][1]['class'] === 'fresh-commodity', 'Useful nearby card ancestry is present');
+    $skuHtml='<main><h1>Synthetic spice</h1><div><span class="here">100 г</span><ul id="bx_1234567890_1161_prop_29_list"><li class="bx_active" data-treevalue="29_45"><span class="cnt">100 г</span></li><li data-treevalue="29_46"><span class="cnt">500 г</span></li></ul></div></main>';
+    $sku=lavka_competitor_diagnostic_document($skuHtml,'https://www.specii.in.ua/ua/catalog/synthetic/','product');
+    diagnostic_expect(count($sku['sku_options'])===2 && $sku['sku_options'][0]['data-treevalue']==='29_45' && $sku['sku_options'][0]['current_label']==='100 г','Bitrix selected SKU and current label remain diagnosable');
+    diagnostic_expect($sku['sku_options'][0]['control']['id']==='bx_1234567890_1161_prop_29_list','Public native ID is not mistaken for a phone');
     $json = lavka_competitors_diagnostics_json($report);
     foreach (['PRIVATE_SENTINEL', 'HIDDEN_SECRET', 'customer@example', 'REVIEW_PRIVATE_TEXT', 'SCRIPT_PRIVATE_TEXT', 'FOOTER_PRIVATE_TEXT', 'csrf', 'body'] as $secret) {
         diagnostic_expect(strpos($json, $secret) === false, 'Diagnostic excludes private/unrelated content: ' . $secret);
@@ -130,6 +134,8 @@ try {
         $large['targets'][$i]['price_nodes'] = array_fill(0, 12, ['class' => str_repeat('p', 120), 'text' => str_repeat('г', 120)]);
         $large['targets'][$i]['catalog_anchors'] = array_fill(0, 12, ['title' => str_repeat('ш', 100), 'context' => str_repeat('к', 180)]);
     }
+    $full=lavka_competitors_diagnostics_json($large,128000);
+    diagnostic_expect(strlen($full)>16000 && strlen($full)<128000 && empty(json_decode($full,true)['truncated']),'Saved report preserves structured evidence beyond terminal limit');
     $bounded = lavka_competitors_diagnostics_json($large);
     diagnostic_expect(strlen($bounded) <= 16000 && json_decode($bounded, true)['truncated'], 'Entire compact JSON remains bounded and valid');
 

@@ -1,1 +1,8 @@
 .diagnostics-panel p,.diagnostics-panel li{font-size:16px;line-height:1.6;color:#294438}.diagnostics-opt-in{display:grid;grid-template-columns:24px 1fr;gap:8px;align-items:start;margin:20px 0;max-width:850px;font-size:16px;line-height:1.5}.diagnostics-opt-in input{width:20px;height:20px;margin-top:3px}.diagnostics-opt-in small{grid-column:2;color:#425a4b;font-size:14px}.diagnostics-panel details{margin-top:18px}.diagnostics-panel summary{cursor:pointer;font-weight:600;color:#18583e}.diagnostics-panel #diagnostic-status:empty{display:none}
+
+/* Text bodies share the same inset as headings; full-width tables keep theirs. */
+.panel-content{padding:0 22px 22px;overflow-wrap:anywhere}
+.panel-content>:first-child{margin-top:0}.panel-content>:last-child{margin-bottom:0}
+.panel-content ol,.panel-content ul{padding-inline-start:24px}
+.panel-content .button{max-width:100%;white-space:normal}
+@media(max-width:720px){.panel-content{padding:0 14px 18px}}
