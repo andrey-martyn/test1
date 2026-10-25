@@ -88,3 +88,5 @@
 .competitor-detail-variant.selected-variant .competitor-variant-scope{color:#155635}
 .competitor-suggestion .competitor-suggestion-base{font-size:14px;font-weight:650;color:#173e2b}
 .competitor-suggestion span{line-height:1.5}
+
+.competitor-auto-match{display:block;font-size:14px;color:#205b46;margin-top:5px}.competitor-matching-note{padding:14px 16px;background:#eef5ef;border:1px solid #cbdacf;border-radius:9px;margin:14px 0;overflow-wrap:anywhere}.competitor-matching-note p{margin:8px 0;font-size:16px;line-height:1.5}

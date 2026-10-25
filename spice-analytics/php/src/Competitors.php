@@ -164,7 +164,7 @@ function competitors_target_row(array $row): array
 {
     return ['id' => (int) $row['id'], 'source_id' => $row['source_id'], 'kind' => $row['kind'], 'url' => $row['url'], 'label' => $row['label'],
         'enabled' => (bool) $row['enabled'], 'grams_override' => $row['grams_override'] === null ? null : (float) $row['grams_override'], 'pack_label' => $row['pack_label'],
-        'match_group' => $row['match_group'], 'match_confirmed' => (bool) $row['match_confirmed'], 'next_check_at' => $row['next_check_at'], 'queued' => (bool) $row['queued'],
+        'match_group' => $row['match_group'], 'match_confirmed' => (bool) $row['match_confirmed'], 'match_method'=>$row['match_method']??'unreviewed','match_evidence'=>empty($row['match_evidence'])?null:decode($row['match_evidence']), 'next_check_at' => $row['next_check_at'], 'queued' => (bool) $row['queued'],
         'last_success' => $row['last_success'], 'observation' => $row['observation'] === null ? null : decode($row['observation']), 'last_attempt' => $row['last_attempt'] === null ? null : decode($row['last_attempt'])] + competitors_packaging_fields($row);
 }
 
@@ -221,6 +221,8 @@ function competitors_save_target(\PDO $db, array $body, ?int $id = null, bool $s
             $id = (int) $db->lastInsertId();
         }
         competitors_packaging_store($db, (int) $id, $packaging);
+        if(array_key_exists('match_confirmed',$body)&&($old===null?$v['match_confirmed']:(!$v['match_confirmed']||!$old['match_confirmed']||($old['match_method']??'')!=='auto'||$old['match_group']!==$group)))$db->prepare("UPDATE competitor_targets SET match_method='manual',match_evidence=NULL WHERE id=?")->execute([$id]);
+        elseif($old!==null&&$old['match_group']!==$group)$db->prepare("UPDATE competitor_targets SET match_confirmed=0,match_method='unreviewed',match_evidence=NULL WHERE id=?")->execute([$id]);
         if($manageTransaction)$db->commit();
     } catch (\Throwable $e) { if ($manageTransaction && $db->inTransaction()) $db->rollBack(); throw $e; }
     return competitors_target($db, $id);
@@ -368,6 +370,7 @@ function competitors_record_attempt(\PDO $db, int $id, ?array $observation, ?str
     try {
         // Re-read within the transaction: a configuration edit must not be lost.
         $current = competitors_target($db, $id);
+        if(($current['match_method']??'')==='auto')$db->prepare('UPDATE competitor_targets SET match_confirmed=0,match_evidence=NULL WHERE id=?')->execute([$id]);
         $stmt = $db->prepare('INSERT INTO competitor_attempts(target_id,checked_at,state,error_code,http_status) VALUES(?,?,?,?,?)');
         $stmt->execute([$id, $checkedAt, $attempt['state'], $errorCode, $httpStatus]);
         if ($clean === null) {

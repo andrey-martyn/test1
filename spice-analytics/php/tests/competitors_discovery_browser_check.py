@@ -7,6 +7,7 @@ ROOT=Path(__file__).resolve().parents[2];sys.path[:0]=[str(ROOT),str(ROOT/'tests
 from test_production import snapshot
 from sync_mysql import apply_snapshot
 IMAGE=os.environ.get('ANALYTICS_PHP_IMAGE','lavka-php73-dev')
+AUTOMATIC=os.environ.get('ANALYTICS_MATCH_AUTOMATIC')=='1'
 OUT=Path(os.environ.get('ANALYTICS_TEST_OUTPUT','/tmp/lavka-discovery-browser'));OUT.mkdir(exist_ok=True,parents=True)
 SEED=r'''
 require 'php/src/Auth.php';require 'php/src/Competitors.php';
@@ -108,6 +109,7 @@ with tempfile.TemporaryDirectory() as temporary:
     $q=$db->prepare('SELECT id FROM competitor_search_index WHERE source_id=? AND url=?');$q->execute(['deluxe',$url]);$candidate=(int)$q->fetchColumn();
     $db->prepare('INSERT OR REPLACE INTO competitor_suggestions(own_id,candidate_id,score) VALUES(?,?,100)')->execute([(int)$own['id'],$candidate]);
    }'''
+   if AUTOMATIC:extra=extra.replace('$i<=111','$i<=237')
    subprocess.run(docker+['-i',IMAGE,'php','-r',extra],check=True,stdout=subprocess.DEVNULL)
    def prices_digest():
     with sqlite3.connect(data/'competitors.sqlite3') as connection:
@@ -115,22 +117,41 @@ with tempfile.TemporaryDirectory() as temporary:
    prices_before=prices_digest()
    page.click('[data-tab=products]');page.evaluate('competitorsLoad()');page.wait_for_function('() => !competitorState.loading')
    funnel=page.evaluate('competitorComparisonFunnel()')
-   assert (funnel['loaded'],funnel['confirmed'],funnel['unconfirmed'],funnel['ready_rows_500'])==(110,3,107,3),funnel
+   total_loaded=236 if AUTOMATIC else 110
+   assert (funnel['loaded'],funnel['confirmed'],funnel['unconfirmed'],funnel['ready_rows_500'])==(total_loaded,3,total_loaded-3,3),funnel
    assert page.evaluate('competitorState.data.targets.length')>=510
-   page.click('[data-next-action=competitor-matches-loaded]');page.wait_for_function('() => !monitoringState.loading')
-   assert page.evaluate('monitoringState.data.total')==107
-   page.click('[data-comp-action=matching-exact]');assert page.evaluate('monitoringState.selected.size')==50
-   page.locator('[data-comp-action=matching-confirm]').first.click();page.wait_for_function('() => !monitoringState.busy && !monitoringState.loading')
-   page.click('[data-tab=products]')
-   funnel=page.evaluate('competitorComparisonFunnel()')
-   assert (funnel['loaded'],funnel['confirmed'],funnel['unconfirmed'],funnel['ready_rows_500'])==(110,53,57,53),funnel
-   assert prices_digest()==prices_before,'Confirming links must not change downloaded prices'
-   assert page.evaluate('diagnosticsClient().price_comparison.ready_rows_500')==53
+   if AUTOMATIC:
+    reconciled=subprocess.run(docker+[IMAGE,'php','php/bin/reconcile_competitors.php','--data','/test-data'],capture_output=True,check=True)
+    automatic=json.loads(reconciled.stdout)
+    assert automatic['newly_confirmed']==233 and automatic['network_requests']==0 and not automatic['shop_writes'],automatic
+    page.evaluate('competitorsLoad()');page.wait_for_function('() => !competitorState.loading')
+    funnel=page.evaluate('competitorComparisonFunnel()')
+    assert (funnel['loaded'],funnel['confirmed'],funnel['unconfirmed'],funnel['ready_rows_500'],funnel['automatic'])==(236,236,0,236,233),funnel
+    assert prices_digest()==prices_before,'Automatic matching never changes observed prices'
+    assert 'Автосопоставление' in page.locator('.competitor-matrix').inner_text()
+    assert page.evaluate('diagnosticsClient().price_comparison.ready_rows_500')==236
+    page.evaluate('() => {const t=competitorState.data.targets.find(t=>t.match_method==="auto"&&t.match_confirmed),r=competitorMatrixRows().find(r=>r.targets.some(x=>x.id===t.id));competitorMatrixDetail(r.key,t.source_id)}')
+    page.wait_for_selector('#drawer .competitor-matching-note')
+    assert 'Проверено автоматически' in page.locator('#drawer .competitor-matching-note').inner_text()
+    page.click('[data-action=close-dialog]');page.wait_for_function('() => !document.getElementById("drawer").open')
+    page.click('[data-comp-action=matrix-ready]')
+    assert page.locator('#competitor-matrix-status').input_value()=='ready' and page.locator('#competitor-matrix-pack').input_value()=='all'
+    assert page.evaluate('competitorVisibleRows().length===236 && competitorVisibleRows().every(r=>r.comparable)')
+   else:
+    page.click('[data-comp-action=matching-loaded]');page.wait_for_function('() => !monitoringState.loading')
+    assert page.evaluate('monitoringState.data.total')==107
+    page.click('[data-comp-action=matching-exact]');assert page.evaluate('monitoringState.selected.size')==50
+    page.locator('[data-comp-action=matching-confirm]').first.click();page.wait_for_function('() => !monitoringState.busy && !monitoringState.loading')
+    page.click('[data-tab=products]')
+    funnel=page.evaluate('competitorComparisonFunnel()')
+    assert (funnel['loaded'],funnel['confirmed'],funnel['unconfirmed'],funnel['ready_rows_500'])==(110,53,57,53),funnel
+    assert prices_digest()==prices_before,'Confirming links must not change downloaded prices'
+    assert page.evaluate('diagnosticsClient().price_comparison.ready_rows_500')==53
    for width in [390,320]:
     page.set_viewport_size({'width':width,'height':844});assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'),width
    page.screenshot(path=str(OUT/'comparison-funnel-320.png'),full_page=True)
    assert not errors,errors;assert not external,external
    browser.close()
-   print(json.dumps({'green_kpi_and_identical_menu_layout':'passed','400_products_paged_and_cached':'passed','render_seconds':round(render_seconds,3),'runner_visibility':'passed','human_batch_confirmation_and_queue':'passed','110_loaded_3_to_53_compared_without_price_changes':'passed','mobile_320_390':'passed','external_requests':external,'javascript_errors':errors,'php_image':IMAGE}))
+   print(json.dumps({'green_kpi_and_identical_menu_layout':'passed','400_products_paged_and_cached':'passed','render_seconds':round(render_seconds,3),'runner_visibility':'passed','human_batch_confirmation_and_queue':'passed','comparison_flow':('236_loaded_3_to_236_compared_automatically' if AUTOMATIC else '110_loaded_3_to_53_manual'),'source_prices_unchanged':'passed','mobile_320_390':'passed','external_requests':external,'javascript_errors':errors,'php_image':IMAGE}))
  finally:
   subprocess.run(['docker','rm','-f',name],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);server.wait(timeout=15)

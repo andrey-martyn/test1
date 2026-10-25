@@ -37,7 +37,7 @@ function diagnostic_public_fields(array $row, int $depth=0): array
 {
     if($depth>5)return [];
     $numeric=['id','target_id','own_id','candidate_id','score','price','old_price','grams','grams_override','min_quantity','enabled','match_confirmed','queued','count','checked','succeeded','failed','deferred','saved','skipped','suggestions','queued_candidates','prices_loaded','limit','budget_seconds','status','http_status','bytes','errors','seconds','peak_mb','links','pages'];
-    $enums=['source_id','kind','state','error_code','method','currency','unit','availability','packaging','packaging_override','packaging_source','runner_revision','parser_revision','php'];
+    $enums=['source_id','kind','state','error_code','method','match_method','currency','unit','availability','packaging','packaging_override','packaging_source','runner_revision','parser_revision','php'];
     $text=['title','label','pack_label','match_group','condition'];$out=[];
     foreach($numeric as $key)if(isset($row[$key])&&(is_numeric($row[$key])||is_bool($row[$key])))$out[$key]=is_bool($row[$key])?$row[$key]:0+$row[$key];
     foreach($enums as $key)if(isset($row[$key]))$out[$key]=diagnostic_enum($row[$key]);
@@ -120,6 +120,17 @@ function diagnostic_competitors(string $directory): array
     $result['cadence']=competitors_run_cadence($result['runs']);
     require_once __DIR__.'/CompetitorOwnCatalog.php';
     $own=competitors_own_catalog_read($directory);
+    require_once __DIR__.'/CompetitorMatching.php';
+    $matching=competitors_matching_plan($allTargets,$own);
+    $result['automatic_matching']=$matching['summary']+['rule'=>$matching['rule'],'preview_only'=>true];
+    $result['matching_review_samples']=[];
+    foreach($matching['decisions'] as $decision)if(!$decision['confirmed']&&count($result['matching_review_samples'])<30){$e=$decision['evidence'];$result['matching_review_samples'][]=['target_id'=>$decision['id'],'reason'=>diagnostic_enum($e['reason']),'own_title'=>\lavka_competitor_diagnostic_text($e['own_title'],180),'read_title'=>\lavka_competitor_diagnostic_text($e['read_title'],180)];}
+    // Every automatic decision is public catalogue metadata; do not sample away
+    // the successfully read cards while exporting only the oldest error cases.
+    $matchingTargets=[];foreach($allTargets as $t)$matchingTargets[$t['id']]=$t;
+    $result['matching_audit']=[];
+    foreach(array_slice($matching['decisions'],0,COMPETITOR_MAX_TARGETS) as $d){$t=$matchingTargets[$d['id']];$e=$d['evidence'];$weights=[];foreach($t['observation']['offers']??[] as $o)if(is_numeric($o['grams']??null))$weights[(string)$o['grams']]=true;
+        $result['matching_audit'][]=['target_id'=>$t['id'],'source_id'=>diagnostic_enum($t['source_id']),'url'=>diagnostic_public_url($t['url']),'confirmed_now'=>$t['match_confirmed'],'automatic_eligible'=>$d['confirmed'],'match_method'=>diagnostic_enum($t['match_method']),'reason'=>diagnostic_enum($e['reason']),'own_id'=>$e['own_id'],'own_title'=>\lavka_competitor_diagnostic_text($e['own_title'],180),'read_title'=>\lavka_competitor_diagnostic_text($e['read_title'],180),'weights'=>array_map('floatval',array_keys($weights))];}
     $result['own_catalog']=diagnostic_public_fields($own)+diagnostic_numbers(array_intersect_key($own,array_flip(['product_count','offer_count','shop_writes'])));
     $result['own_catalog']['products']=array_map(function($product){return diagnostic_public_fields($product)+['product_id'=>(int)($product['product_id']??0)];},array_slice($own['products']??[],0,8));
     $result['terms']=diagnostic_terms($allTargets);
@@ -134,7 +145,7 @@ function diagnostic_client(array $input, callable $ref): array
     $result=['viewport'=>[],'scripts'=>[],'errors'=>[],'probes'=>[]];
     if(is_array($input['price_comparison']??null)){
         $result['price_comparison']=[];
-        foreach(['loaded','unlinked','unconfirmed','confirmed','ready_rows_all','ready_rows_500','ready_rows_50'] as $key)if(is_numeric($input['price_comparison'][$key]??null))$result['price_comparison'][$key]=max(0,min(1000000,(int)$input['price_comparison'][$key]));
+        foreach(['loaded','unlinked','unconfirmed','confirmed','automatic','ready_rows_all','ready_rows_500','ready_rows_50'] as $key)if(is_numeric($input['price_comparison'][$key]??null))$result['price_comparison'][$key]=max(0,min(1000000,(int)$input['price_comparison'][$key]));
         $result['price_comparison']['blocked_500']=[];
         foreach(['own','pack','packaging','stock','conditional','unknown','error','stale','pending','missing'] as $key)if(is_numeric($input['price_comparison']['blocked_500'][$key]??null))$result['price_comparison']['blocked_500'][$key]=max(0,min(1000000,(int)$input['price_comparison']['blocked_500'][$key]));
     }

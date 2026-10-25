@@ -25,6 +25,14 @@ function competitors_discovery_schema(\PDO $db): void
     $columns=array_column($db->query('PRAGMA table_info(competitor_search_index)')->fetchAll(),'name');
     if(!in_array('details',$columns,true))$db->exec('ALTER TABLE competitor_search_index ADD COLUMN details TEXT');
     $db->exec('CREATE TABLE IF NOT EXISTS competitor_price_lists(source_id TEXT NOT NULL,url TEXT NOT NULL,label TEXT NOT NULL,found_at TEXT NOT NULL,PRIMARY KEY(source_id,url))');
+    $targetColumns=array_column($db->query('PRAGMA table_info(competitor_targets)')->fetchAll(),'name');
+    if(!in_array('match_method',$targetColumns,true)){
+        $db->exec("ALTER TABLE competitor_targets ADD COLUMN match_method TEXT NOT NULL DEFAULT 'unreviewed'");
+        // The old false flag meant pending, including pages merely queued by
+        // the user. An edited timestamp is not evidence of a human rejection.
+        $db->exec("UPDATE competitor_targets SET match_method='manual' WHERE match_confirmed=1");
+    }
+    if(!in_array('match_evidence',$targetColumns,true))$db->exec('ALTER TABLE competitor_targets ADD COLUMN match_evidence TEXT');
 }
 
 function competitors_scan_enqueue(\PDO $db,string $source,string $url,string $kind,int $depth=0): bool
@@ -248,6 +256,7 @@ function competitors_discovery_review_locked(\PDO $db,array $body): array
     $count=0;
     foreach($prepared as list($row,$old)){
         $fields=['source_id'=>$row['source_id'],'kind'=>'product','url'=>$row['url'],'label'=>$old?$old['label']:$row['title'],'match_group'=>$row['match_group'],'match_confirmed'=>$body['confirm']||($old&&(bool)$old['match_confirmed'])];
+        if(!$body['confirm'])unset($fields['match_confirmed']);
         $saved=competitors_save_target($db,$fields,$old?(int)$old['id']:null);if(!$body['confirm'])competitors_queue($db,(int)$saved['id']);$count++;
     }
     return ['ok'=>true,'processed'=>$count,'confirmed'=>$body['confirm'],'shop_writes'=>false];
@@ -264,7 +273,7 @@ function competitors_discovery_results(\PDO $db,string $search='',string $source
     if($status==='review')$where.=' AND t.match_confirmed=0 AND t.match_group=o.match_group';
     if($status==='confirmed')$where.=' AND t.match_confirmed=1 AND t.match_group=o.match_group';
     $stmt=$db->prepare('SELECT count(*)'.$from.$where);$stmt->execute($args);$total=(int)$stmt->fetchColumn();
-    $stmt=$db->prepare('SELECT o.id AS own_id,o.label AS own_title,o.match_group,i.id AS candidate_id,i.source_id,i.url,i.title,i.title_source,s.score,t.id AS target_id,t.match_confirmed,t.match_group AS target_group,t.enabled AS target_enabled,t.last_success,t.last_attempt,t.observation'.$from.$where.' ORDER BY o.label,i.source_id,s.score DESC,i.id LIMIT 50 OFFSET '.(($page-1)*50));$stmt->execute($args);$rows=$stmt->fetchAll();
+    $stmt=$db->prepare('SELECT o.id AS own_id,o.label AS own_title,o.match_group,i.id AS candidate_id,i.source_id,i.url,i.title,i.title_source,s.score,t.id AS target_id,t.match_confirmed,t.match_method,t.match_group AS target_group,t.enabled AS target_enabled,t.last_success,t.last_attempt,t.observation'.$from.$where.' ORDER BY o.label,i.source_id,s.score DESC,i.id LIMIT 50 OFFSET '.(($page-1)*50));$stmt->execute($args);$rows=$stmt->fetchAll();
     foreach($rows as &$row){foreach(['own_id','candidate_id','score','target_id'] as $field)$row[$field]=$row[$field]===null?null:(int)$row[$field];$row['match_confirmed']=(bool)$row['match_confirmed'];$row['target_enabled']=$row['target_enabled']===null?null:(bool)$row['target_enabled'];$observation=$row['observation']?decode($row['observation']):null;$row['read_title']=$observation['title']??null;$row['identity']=competitors_identity_compare($row['own_title'],$row['read_title']?:$row['title'],$row['url']);$row['score']=$row['identity']['score'];$row['offers']=$observation['offers']??[];unset($row['observation']);$row['last_attempt']=$row['last_attempt']?decode($row['last_attempt']):null;}
     return ['rows'=>$rows,'total'=>$total,'page'=>$page,'page_size'=>50,'status'=>$status];
 }
@@ -285,7 +294,7 @@ function competitors_monitoring_status(\PDO $db,string $directory,array $targets
     $cadence=competitors_run_cadence($runs);
     $result=['observed_interval_seconds'=>$cadence['interval_seconds'],'interval_samples'=>$cadence['interval_samples'],'last_run'=>$last,'runner_state'=>!$last?'never':($now-strtotime($last)>1200?'overdue':'recent'),'last_batch'=>$latest,
         'interval_hours'=>24,'recommended_cron_minutes'=>1,'own_products'=>0,'own_prices'=>count(array_filter(($catalog['state']??'')==='ok'?($catalog['products']??[]):[],function($p){return !empty($p['offers']);})),
-        'full_catalog'=>is_file($directory.'/competitor-full-catalog.json'),'remote_products'=>0,'pending'=>0,'due'=>0,'failed'=>0,'unconfirmed'=>0,'fresh'=>0,'sources'=>[],
+        'full_catalog'=>is_file($directory.'/competitor-full-catalog.json'),'remote_products'=>0,'pending'=>0,'due'=>0,'failed'=>0,'unconfirmed'=>0,'unconfirmed_loaded'=>0,'automatic_confirmed'=>0,'fresh'=>0,'sources'=>[],
         'price_lists'=>$db->query('SELECT * FROM competitor_price_lists ORDER BY source_id,label LIMIT 100')->fetchAll(),'discovery_enabled'=>(bool)$db->query('SELECT enabled FROM competitor_discovery_settings WHERE id=1')->fetchColumn()];
     foreach(competitors_sources() as $source)if($source['id']!=='lavka')$result['sources'][$source['id']]=['tracked'=>0,'pending'=>0,'failed'=>0,'fresh'=>0,'indexed'=>0,'scan_pending'=>0,'scan_errors'=>0,'last_scan'=>null,'scan_error'=>null];
     foreach($targets as $target){if(!$target['enabled']||$target['kind']!=='product')continue;if($target['source_id']==='lavka'){$result['own_products']++;continue;}
@@ -293,7 +302,7 @@ function competitors_monitoring_status(\PDO $db,string $directory,array $targets
         if(!$target['last_attempt']){$result['pending']++;$source['pending']++;}
         if($target['last_attempt']&&$target['last_attempt']['state']==='error'){$result['failed']++;$source['failed']++;}
         if(!$target['match_confirmed'])$result['unconfirmed']++;
-        if($target['last_success']&&$now-strtotime($target['last_success'])<=172800&&($target['last_attempt']['state']??'')==='ok'){$result['fresh']++;$source['fresh']++;}
+        if($target['last_success']&&$now-strtotime($target['last_success'])<=172800&&($target['last_attempt']['state']??'')==='ok'){$result['fresh']++;$source['fresh']++;if(!$target['match_confirmed'])$result['unconfirmed_loaded']++;elseif(($target['match_method']??'')==='auto')$result['automatic_confirmed']++;}
         if(strtotime($target['next_check_at'])<=$now)$result['due']++;
         unset($source);
     }

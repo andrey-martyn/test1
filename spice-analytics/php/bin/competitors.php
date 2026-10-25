@@ -157,6 +157,8 @@ function lavka_competitors_run(array $args, ?callable $transport = null, ?callab
             }
             $summary['checked']++;
         }
+        require_once dirname(__DIR__).'/src/CompetitorMatching.php';
+        $summary['automatic_matching']=\Lavka\competitors_matching_reconcile($db,$ownCatalog);
         $failures=$summary['failed']+($summary['discovery']['failed']??0);$successes=$summary['succeeded']+($summary['discovery']['checked']??0)-($summary['discovery']['failed']??0);
         $summary['state'] = $failures ? ($successes ? 'partial' : 'error') : 'ok';
         $summary['finished_at'] = $stamp();

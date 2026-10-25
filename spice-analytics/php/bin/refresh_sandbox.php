@@ -32,7 +32,15 @@ try {
         '--data', $data, '--url', $expected['public_url']];
     $process = proc_open($command, [0 => STDIN, 1 => STDOUT, 2 => STDERR], $pipes);
     if (!is_resource($process)) throw new RuntimeException('Не удалось запустить обновление.');
-    exit(proc_close($process));
+    $result=proc_close($process);
+    if($result===0){
+        require_once $app.'/src/Competitors.php';
+        require_once $app.'/src/CompetitorOwnCatalog.php';
+        require_once $app.'/src/CompetitorMatching.php';
+        $matching=\Lavka\competitors_matching_reconcile(\Lavka\competitors_db($data),\Lavka\competitors_own_catalog_read($data));
+        echo \Lavka\encode(['automatic_matching'=>$matching])."\n";
+    }
+    exit($result);
 } catch (Throwable $error) {
     // Fixed messages only: no connection configuration or secrets are read.
     fwrite(STDERR, $error->getMessage() . "\n");
