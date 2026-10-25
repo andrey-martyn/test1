@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 namespace Lavka;
+require_once __DIR__ . '/Gender.php';
 
 function activity_key(string $date, int $year): string
 {
@@ -75,27 +76,78 @@ function history_summary(Analytics $s, array $valid, array $groups, DSU $dsu, ar
     return array_values($rows);
 }
 
+/** Last-name suggestions are weak evidence and never automatic identity edges. */
+function identity_surname_key(string $value): string
+{
+    $value=normalize(str_replace(["’","‘","`","ʼ","‐","‑","–","—"],["'","'","'","'","-","-","-","-"],$value));
+    if(!preg_match("/^[\pL]+(?:[ '\-][\pL]+)*$/uD",$value) || mb_strlen(preg_replace('/[^\pL]/u','',$value))<2)return '';
+    if(in_array($value,['тест','test','проверка','клієнт','клиент','покупатель','покупець','гость','гість','guest','customer','нет','немає','null','undefined','не указано','не вказано','фоп','тов','ооо','компания','магазин'],true))return '';
+    return $value;
+}
+
+/** Some checkouts put a complete name in firstname and leave lastname empty. */
+function identity_order_surname(array $o): string
+{
+    $last=trim((string)($o['lastname']??''));
+    if(identity_surname_key($last)!=='')return $last;
+    if($last!=='')return '';
+    $parts=preg_split('/\s+/u',trim((string)($o['firstname']??'')));
+    if(count($parts)<2||count($parts)>3)return '';
+    $isFirst=function($v){$d=name_gender_details($v);return $d['gender']!=='unknown'||$d['reason']==='ambiguous';};
+    $first=$parts[0];$tail=$parts[count($parts)-1];$candidate='';
+    if($isFirst($first)&&!$isFirst($tail))$candidate=$tail;
+    elseif(!$isFirst($first)&&$isFirst($parts[1]))$candidate=$first;
+    if(preg_match('/(?:ович|евич|йович|івна|ївна|овна|евна|ична)$/iu',$candidate))return '';
+    return identity_surname_key($candidate)!==''?$candidate:'';
+}
+
+/** Preserve historical names and contact people when records share a history. */
+function identity_contact_fields(array $orders): array
+{
+    $names=[];$surnames=[];$contacts=[];
+    foreach($orders as $o){
+        $name=trim(($o['firstname']??'').' '.($o['lastname']??''));
+        if($name!=='')$names[normalize($name)]=$name;
+        if($surname=identity_order_surname($o))$surnames[identity_surname_key($surname)]=$surname;
+        $contact=['name'=>$name?:'Гость','email'=>$o['email']??'','phone'=>$o['telephone']??'','city'=>($o['shipping_city']??'')?:($o['payment_city']??'')];
+        $key=encode([normalize($name),normalize($contact['email']),normalize($contact['phone']),normalize($contact['city'])]);$contacts[$key]=$contact;
+    }
+    return ['names'=>array_values($names),'surnames'=>array_values($surnames),'contacts'=>array_values($contacts),'emails'=>array_values(array_unique(array_filter(array_column($orders,'email')))),'phones'=>array_values(array_unique(array_filter(array_column($orders,'telephone'))))];
+}
+
+/** Shared evidence index for the journal and CRM warnings. */
+function identity_contact_keys(array $c): array
+{
+    $keys=[];
+    foreach($c['emails']??[] as $v)if($k=email_key($v))$keys['email'][$k]=true;
+    foreach($c['phones']??[] as $v)if($k=phone_key($v))$keys['phone'][$k]=true;
+    foreach($c['names']??[$c['name']] as $v){$k=normalize($v);if(count(explode(' ',$k))>=2)$keys['name'][$k]=true;}
+    foreach($c['surnames']??[] as $v)if($k=identity_surname_key($v))$keys['surname'][$k]=true;
+    return $keys;
+}
+
 /** Each unordered pair appears once, with every matching contact field. */
 function identity_pairs(array $customers): array
 {
     $keys = [];
     $members = [];
     foreach ($customers as $c) {
-        $members[$c['id']] = array_intersect_key($c, array_flip(['id', 'name', 'email', 'phone', 'emails', 'phones', 'lifetime_count', 'lifetime_amount', 'city']));
-        foreach ($c['emails'] as $value) if ($key = email_key($value)) $keys['email'][$key][$c['id']] = true;
-        foreach ($c['phones'] as $value) if ($key = phone_key($value)) $keys['phone'][$key][$c['id']] = true;
-        $key = normalize($c['name']);
-        if (count(explode(' ', $key)) >= 2) $keys['name'][$key][$c['id']] = true;
+        $members[$c['id']] = array_intersect_key($c, array_flip(['id', 'name', 'names', 'surnames', 'email', 'phone', 'emails', 'phones', 'lifetime_count', 'lifetime_amount', 'city']));
+        foreach(identity_contact_keys($c) as $kind=>$values)foreach($values as $key=>$_)$keys[$kind][$key][$c['id']]=true;
     }
     $pairs = [];
-    foreach (['email' => 'Email', 'phone' => 'Телефон', 'name' => 'Имя'] as $kind => $label) {
+    foreach (['email' => 'Email', 'phone' => 'Телефон', 'name' => 'Полное имя', 'surname'=>'Фамилия'] as $kind => $label) {
         foreach ($keys[$kind] ?? [] as $value => $ids) {
-            if (count($ids) < 2 || count($ids) > 20) continue;
+            if (count($ids) < 2 || ($kind!=='surname' && count($ids)>20)) continue;
             $ids = array_map('strval', array_keys($ids));
             sort($ids, SORT_NUMERIC);
-            for ($i = 0; $i < count($ids); ++$i) for ($j = $i + 1; $j < count($ids); ++$j) {
+            // Common surnames must not disappear entirely or create N² pairs.
+            // A bounded chain gives every card an entry; arbitrary pairs use the picker.
+            $limited=$kind==='surname' && count($ids)>20;
+            for ($i = 0; $i < count($ids); ++$i) for ($j = $i + 1; $j < ($limited?min(count($ids),$i+2):count($ids)); ++$j) {
                 $key = $ids[$i] . ':' . $ids[$j];
                 if (!isset($pairs[$key])) $pairs[$key] = ['id' => $key, 'ids' => [$ids[$i], $ids[$j]], 'left' => $members[$ids[$i]], 'right' => $members[$ids[$j]], 'matches' => [], 'kinds' => []];
+                if($limited)$pairs[$key]['surname_limited']=true;
                 $pairs[$key]['matches'][] = ['kind' => $kind, 'label' => $label, 'value' => (string) $value];
                 if (!in_array($kind, $pairs[$key]['kinds'], true)) $pairs[$key]['kinds'][] = $kind;
             }

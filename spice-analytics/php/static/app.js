@@ -50,7 +50,7 @@ function updateSourceStamp(m){
   if(m.production){$('.local-pill').textContent='Закрытый кабинет';$('.sidebar-bottom p').textContent=s.configured?'Продажи обновляются автоматически':'Загруженная копия заказов';}
 }
 async function refreshSource(force=false){
-  if(state.view==='competitors'||!state.meta||(!force&&state.duplicateSelected.size)||(!force&&!state.meta.sync?.configured)||$('#drawer').open||document.hidden)return;
+  if(state.view==='competitors'||!state.meta||(!force&&(state.duplicateSelected.size||state.view==='duplicates'&&(identityPicker.open||identityPicker.busy)))||(!force&&!state.meta.sync?.configured)||$('#drawer').open||document.hidden)return;
   try{
     const m=await api('/api/meta'),previous=state.meta;state.meta=m;updateSourceStamp(m);
     if($('#as-of').value===previous.today)$('#as-of').value=m.today;
@@ -76,7 +76,7 @@ function render(){
   if(state.view==='competitors'){hideHelp();$('#content').innerHTML=competitorsView();return;}
   $('#privacy').textContent=state.privacy?'◉ Имена скрыты':'◎ Имена видны';$('#privacy').setAttribute('aria-pressed',state.privacy);
   if(state.view==='overview'){hideHelp();$('#content').innerHTML=dashboardOverviewView();nextStepLayout(state.view,$('#content'));return;}
-  if(state.view==='settings'&&state.meta){hideHelp();$('#metrics').innerHTML='';$('#yearly-summary').innerHTML='';$('#content').innerHTML=settingsView();return;}
+  if(state.view==='settings'&&state.meta){hideHelp();$('#metrics').innerHTML='';$('#yearly-summary').innerHTML='';$('#content').innerHTML=settingsView();enhanceHelp();return;}
   if(!state.report||state.report.gender_filter!==reportGender()){$('#metrics').innerHTML='';$('#yearly-summary').innerHTML='';$('#content').innerHTML='<div class="loading">Загружаем историю заказов…</div>';return;}
   const r=state.report,m=r.metrics;
   hideHelp();const duplicateBadge=$('#duplicate-badge');if(duplicateBadge)duplicateBadge.textContent=r.duplicate_pairs.length;
@@ -97,6 +97,7 @@ function render(){
   nextStepLayout(state.view,content);
   $('#yearly-summary').innerHTML=historySummaryView();
   enhanceHelp();
+  if(state.view==='duplicates')identityPickerRender();
   const allPairs=$('#duplicate-select-all');if(allPairs){const page=duplicateRows().slice((state.page-1)*PAGE,state.page*PAGE);allPairs.indeterminate=page.some(r=>state.duplicateSelected.has(r.id))&&!page.every(r=>state.duplicateSelected.has(r.id));}
 }
 function panelHeading(title,description,extra=''){return `<div class="panel-heading"><div><h2>${title}${infoHelp(title,description)}</h2><p>${description}</p></div>${extra}</div>`;}
@@ -106,14 +107,14 @@ function customerRows(){
   let rows=state.report.customers.filter(c=>(!state.periodOnly||c.order_count>0)&&(state.reminder==='all'||c.reminder===state.reminder));
   rows=rows.filter(c=>c[state.ordersBasis]>=Number(state.ordersMin||0)&&(state.ordersMax===''||c[state.ordersBasis]<=Number(state.ordersMax))&&(state.segment==='all'||c.segment===state.segment)&&(!state.ids||state.ids.includes(c.id))&&(!state.eligibleOnly||c.followup_eligible));
   const search=state.search.trim().toLocaleLowerCase();
-  if(search)rows=rows.filter(c=>([c.name,...c.emails,...c.phones,c.city,c.id].join(' ').toLocaleLowerCase()).includes(search));
+  if(search)rows=rows.filter(c=>([c.name,...(c.names||[]),...c.emails,...c.phones,c.city,c.id].join(' ').toLocaleLowerCase()).includes(search));
   return rows.sort((a,b)=>state.sort==='priority'?b.priority-a.priority:state.sort==='amount'?b.amount-a.amount:state.sort==='last'?b.last_order.localeCompare(a.last_order):state.sort==='overdue'?b.overdue_days-a.overdue_days:a.name.localeCompare(b.name,'uk'));
 }
 function reminderBadge(c){return `<span class="badge ${c.reminder}">${c.reminder==='overdue'?'+'+num(c.overdue_days)+' дн. к сроку':c.reminder==='due'?'Пора напомнить':'Через '+num(Math.max(0,c.interval_days-c.days_since))+' дн.'}</span>`;}
 function customersView(){
   const r=state.report,rows=customerRows(),pagination=pages(rows.length),visible=rows.slice((state.page-1)*PAGE,state.page*PAGE),columns=r.calendar;
   const max=Math.max(1,...rows.flatMap(c=>Object.values(c.activity).map(w=>w.amount)));
-  return `<section class="panel">${panelHeading('Календарь покупок',r.year?'Одна строка — покупатель, ячейка — неделя календарного года. Нажмите покупку для состава.':'История покупок по годам: сумма и число заказов в каждой ячейке. Нажмите ячейку для состава.',`<button class="button" data-action="export">↓ Скачать CSV</button>`)}
+  return `<section class="panel">${panelHeading('Календарь покупок',r.year?'Одна строка — покупатель, ячейка — неделя календарного года. Нажмите покупку для состава.':'История покупок по годам: сумма и число заказов в каждой ячейке. Нажмите ячейку для состава.',`<div class="customer-merge-actions"><button class="button" data-action="manual-merge-open">Объединить карточки</button><button class="button" data-action="export">↓ Скачать CSV</button></div>`)}
   <div class="toolbar"><input class="search" id="search" placeholder="Поиск по имени, телефону, городу…" aria-label="Поиск покупателей" value="${esc(state.search)}"><select id="reminder" aria-label="Фильтр напоминаний"><option value="all"${selected('all',state.reminder)}>Все покупатели</option><option value="overdue"${selected('overdue',state.reminder)}>Срок заказа прошёл</option><option value="due"${selected('due',state.reminder)}>Пора напомнить</option><option value="ok"${selected('ok',state.reminder)}>Пока рано</option></select><select id="sort" aria-label="Сортировка покупателей"><option value="priority"${selected('priority',state.sort)}>По приоритету контакта</option><option value="amount"${selected('amount',state.sort)}>По сумме заказов</option><option value="overdue"${selected('overdue',state.sort)}>По задержке заказа</option><option value="last"${selected('last',state.sort)}>По последнему заказу</option><option value="name"${selected('name',state.sort)}>По имени</option></select><label class="checkbox-label"><input type="checkbox" id="period-only" ${state.periodOnly?'checked':''}>Есть заказы за ${periodTitle()}</label></div>
   ${customerAdvancedFilters(rows)}<div class="table-scroll"><table class="customer-table ${r.year?'':'customer-years'}"><thead><tr><th class="identity">Покупатель</th><th>За период / всего</th><th>Последний заказ</th><th>Следующая покупка</th>${columns.map((col,i)=>`<th class="week-head" title="${fmtDate(col.start)} — ${fmtDate(col.end)}">${!r.year||i%4===0||i===columns.length-1?col.label:''}</th>`).join('')}</tr></thead><tbody>${visible.map(c=>`<tr><td class="identity"><button class="identity-button" data-action="customer" data-id="${c.id}"><span class="person"><span class="avatar">${state.privacy?'•':esc(c.name.split(/\s+/).slice(0,2).map(n=>n[0]).join(''))}</span><span><span class="identity-name">${name(c)}</span><span class="identity-meta">${esc(c.city||'Город не указан')} · ${c.lifetime_count} зак.</span></span></span></button></td><td class="amount-cell">${cash(c.amount)}<small>${c.order_count} заказов · всего ${cash(c.lifetime_amount)}</small></td><td>${fmtDate(c.last_order)}<span class="identity-meta">${c.days_since} дн. назад</span></td><td>${reminderBadge(c)}<span class="identity-meta">${c.personal_interval?'Обычно':'Базовый срок'} ${c.interval_days} дн.</span></td>${columns.map(col=>{
     const v=c.activity[col.key],level=v?Math.min(5,Math.max(1,Math.ceil(Math.sqrt(v.amount/max)*5))):0;
@@ -181,7 +182,7 @@ async function openCustomer(id){
   openDrawer('ПОКУПАТЕЛЬ И ЕГО ЗАКАЗЫ');const sequence=drawerSequence;
   try{
     const data=await api('/api/customers/'+encodeURIComponent(id)+'/orders?'+query());if(sequence!==drawerSequence||!$('#drawer').open)return;const c=data.customer;c.segment_name=businessSegmentName(c.segment,c.segment_name);state.customer=data;
-    $('#drawer-content').innerHTML=`<h2 class="drawer-name">${name(c)}${infoHelp('История')}</h2><div class="drawer-contact">${contact(c)} · ${state.privacy?'Телефон скрыт':esc(c.phone)}<br>${esc(c.city)}, ${esc(c.country)} · ${c.account_count} учётных записей</div><div class="drawer-stats"><div class="drawer-stat"><small>Заказов за всё время</small><strong>${c.lifetime_count}</strong></div><div class="drawer-stat"><small>Сумма за всё время</small><strong>${num(c.lifetime_amount,2)}</strong></div><div class="drawer-stat"><small>Обычный интервал</small><strong>${c.interval_days} дн.</strong></div></div><div class="notice">${c.personal_interval?'Индивидуальный':'Базовый'} срок: ${c.interval_days} дней. Последний заказ — ${fmtDate(c.last_order)}. Следующий ожидается ${fmtDate(c.due_on)}. ${c.reminder==='overdue'?'Задержка '+c.overdue_days+' дней.':''}</div>${genderCustomerNote(c)}${c.manual?`<button class="button" data-action="unmerge" data-id="${c.id}">Отменить ручные объединения этой карточки</button>`:''}${customerActionForm(c)}<h3 class="section-caption">История заказов · ${c.lifetime_count}</h3><div id="customer-orders">${data.orders.slice(0,20).map((o,i)=>orderHTML(o,i===0)).join('')}</div>${data.orders.length>20?'<button class="button" data-action="more-orders">Показать все заказы</button>':''}`;
+    $('#drawer-content').innerHTML=`<h2 class="drawer-name">${name(c)}${infoHelp('История')}</h2><div class="drawer-contact">${contact(c)} · ${state.privacy?'Телефон скрыт':esc(c.phone)}<br>${esc(c.city)}, ${esc(c.country)} · ${c.account_count} учётных записей</div><div class="drawer-stats"><div class="drawer-stat"><small>Заказов за всё время</small><strong>${c.lifetime_count}</strong></div><div class="drawer-stat"><small>Сумма за всё время</small><strong>${num(c.lifetime_amount,2)}</strong></div><div class="drawer-stat"><small>Обычный интервал</small><strong>${c.interval_days} дн.</strong></div></div><div class="notice">${c.personal_interval?'Индивидуальный':'Базовый'} срок: ${c.interval_days} дней. Последний заказ — ${fmtDate(c.last_order)}. Следующий ожидается ${fmtDate(c.due_on)}. ${c.reminder==='overdue'?'Задержка '+c.overdue_days+' дней.':''}</div>${identityContactView(c)}<div class="customer-merge-actions"><button class="button" data-action="manual-merge-open" data-id="${c.id}">Объединить с другой карточкой</button></div>${genderCustomerNote(c)}${c.manual?`<button class="button" data-action="unmerge" data-id="${c.id}">Отменить ручные объединения этой карточки</button>`:''}${customerActionForm(c)}<h3 class="section-caption">История заказов · ${c.lifetime_count}</h3><div id="customer-orders">${data.orders.slice(0,20).map((o,i)=>orderHTML(o,i===0)).join('')}</div>${data.orders.length>20?'<button class="button" data-action="more-orders">Показать все заказы</button>':''}`;
     enhanceHelp($('#drawer'));
   }catch(e){if(sequence===drawerSequence&&$('#drawer').open)$('#drawer-content').innerHTML='<div class="notice">'+esc(e.message)+'</div>';}
 }
@@ -227,7 +228,7 @@ document.addEventListener('click',async e=>{
       case 'go-customers':navigate('customers');break;
       case 'export':exportCSV();break;
       case 'merge':b.disabled=true;await api('/api/identity/merge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:b.dataset.ids.split(','),as_of:$('#as-of').value})});await load();toast('История объединена. Отменить можно в карточке покупателя.');break;
-      case 'unmerge':b.disabled=true;await api('/api/identity/unmerge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:b.dataset.id,as_of:$('#as-of').value})});$('#drawer').close();state.customer=null;await load();toast('Ручные объединения отменены.');break;
+      case 'unmerge':b.disabled=true;await api('/api/identity/unmerge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:b.dataset.id,as_of:$('#as-of').value})});identityPickerInvalidate();$('#drawer').close();state.customer=null;await load();toast('Ручные объединения отменены.');break;
       case 'more-orders':$('#customer-orders').innerHTML=state.customer.orders.map(o=>orderHTML(o)).join('');b.remove();break;
     }
   }catch(err){toast(err.message);b.disabled=false;}

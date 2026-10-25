@@ -178,6 +178,7 @@ final class Analytics
         $columns = history_columns($year, $asof, $historyYears);
         $activity = [];
         $periodIds = array_fill_keys(array_column($period, 'order_id'), true);
+        $identityContactOrders=[];foreach($before as $o)if(in_array($o['order_status_id'],$this->settings['status_ids'],true))$identityContactOrders[$dsu->find($o['order_id'])][]=$o;
         $groups = [];
         foreach ($valid as $o) {
             $groups[$dsu->find($o['order_id'])][] = $o;
@@ -256,7 +257,8 @@ final class Analytics
                 }
             }
             $suppression = ($action['stage'] ?? '') === 'do_not_contact' ? 'Не контактировать' : (($action['stage'] ?? '') === 'declined' ? 'Отказ' : ($snoozed ? 'Отложено' : ($cooling ? 'Недавний контакт' : (count($orders) < $this->settings['followup_min_orders'] ? 'Мало покупок' : ''))));
-            $customers[] = ['id' => (string) $cid, 'name' => trim($latest['firstname'] . ' ' . $latest['lastname']) ?: 'Гость', 'email' => $latest['email'], 'phone' => $latest['telephone'], 'emails' => $emails, 'phones' => $phones, 'city' => $latest['shipping_city'] ?: $latest['payment_city'], 'country' => $latest['shipping_country'] ?: $latest['payment_country'], 'order_count' => count($selected), 'lifetime_count' => count($orders), 'amount' => money(sum_orders($selected)), 'lifetime_amount' => money(sum_orders($orders)), 'average' => $selected ? money(bcdiv(sum_orders($selected), (string) count($selected), 12)) : 0, 'last_order' => end($dates), 'days_since' => $since, 'interval_days' => $interval, 'personal_interval' => $personal, 'due_on' => add_days(end($dates), $interval), 'overdue_days' => max(0, $overdue), 'reminder' => $reminder, 'followup_eligible' => $eligible, 'action' => $action ?: new \stdClass(), 'suppression' => $suppression, 'account_count' => count($accounts), 'manual' => $manual, 'activity' => (object) $customerActivity, 'weeks' => (object) $weeks, 'order_ids' => $ids];
+            $contactFields=identity_contact_fields($identityContactOrders[$cid]??$orders);
+            $customers[] = $contactFields + ['id' => (string) $cid, 'name' => trim($latest['firstname'] . ' ' . $latest['lastname']) ?: 'Гость', 'email' => $latest['email'], 'phone' => $latest['telephone'], 'emails' => $emails, 'phones' => $phones, 'city' => $latest['shipping_city'] ?: $latest['payment_city'], 'country' => $latest['shipping_country'] ?: $latest['payment_country'], 'order_count' => count($selected), 'lifetime_count' => count($orders), 'amount' => money(sum_orders($selected)), 'lifetime_amount' => money(sum_orders($orders)), 'average' => $selected ? money(bcdiv(sum_orders($selected), (string) count($selected), 12)) : 0, 'last_order' => end($dates), 'days_since' => $since, 'interval_days' => $interval, 'personal_interval' => $personal, 'due_on' => add_days(end($dates), $interval), 'overdue_days' => max(0, $overdue), 'reminder' => $reminder, 'followup_eligible' => $eligible, 'action' => $action ?: new \stdClass(), 'suppression' => $suppression, 'account_count' => count($accounts), 'manual' => $manual, 'activity' => (object) $customerActivity, 'weeks' => (object) $weeks, 'order_ids' => $ids];
         }
         unset($orders);
         foreach ($customers as &$customer){$detail=$genderDetails[$customer['id']]??['gender'=>'unknown','reason'=>'missing','examples'=>[]];$customer['gender_estimate']=$detail['gender'];$customer['gender_reason']=$detail['reason'];$customer['gender_examples']=$detail['examples'];}

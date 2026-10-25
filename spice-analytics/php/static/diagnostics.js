@@ -17,7 +17,7 @@ function diagnosticsClient(){
   for(const [sort,field] of [['amount','amount'],['priority','priority'],['overdue','overdue_days']]){state.sort=sort;const rows=customerRows();result.probes.push({name:'customers_'+sort,count:rows.length,passed:rows.every((c,i)=>i===0||Number(rows[i-1][field]||0)>=Number(c[field]||0)),samples:rows.slice(0,5).map(sample)});}
   state.reminder='overdue';const overdue=customerRows();result.probes.push({name:'customers_overdue_filter',count:overdue.length,passed:overdue.every(c=>c.reminder==='overdue'),samples:overdue.slice(0,5).map(sample)});
   Object.assign(state,{duplicateCustomer:null,duplicateKind:'all',duplicateSort:'match',duplicateDir:1});
-  for(const kind of ['all','email','phone','name']){state.duplicateKind=kind;const rows=duplicateRows();result.probes.push({name:'duplicates_'+kind,count:rows.length,passed:rows.every(r=>kind==='all'||r.kinds.includes(kind)),samples:[]});}
+  for(const kind of ['all','email','phone','name','surname']){state.duplicateKind=kind;const rows=duplicateRows();result.probes.push({name:'duplicates_'+kind,count:rows.length,passed:rows.every(r=>kind==='all'||r.kinds.includes(kind)),samples:[]});}
  }catch(_){result.errors.push({type:'probe',category:'filter_probe',script:'diagnostics.js',line:0});}finally{Object.assign(state,saved);}
  return result;
 }

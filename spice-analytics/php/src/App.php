@@ -76,7 +76,7 @@ function cached_report(\PDO $db, string $directory, int $year, string $asof, str
 {
     $cache = $directory . '/cache';
     private_dir($cache);
-    $key = hash('sha256', revision($db) . ':php-v9-field-diagnostics:' . $year . ':' . $asof . ':' . $currency . ':' . $gender);
+    $key = hash('sha256', revision($db) . ':php-v10-identity-picker-surnames:' . $year . ':' . $asof . ':' . $currency . ':' . $gender);
     $file = $cache . '/report-' . $key . '.json';
     if (is_file($file)) {
         return decode(file_get_contents($file));
@@ -472,29 +472,13 @@ function run_app(string $directory, string $publicUrl, string $assets, string $l
             if (!isset($b['pairs']) || !is_array($b['pairs'])) fail(422, 'Нужен список пар контактов');
             respond(merge_identity_pairs($db, $directory, $b['pairs'], valid_string($b['as_of'] ?? null, 10), valid_string($b['currency'] ?? null, 3)));
         }
+        if ($path === '/api/identity/customers' && $method === 'GET') {
+            respond(identity_customer_search(new Analytics($db,$directory),valid_string($_GET['as_of']??'',10),valid_string($_GET['search']??'',200),(int)($_GET['page']??1)));
+        }
         if ($path === '/api/identity/merge' && $method === 'POST') {
-            $b = request_json();
-            $ids = $b['ids'] ?? [];
-            $asof = $b['as_of'] ?? '';
-            if (!is_array($ids) || count($ids) < 2 || count($ids) > 20 || count(array_unique($ids)) < 2 || !is_string($asof) || !valid_date($asof)) {
-                fail(422, 'Неверные идентификаторы');
-            }
-            $s = new Analytics($db, $directory);
-            foreach ($ids as $id) {
-                if (!is_string($id) || !isset($s->orders[$id]) || substr($s->orders[$id]['date_added'], 0, 10) > $asof) {
-                    fail(422, 'Неверные идентификаторы');
-                }
-            }
-            $db->beginTransaction();
-            $stmt = $db->prepare('INSERT OR IGNORE INTO manual_links VALUES(?,?,?)');
-            foreach (array_slice($ids, 1) as $other) {
-                $pair = [$ids[0], $other];
-                sort($pair, SORT_NUMERIC);
-                $stmt->execute([$pair[0], $pair[1], utc_now()]);
-            }
-            bump($db);
-            $db->commit();
-            respond(['ok' => true]);
+            $b=request_json();
+            if(!is_array($b['ids']??null))fail(422,'Нужен список карточек');
+            respond(merge_identity_customers($db,$directory,$b['ids'],valid_string($b['as_of']??'',10)));
         }
         if ($path === '/api/identity/unmerge' && $method === 'POST') {
             $b = request_json();

@@ -12,10 +12,7 @@ function crm_duplicate_index(array $customers): array
 {
     $index = []; $result = [];
     foreach ($customers as $c) {
-        foreach ($c['emails'] as $v) if ($k = email_key($v)) $index['email'][$k][$c['id']] = true;
-        foreach ($c['phones'] as $v) if ($k = phone_key($v)) $index['phone'][$k][$c['id']] = true;
-        $k = normalize($c['name']);
-        if (count(explode(' ', $k)) >= 2) $index['name'][$k][$c['id']] = true;
+        foreach(identity_contact_keys($c) as $kind=>$values)foreach($values as $key=>$_)$index[$kind][$key][$c['id']]=true;
         $result[$c['id']] = ['count' => 0, 'kinds' => [], 'ids' => [], 'strong' => false, 'at_least' => false, '_ids' => []];
     }
     foreach ($index as $kind => $groups) foreach ($groups as $ids) {
@@ -23,7 +20,7 @@ function crm_duplicate_index(array $customers): array
         $sample = count($ids) > 50 ? array_slice($ids, 0, 21, true) : $ids;
         foreach ($ids as $id => $_) {
             $result[$id]['kinds'][$kind] = true;
-            if ($kind !== 'name') $result[$id]['strong'] = true;
+            if (in_array($kind,['email','phone'],true)) $result[$id]['strong'] = true;
             if (count($ids) > 50) { $result[$id]['at_least'] = true; $result[$id]['count'] = max($result[$id]['count'], count($ids) - 1); }
             foreach ($sample as $other => $_) if ($other !== $id) $result[$id]['_ids'][(string) $other] = true;
         }

@@ -49,7 +49,7 @@ try {
     $specs=[];foreach (['21','22','23','24'] as $id) {$group=(int)$id<23?'A':'B';$specs[]=[$id,'2021-07-01',$id,'100','UAH','2','pair'.$group.'@example.invalid','Тест','Пара'.$group];}
     \Lavka\apply_snapshot($db,fixture($specs),'test');
     $before=new \Lavka\Analytics($db,$dir);$pairs=$before->report(0,'2022-12-31','UAH')['duplicate_pairs'];
-    verify(count($pairs)===2 && count($pairs[0]['matches'])===2,'One row per pair with all matching fields');
+    verify(count($pairs)===2 && count($pairs[0]['matches'])===3&&in_array('surname',$pairs[0]['kinds'],true),'One row per pair with full name, surname and email');
     try {\Lavka\merge_identity_pairs($db,$dir,[['21','22'],['21','24']],'2022-12-31','UAH');throw new RuntimeException('Invalid pair accepted');}
     catch (\Lavka\HttpError $e) {verify($e->status===409,'Stale pair validation');}
     verify((int)$db->query('SELECT count(*) FROM manual_links')->fetchColumn()===0,'Invalid batch leaves every row unchanged');
