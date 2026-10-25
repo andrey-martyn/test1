@@ -98,6 +98,17 @@ $ids["confirm_own"]=target($db,"lavka","confirm-own","Матрица В — пр
 record($db,$ids["confirm_own"],[offer("80")],$now);
 $ids["confirm_spicery"]=target($db,"spicery","confirm-spicery","Матрица В — неподтверждённый аналог","matrix-confirm",false);
 record($db,$ids["confirm_spicery"],[offer("70")],$now);
+foreach(["unknown","out_of_stock","preorder"] as $stock){
+    $group="matrix-stock-".$stock;
+    $ids[$stock."_own"]=target($db,"lavka","stock-own-".$stock,"Матрица И — проверка наличия ".$stock,$group,false);
+    record($db,$ids[$stock."_own"],[offer("45"),offer("300",500)],$now);
+    $ids[$stock."_remote"]=target($db,"banka","stock-other-".$stock,"Матрица И — кандидат ".$stock,$group,false);
+    record($db,$ids[$stock."_remote"],[offer("35",50,"UAH","pack","",$stock),offer("252.50",500,"UAH","pack","",$stock),offer("505",1000,"UAH","pack","",$stock)],$now);
+    if($stock==="unknown"){
+        $t=target($db,"deluxe","stock-reference","Матрица И — проверенный ориентир",$group);
+        record($db,$t,[offer("458",500)],$now);
+    }
+}
 $ids["tie_own"]=target($db,"lavka","tie-own","Матрица Г — равные цены","matrix-tie",false);
 record($db,$ids["tie_own"],[offer("90")],$now);
 $ids["tie_deluxe"]=target($db,"deluxe","tie-deluxe","Матрица Г — равная цена конкурента","matrix-tie");
@@ -451,18 +462,70 @@ with tempfile.TemporaryDirectory() as temporary:
             confirm_button = page.locator(f"#drawer [data-comp-action=matrix-confirm][data-id='{ids['confirm_spicery']}']")
             assert confirm_button.count() == 1
             confirm_button.click()
-            page.wait_for_function("(id)=>competitorState.data.targets.find(t=>t.id===id).match_confirmed",
+            page.wait_for_function("(id)=>!competitorState.saving&&!competitorState.loading&&competitorState.data.targets.find(t=>t.id===id).match_confirmed",
                                    arg=ids["confirm_spicery"])
-            if page.locator("#drawer").evaluate("el=>el.open"):
-                page.click("[data-action=close-dialog]")
+            assert page.locator("#drawer").evaluate("el=>el.open")
+            assert "Товар подтверждён вами" in page.locator("#drawer .competitor-product-verification").inner_text()
+            assert "Цена участвует в сравнении" in page.locator("#drawer .competitor-explanation").inner_text()
+            assert not page.locator("#drawer [data-comp-action=matrix-confirm]").count()
+            page.click("[data-action=close-dialog]")
             assert price(matrix_row(page, "matrix-confirm").locator("td[data-source=spicery]")) == 70
+            assert matrix_row(page, "matrix-confirm").locator("td[data-source=spicery]").get_attribute("data-price") == "70.00"
             assert len(mutations) == 1 and mutations[0]["method"] == "PUT", mutations
             assert mutations[0]["url"].endswith("%2Ftargets%2F" + str(ids["confirm_spicery"]))
             body = json.loads(mutations[0]["body"])
-            assert body["match_confirmed"] is True and body["match_group"] == "matrix-confirm"
-            assert set(body) <= {"source_id", "kind", "url", "label", "enabled", "grams_override",
-                                 "pack_label", "match_group", "match_confirmed", "packaging"}
+            assert body == {"match_confirmed": True}
             assert observation_digest(data) == before_prices
+
+            # Regression: confirming the product used to replace a known 500g
+            # price with a dash when stock was unknown. Keep the exact observed
+            # price visible before, after, and on reload, without inventing stock
+            # or letting unavailable offers determine minima or price drafts.
+            page.select_option("#competitor-matrix-pack", "500")
+            for stock, label in [("unknown", "Наличие не удалось определить"),
+                                 ("out_of_stock", "Нет в наличии"), ("preorder", "Предзаказ")]:
+                group = "matrix-stock-" + stock
+                row = matrix_row(page, group, 500)
+                cell = row.locator("td[data-source=banka]")
+                assert price(cell) == 253 and label in cell.inner_text()
+                assert "соответствие не подтверждено" in cell.inner_text()
+                cell.locator("[data-comp-action=matrix-detail]").click()
+                page.wait_for_selector("#drawer[open]")
+                assert price(row.locator("td[data-source=banka]")) == 253
+                assert label in page.locator("#drawer .selected-variant").inner_text()
+                assert page.locator("#drawer .competitor-detail-variant").first.evaluate("el=>el.classList.contains('selected-variant')")
+                page.locator(f"#drawer [data-comp-action=matrix-confirm][data-id='{ids[stock+'_remote']}']").click()
+                page.wait_for_function("(id)=>!competitorState.saving&&!competitorState.loading&&competitorState.data.targets.find(t=>t.id===id).match_confirmed",
+                                       arg=ids[stock+"_remote"])
+                assert page.locator("#drawer").evaluate("el=>el.open")
+                assert "Товар подтверждён вами" in page.locator("#drawer .competitor-product-verification").inner_text()
+                assert "Цена сохранена и остаётся видимой" in page.locator("#drawer .competitor-explanation").inner_text()
+                assert not page.locator("#drawer [data-comp-action=matrix-confirm]").count()
+                assert label in page.locator("#drawer .selected-variant").inner_text()
+                if stock == "unknown":
+                    assert "Это не означает, что товара нет" in page.locator("#drawer .competitor-explanation").inner_text()
+                    for width in [390, 320, 1440]:
+                        page.set_viewport_size({"width": width, "height": 844})
+                        assert page.evaluate("document.documentElement.scrollWidth<=innerWidth")
+                        assert page.locator("#drawer-content").evaluate("el=>el.scrollWidth<=el.clientWidth")
+                    page.screenshot(path=str(ARTIFACTS / "confirmed-stock-unknown-drawer.png"))
+                page.click("[data-action=close-dialog]")
+                cell = matrix_row(page, group, 500).locator("td[data-source=banka]")
+                assert price(cell) == 253 and label in cell.inner_text()
+                assert "Товар подтверждён вами" in cell.inner_text()
+                assert not cell.get_attribute("data-price")
+                assert not cell.evaluate("el=>el.classList.contains('is-best')")
+                actual = page.evaluate("group=>{const r=competitorMatrixRows().find(r=>r.group===group&&r.grams===500);return {minimum:r.competitorMinimum,comparable:r.comparable}}", group)
+                assert actual == {"minimum": 458 if stock == "unknown" else None,
+                                  "comparable": stock == "unknown"}, actual
+                if stock != "unknown":
+                    assert matrix_row(page, group, 500).locator("[data-matrix-select]").is_disabled()
+                page.click("[data-comp-action=refresh]")
+                page.wait_for_function("()=>!competitorState.loading")
+                assert price(matrix_row(page, group, 500).locator("td[data-source=banka]")) == 253
+            assert len(mutations) == 4 and all(json.loads(m["body"]) == {"match_confirmed": True} for m in mutations), mutations
+            assert observation_digest(data) == before_prices
+            page.select_option("#competitor-matrix-pack", "50")
 
             # Errors remain discoverable in their own view; normal navigation
             # back to the matrix preserves actual analytics totals.
@@ -479,6 +542,7 @@ with tempfile.TemporaryDirectory() as temporary:
         print(json.dumps({"php_image": IMAGE, "exact_packs_50_200": "passed",
                           "eligibility_currency_and_ties": "passed", "batch_and_row_preview": "passed",
                           "own_price_cap_and_no_price_writes": "passed", "explicit_link_confirmation": "passed",
+                          "confirmed_unknown_out_of_stock_and_preorder_prices_remain_visible": "passed",
                           "own_db_catalog_and_no_missing_product_fallback": "passed",
                           "unmapped_seo_and_independent_own_rows": "passed",
                           "mobile_and_source_evidence": "passed"}))
