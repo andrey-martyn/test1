@@ -32,6 +32,10 @@ function name_gender_dictionary(): array
         }
         foreach (explode(' ', 'витя ваня коля миша дима паша сережа леша костя андрюша вова володя толик толя жора гриша юра вадик vitya vanya kolya misha dima pasha seryozha lesha kostya vova volodya tolik tolya zhora grisha yura') as $name) $names[$name] = 'male';
         foreach (explode(' ', 'александра олександра анфиса анфіса анюта аня галя лена люда настя света вика ксюша лиза ліза орыся орися alexandra oleksandra aleksandra anya ania galya galia lena liuda lyuda nastia nastya sveta svieta vika ksyusha liza orysia') as $name) $names[$name] = 'female';
+        // Common Ukrainian spellings and international names observed in diagnostics.
+        foreach (['male'=>'Айрат Ayrat Airat', 'female'=>'Інгрит Інгрід Ингрит Ингрид Ingrid Міла Марианна Маріанна Marianna Дарія Софико Sofiko Юліана Юлиана Juliana Павлина Павліна Paulina Тоня Tonya Tonja Гаяне Gayane Альона Алёна Alyona Aliona'] as $gender=>$list) {
+            foreach(preg_split('/\s+/u',$list) as $name)$names[name_gender_key($name)]=$gender;
+        }
         // Shared short forms and names with more than one common interpretation.
         foreach (explode(' ', 'саша сашенька женя валя шура слава алекс сэнди сэм сэмми лесли sasha sacha zhenya valya shura slava alex sandy sam sammy leslie') as $name) $names[$name] = 'unknown';
     }
@@ -42,7 +46,7 @@ const NAME_GENDER_REASONS = [
     'recognized'=>'Имя найдено в словаре', 'recognized_component'=>'Имя найдено внутри полного имени',
     'missing'=>'Поле «Имя» пустое', 'initials'=>'Указаны инициалы',
     'ambiguous'=>'Имя подходит и мужчинам, и женщинам', 'dictionary_missing'=>'Написания пока нет в словаре',
-    'organization'=>'Указана организация', 'invalid_format'=>'В поле есть посторонние символы или текст',
+    'possible_surname'=>'Похоже, в поле указана только фамилия', 'organization'=>'Указана организация', 'invalid_format'=>'В поле есть посторонние символы или текст',
     'conflicting_name'=>'В одном поле разные мужские и женские имена',
     'conflicting_profile'=>'В заказах объединённого профиля есть мужские и женские имена',
 ];
@@ -55,9 +59,9 @@ function name_gender_details(string $firstName): array
     if($name==='')return $result('unknown','missing');
     if(mb_strlen($name,'UTF-8')>200||!preg_match("/^[\\p{L}\\p{M}\\s.'’ʼ`-]+$/uD",$name))return $result('unknown','invalid_format');
     // Repair visual Latin/Cyrillic lookalikes only in a mixed-script field.
-    $name=preg_replace_callback('/[\p{L}\p{M}]+/u',function($match){$word=$match[0];return preg_match('/\p{Cyrillic}/u',$word)&&preg_match('/[A-Za-z]/',$word)?strtr($word,['A'=>'А','B'=>'В','C'=>'С','E'=>'Е','H'=>'Н','K'=>'К','M'=>'М','O'=>'О','P'=>'Р','T'=>'Т','X'=>'Х','Y'=>'У','a'=>'а','c'=>'с','e'=>'е','o'=>'о','p'=>'р','x'=>'х','y'=>'у']):$word;},$name);
+    $name=preg_replace_callback('/[\p{L}\p{M}]+/u',function($match){$word=$match[0];return preg_match('/\p{Cyrillic}/u',$word)&&preg_match('/[A-Za-z]/',$word)?strtr($word,['A'=>'А','B'=>'В','C'=>'С','E'=>'Е','H'=>'Н','K'=>'К','M'=>'М','O'=>'О','P'=>'Р','T'=>'Т','X'=>'Х','Y'=>'У','i'=>'і','I'=>'І','a'=>'а','c'=>'с','e'=>'е','o'=>'о','p'=>'р','x'=>'х','y'=>'у']):$word;},$name);
     $parts=preg_split('/[\\s-]+/u',name_gender_key($name));
-    if(array_intersect(array_map(function($p){return trim($p,'.');},$parts),['тов','фоп','ооо','іп','ип','пп','llc','shop','магазин','компания','компанія']))return $result('unknown','organization');
+    if(array_intersect(array_map(function($p){return trim($p,'.');},$parts),['тов','фоп','ооо','іп','ип','пп','llc','shop','магазин','лавка','компания','компанія']))return $result('unknown','organization');
     $signals=[];$ambiguous=false;$initials=true;
     foreach($parts as $part){$clean=trim($part,'.');if(mb_strlen($clean,'UTF-8')>1)$initials=false;
         if(isset($names[$clean])){if($names[$clean]==='unknown')$ambiguous=true;else $signals[$names[$clean]]=true;}}
@@ -66,6 +70,7 @@ function name_gender_details(string $firstName): array
     if($ambiguous)return $result('unknown','ambiguous');
     if(count($signals)===1){$gender=(string)key($signals);return $result($gender,($names[trim($parts[0],'.')]??null)===$gender?'recognized':'recognized_component');}
     $initials=$initials||(bool)preg_match('/^\p{L}\./u',$parts[0]);
+    if(!$initials&&count($parts)===1&&preg_match('/(?:енко|enko|ський|ська|цький|цька|ский|ская)$/u',$parts[0]))return $result('unknown','possible_surname');
     return $result('unknown',$initials?'initials':'dictionary_missing');
 }
 function name_gender_estimate(string $firstName): string{return name_gender_details($firstName)['gender'];}
@@ -73,15 +78,16 @@ function name_gender_estimate(string $firstName): string{return name_gender_deta
 /** Use the resolved customer's complete eligible history, not just its latest name. */
 function customer_gender_details(array $orders): array
 {
-    $signals=[];$reasons=[];$examples=[];
+    $signals=[];$reasons=[];$examples=[];$representatives=[];
     foreach($orders as $order){$name=(string)($order['firstname']??'');$detail=name_gender_details($name);
-        if($detail['gender']!=='unknown')$signals[$detail['gender']]=true;
+        if($detail['gender']!=='unknown'){$signals[$detail['gender']]=true;if(!isset($representatives[$detail['gender']]))$representatives[$detail['gender']]=$name;}
         $reasons[$detail['reason']]=($reasons[$detail['reason']]??0)+1;
         if(count($examples)<6)$examples[$name]=true;
     }
     if(count($signals)>1)$reason='conflicting_profile';
     elseif(count($signals)===1)$reason='recognized';
     else{arsort($reasons);$reason=(string)(key($reasons)??'missing');}
+    if(count($signals)>1){$chosen=[];foreach($representatives as $name)$chosen[$name]=true;foreach($examples as $name=>$unused){if(count($chosen)>=6)break;$chosen[$name]=true;}$examples=$chosen;}
     return ['gender'=>count($signals)===1?(string)key($signals):'unknown','reason'=>$reason,'examples'=>array_map('strval',array_keys($examples))];
 }
 function customer_gender_estimate(array $orders): string{return customer_gender_details($orders)['gender'];}

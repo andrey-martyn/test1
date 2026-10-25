@@ -196,8 +196,12 @@ function competitors_terms_comparison(array $targets,?string $now=null): array
 {
     $time=competitors_terms_timestamp($now??utc_now())??time();
     $sourceIds=['lavka','deluxe','spicery','banka','specii']; $bySource=[];
-    foreach (array_slice($targets,0,350) as $target) {
+    // Product catalogues can contain thousands of rows and sort before terms.
+    // Apply the bound to actual terms pages, never to the mixed target list.
+    $termsCount=0;
+    foreach ($targets as $target) {
         if (!is_array($target) || empty($target['enabled']) || ($target['kind']??'')!=='terms' || !in_array($target['source_id']??'',$sourceIds,true)) continue;
+        if(++$termsCount>350)break;
         $state=competitors_terms_state($target,$time); $text=$target['observation']['text']??'';
         $facts=is_string($text)?competitors_terms_extract($text):[];
         $bySource[$target['source_id']][]=['target'=>$target,'state'=>$state,'facts'=>$facts];
@@ -212,7 +216,7 @@ function competitors_terms_comparison(array $targets,?string $now=null): array
                 foreach ($page['facts'] as $fact) if ($fact['row']===$row['id']) $matches[]=['fact'=>$fact,'state'=>$page['state'],'evidence'=>competitors_terms_evidence($page['target'],$page['state'],$fact['quote'])];
             }
             $cell=['value'=>null,'display'=>$pages?'Не найдено в источнике':'Нет источника','state'=>'unknown',
-                'reason'=>$pages?'В сохранённых условиях этот пункт не распознан. Откройте источник.':'Для этого магазина ещё не добавлена страница условий.','evidence'=>array_slice($fallback,0,6)];
+                'reason'=>$pages?'В сохранённых условиях этот пункт не распознан. Откройте источник.':'Для этого магазина ещё не добавлена страница условий.','page_count'=>count($pages),'evidence'=>array_slice($fallback,0,6)];
             if (!$matches) {
                 $states=array_column($pages,'state');
                 if (in_array('error',$states,true)) { $cell['state']='error'; $cell['display']='Нужна проверка'; $cell['reason']='Последняя попытка чтения завершилась ошибкой; этот пункт пока не подтверждён.'; }
@@ -232,7 +236,7 @@ function competitors_terms_comparison(array $targets,?string $now=null): array
                 $display=implode(' · ',array_slice(array_values($displays),0,5));
                 $cell=['value'=>$conflict?null:(count($values)===1?reset($values):implode(' · ',array_values($values))),
                     'display'=>$conflict?'Условия расходятся':competitors_terms_clean($display,360),
-                    'state'=>$conflict?'conflict':$state,'reason'=>$conflict?'В сохранённых источниках разные суммы для одного условия. Проверьте страницы.':
+                    'state'=>$conflict?'conflict':$state,'page_count'=>count($pages),'reason'=>$conflict?'В сохранённых источниках разные суммы для одного условия. Проверьте страницы.':
                         ($state==='fresh'?'Распознано из сохранённого текста. Проверьте ограничения по ссылке.':($state==='error'?'Последняя проверка не удалась. Показан прежний текст; в выборе лучшего условия он не участвует.':($state==='stale'?'Сведения старше 48 часов; в выборе лучшего условия они не участвуют.':'Дата успешной проверки не подтверждена.'))),
                     'evidence'=>array_slice($evidence,0,8)];
             }

@@ -16,7 +16,7 @@ function lavka_competitors_diagnostics_json(array $report): string
     while (strlen($json = json_encode($report, $flags)) > 16000) {
         $largest = 0; $position = null; $section = null;
         foreach ($report['targets'] ?? [] as $index => $target) {
-            foreach (['catalog_anchors', 'price_nodes', 'purchase_options', 'product_meta'] as $key) {
+            foreach (['catalog_anchors', 'price_nodes', 'purchase_options', 'product_meta','availability_nodes'] as $key) {
                 $size = strlen(json_encode($target[$key] ?? [], $flags));
                 if (!empty($target[$key]) && $size > $largest) { $largest = $size; $position = $index; $section = $key; }
             }
@@ -35,6 +35,12 @@ function lavka_competitors_diagnostics_run(array $args, ?callable $transport = n
     if (PHP_VERSION_ID < 80200) throw new InvalidArgumentException('Нужен PHP 8.2 CLI; веб-PHP магазина менять не требуется.');
     $limit = filter_var($args['limit'] ?? 3, FILTER_VALIDATE_INT);
     if ($limit === false || $limit < 1 || $limit > 5) throw new InvalidArgumentException('Допустимо --limit 1..5.');
+    $targetIds=[];
+    if(array_key_exists('targets',$args)){
+        if(!is_string($args['targets'])||!preg_match('/^[1-9][0-9]{0,9}(?:,[1-9][0-9]{0,9}){0,4}$/D',$args['targets']))throw new InvalidArgumentException('Укажите --targets: до пяти номеров через запятую.');
+        $targetIds=array_values(array_unique(array_map('intval',explode(',',$args['targets']))));
+        if(count($targetIds)>$limit)throw new InvalidArgumentException('Число --targets не должно превышать --limit.');
+    }
     $data = $args['data'] ?? '';
     if (!is_string($data) || $data === '' || $data[0] !== '/' || !is_dir($data) || !($directory = realpath($data))) throw new InvalidArgumentException('Укажите --data с абсолютным путём существующего закрытого каталога.');
     $manifestPath = $directory . '/deployment-php.json';
@@ -59,11 +65,14 @@ function lavka_competitors_diagnostics_run(array $args, ?callable $transport = n
         if (!flock($lock, LOCK_EX | LOCK_NB)) return ['state' => 'skipped', 'reason' => 'already_running', 'targets' => []];
         $db = new SQLite3($path, SQLITE3_OPEN_READONLY);
         $db->enableExceptions(true);
-        $rows = $db->query('SELECT id,source_id,kind,url,label,grams_override,pack_label,last_attempt FROM competitor_targets WHERE enabled=1 ORDER BY id LIMIT 350');
+        $sql='SELECT id,source_id,kind,url,label,grams_override,pack_label,last_attempt FROM competitor_targets WHERE enabled=1';
+        if($targetIds)$sql.=' AND id IN ('.implode(',',$targetIds).')';
+        // The old mixed-row limit hid later competitor pages behind the own catalogue.
+        $rows = $db->query($sql.' ORDER BY id');
         $groups = ['product' => [], 'catalog' => [], 'terms' => []];
         while ($row = $rows->fetchArray(SQLITE3_ASSOC)) {
             $attempt = json_decode($row['last_attempt'] ?? '', true);
-            if (($attempt['state'] ?? '') !== 'error' || !isset($groups[$row['kind']])) continue;
+            if ((!$targetIds&&($attempt['state'] ?? '') !== 'error') || !isset($groups[$row['kind']])) continue;
             try { $row['url'] = \Lavka\competitors_validate_url($row['url'], $row['source_id']); }
             catch (Throwable $ignored) { continue; }
             $groups[$row['kind']][] = $row;
@@ -113,7 +122,7 @@ function lavka_competitors_diagnostics_run(array $args, ?callable $transport = n
                 $item['http'] = ['status' => $response['status'], 'final_url' => $response['url'], 'bytes' => strlen($response['body'])];
                 try {
                     $parsed = \Lavka\competitors_parse($target, $response['body'], $response['url']);
-                    $item['parser'] = ['method' => $parsed['method'] ?? 'parsed', 'offers_count' => count($parsed['offers'] ?? []), 'links_count' => count($parsed['links'] ?? [])];
+                    $item['parser'] = ['method' => $parsed['method'] ?? 'parsed', 'offers_count' => count($parsed['offers'] ?? []), 'offers'=>lavka_competitor_diagnostic_offers($parsed['offers']??[]), 'links_count' => count($parsed['links'] ?? [])];
                 } catch (\Lavka\CompetitorParseError $error) { $item['parser'] = ['error_code' => $error->errorCode]; }
                 try { $item = array_merge($item, lavka_competitor_diagnostic_document($response['body'], $response['url'], $target['kind'])); }
                 catch (\Lavka\CompetitorParseError $error) { $item['document_error'] = $error->errorCode; }
@@ -135,7 +144,15 @@ function lavka_competitors_diagnostics_run(array $args, ?callable $transport = n
 
 if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') !== __FILE__) return;
 try {
-    echo lavka_competitors_diagnostics_json(lavka_competitors_diagnostics_run(getopt('', ['data:', 'limit:']))) . "\n";
+    $args=getopt('', ['data:', 'limit:', 'targets:', 'save-report']);
+    $report=lavka_competitors_diagnostics_run($args);
+    $json=lavka_competitors_diagnostics_json($report);
+    if(array_key_exists('save-report',$args)&&($report['state']??'')!=='skipped'){
+        $directory=realpath($args['data']);
+        $saved=['schema'=>'lavka-public-pages-v1','collected_at'=>\Lavka\utc_now(),'collector_revision'=>substr(hash_file('sha256',__FILE__),0,16),'report'=>json_decode($json,true)];
+        \Lavka\atomic_write($directory.'/public-page-diagnostics.json',\Lavka\encode($saved));
+    }
+    echo $json . "\n";
 } catch (Throwable $error) {
     fwrite(STDERR, ($error instanceof InvalidArgumentException ? $error->getMessage() : 'Диагностика не выполнена; данные мониторинга не изменены.') . "\n");
     exit(1);

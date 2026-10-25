@@ -36,20 +36,58 @@ function diagnostic_public_url(string $url): string
 function diagnostic_public_fields(array $row, int $depth=0): array
 {
     if($depth>5)return [];
-    $numeric=['id','target_id','own_id','candidate_id','score','price','old_price','grams','grams_override','min_quantity','enabled','match_confirmed','queued','count','checked','succeeded','failed','deferred','limit','budget_seconds','status','http_status','bytes','errors','seconds','peak_mb','links','pages'];
-    $enums=['source_id','kind','state','error_code','method','currency','unit','availability','packaging','packaging_override','packaging_source'];
+    $numeric=['id','target_id','own_id','candidate_id','score','price','old_price','grams','grams_override','min_quantity','enabled','match_confirmed','queued','count','checked','succeeded','failed','deferred','saved','skipped','suggestions','queued_candidates','prices_loaded','limit','budget_seconds','status','http_status','bytes','errors','seconds','peak_mb','links','pages'];
+    $enums=['source_id','kind','state','error_code','method','currency','unit','availability','packaging','packaging_override','packaging_source','runner_revision','php'];
     $text=['title','label','pack_label','match_group','condition'];$out=[];
     foreach($numeric as $key)if(isset($row[$key])&&(is_numeric($row[$key])||is_bool($row[$key])))$out[$key]=is_bool($row[$key])?$row[$key]:0+$row[$key];
     foreach($enums as $key)if(isset($row[$key]))$out[$key]=diagnostic_enum($row[$key]);
     foreach($text as $key)if(is_string($row[$key]??null))$out[$key]=\lavka_competitor_diagnostic_text($row[$key],180);
     foreach(['url','href'] as $key)if(is_string($row[$key]??null))$out[$key]=diagnostic_public_url($row[$key]);
     foreach(['last_success','next_check_at','checked_at','started_at','finished_at','observed_at','occurred_at'] as $key)if(is_string($row[$key]??null)&&preg_match('/^[0-9TZ:+. -]{10,35}$/D',$row[$key]))$out[$key]=$row[$key];
-    foreach(['observation','last_attempt','offers','discovery','matching','before','after'] as $key){
+    foreach(['observation','last_attempt','offers','discovery','matching','evidence','before','after'] as $key){
         if(!is_array($row[$key]??null))continue;
         $value=$row[$key];$out[$key]=array_is_list($value)?array_map(function($r)use($depth){return is_array($r)?diagnostic_public_fields($r,$depth+1):null;},array_slice($value,0,12)):diagnostic_public_fields($value,$depth+1);
     }
+    if(is_array($row['errors']??null))$out['errors']=array_values(array_intersect($row['errors'],['evidence_storage_failed','evidence_structure_failed','evidence_size_limit']));
     return $out;
 }
+/** Saved public terms, stripped contacts and bounded source excerpts. */
+function diagnostic_terms(array $targets): array
+{
+    require_once __DIR__.'/CompetitorTerms.php';
+    $pages=array_values(array_filter($targets,function($target){return $target['enabled']&&$target['kind']==='terms'&&in_array($target['source_id'],['lavka','deluxe','spicery','banka','specii'],true);}));
+    $matrix=competitors_terms_comparison($targets);$out=['active_pages'=>count($pages),'pages'=>[],'rows'=>[]];
+    foreach(array_slice($pages,0,20) as $target){$row=diagnostic_public_fields($target);unset($row['observation']);
+        $text=$target['observation']['text']??'';$lines=[];
+        if(is_string($text))foreach(array_slice(preg_split('/\r?\n/',mb_substr($text,0,8000)),0,80) as $line)$lines[]=\lavka_competitor_diagnostic_text($line,300);
+        $row['text_excerpt']=mb_substr(implode("\n",$lines),0,6000);$row['facts_count']=is_string($text)?count(competitors_terms_extract($text)):0;$out['pages'][]=$row;
+    }
+    foreach($matrix['rows'] as $row){$clean=['id'=>$row['id'],'label'=>$row['label'],'cells'=>[]];
+        foreach($row['cells'] as $source=>$cell){$value=$cell['value'];$c=['value'=>is_string($value)?\lavka_competitor_diagnostic_text($value,360):$value,'display'=>\lavka_competitor_diagnostic_text($cell['display'],360),'state'=>$cell['state'],'page_count'=>$cell['page_count']??0,'evidence'=>[]];
+            foreach(array_slice($cell['evidence'],0,4) as $e)$c['evidence'][]=['target_id'=>$e['target_id'],'url'=>diagnostic_public_url($e['url']),'checked_at'=>$e['checked_at'],'state'=>$e['state'],'quote'=>\lavka_competitor_diagnostic_text($e['quote'],600)];
+            $clean['cells'][$source]=$c;
+        }$out['rows'][]=$clean;
+    }
+    return $out;
+}
+
+/** Fixed public-page support file, never a general private-file download. */
+function diagnostic_saved_pages(string $directory): array
+{
+    $file=$directory.'/public-page-diagnostics.json';
+    if(!is_file($file)||is_link($file)||filesize($file)>65536)return ['available'=>false];
+    try{$input=decode(file_get_contents($file));}catch(\Throwable $ignored){return ['available'=>false,'reason'=>'invalid_saved_report'];}
+    if(($input['schema']??'')!=='lavka-public-pages-v1'||!is_array($input['report']??null))return ['available'=>false,'reason'=>'invalid_saved_report'];
+    $keys=array_fill_keys(explode(' ','schema collected_at collector_revision report state reason read_only selected checked deferred seconds targets id source kind label url http status final_url bytes parser method error_code offers_count links_count offers document title h1 canonical og_url scope tag class itemprop has_h1 product_meta name value price_nodes text content data-price data-price-value data-base-price data-weight data-grams data-option-value-id data-product-option-value-id data-price-prefix data-prefix price-prefix purchase_options control selected catalog_anchors href ancestors depth context availability_nodes recognized price old_price grams min_quantity availability packaging currency unit condition document_error truncated'),true);
+    $walk=function($value,int $depth=0)use(&$walk,$keys){
+        if($depth>10)return null;
+        if(is_array($value)){$out=[];foreach(array_slice($value,0,40,true) as $key=>$part){if(!is_int($key)&&!isset($keys[$key]))continue;$out[$key]=$walk($part,$depth+1);}return $out;}
+        if(is_string($value))return \lavka_competitor_diagnostic_text($value,700);
+        return is_numeric($value)||is_bool($value)||$value===null?$value:null;
+    };
+    return ['available'=>true]+$walk($input);
+}
+
 function diagnostic_competitors(string $directory): array
 {
     if(is_link($directory.'/competitors.sqlite3'))return ['available'=>false,'reason'=>'invalid_database_path'];
@@ -59,10 +97,10 @@ function diagnostic_competitors(string $directory): array
     $tables=array_column($db->query("SELECT name FROM sqlite_master WHERE type='table'")->fetchAll(),'name');
     $result=['available'=>true,'counts'=>[],'targets'=>[],'suggestions'=>[],'evidence'=>[],'runs'=>[]];
     foreach(['competitor_targets','competitor_search_index','competitor_suggestions','competitor_scan_pages','competitor_changes','competitor_discoveries','competitor_page_evidence'] as $table)if(in_array($table,$tables,true))$result['counts'][$table]=(int)$db->query('SELECT count(*) FROM '.$table)->fetchColumn();
-    $rows=$db->query('SELECT * FROM competitor_targets ORDER BY id')->fetchAll();$strata=[];$stats=[];
-    foreach($rows as $row){$target=competitors_target_row($row);$state=$target['last_attempt']['state']??'unloaded';$key=$target['source_id'].':'.$target['kind'].':'.$state;$stats[$key]=($stats[$key]??0)+1;
+    $rows=$db->query('SELECT * FROM competitor_targets ORDER BY id')->fetchAll();$allTargets=array_map(__NAMESPACE__.'\\competitors_target_row',$rows);$strata=[];$stats=[];$activeStats=[];$archivedStats=[];
+    foreach($rows as $row){$target=competitors_target_row($row);$state=$target['last_attempt']['state']??'unloaded';$key=$target['source_id'].':'.$target['kind'].':'.$state;$stats[$key]=($stats[$key]??0)+1;if($target['enabled'])$activeStats[$key]=($activeStats[$key]??0)+1;else $archivedStats[$key]=($archivedStats[$key]??0)+1;
         if(($strata[$key]??0)<3&&count($result['targets'])<60){$strata[$key]=($strata[$key]??0)+1;$result['targets'][]=diagnostic_public_fields($target);}}
-    $result['target_states']=$stats;
+    $result['target_states']=$stats;$result['target_states_active']=$activeStats;$result['target_states_archived']=$archivedStats;
     if(in_array('competitor_suggestions',$tables,true)){
         $q=$db->query('SELECT s.own_id,s.candidate_id,s.score,o.label AS own_title,c.title,c.url,c.source_id FROM competitor_suggestions s JOIN competitor_targets o ON o.id=s.own_id JOIN competitor_search_index c ON c.id=s.candidate_id ORDER BY s.score DESC,s.own_id LIMIT 200');$seen=[];
         foreach($q as $row){$key=$row['source_id'].':'.((int)$row['score']>=90?'high':'review');if(($seen[$key]??0)>=5)continue;$seen[$key]=($seen[$key]??0)+1;$clean=diagnostic_public_fields($row);$clean['own_title']=\lavka_competitor_diagnostic_text($row['own_title'],180);$clean['identity']=competitors_identity_compare($row['own_title'],$row['title'],$row['url']);$result['suggestions'][]=$clean;}
@@ -74,6 +112,13 @@ function diagnostic_competitors(string $directory): array
     }
     $result['evidence_note']='Saved sanitized page structure from ordinary background checks; no HTTP requests during export. Empty until pages are checked after this update.';
     if(in_array('competitor_runs',$tables,true))foreach($db->query('SELECT payload FROM competitor_runs ORDER BY id DESC LIMIT 5') as $row)$result['runs'][]=diagnostic_public_fields(decode($row['payload']));
+    $result['cadence']=competitors_run_cadence($result['runs']);
+    require_once __DIR__.'/CompetitorOwnCatalog.php';
+    $own=competitors_own_catalog_read($directory);
+    $result['own_catalog']=diagnostic_public_fields($own)+diagnostic_numbers(array_intersect_key($own,array_flip(['product_count','offer_count','shop_writes'])));
+    $result['own_catalog']['products']=array_map(function($product){return diagnostic_public_fields($product)+['product_id'=>(int)($product['product_id']??0)];},array_slice($own['products']??[],0,8));
+    $result['terms']=diagnostic_terms($allTargets);
+    $result['collected_pages']=diagnostic_saved_pages($directory);
     $result['scan_errors']=[];$result['changes']=[];
     if(in_array('competitor_scan_pages',$tables,true))foreach($db->query("SELECT source_id,url,kind,state,error_code,checked_at,errors FROM competitor_scan_pages WHERE state='error' ORDER BY checked_at DESC LIMIT 15") as $row)$result['scan_errors'][]=diagnostic_public_fields($row);
     if(in_array('competitor_changes',$tables,true))foreach($db->query('SELECT target_id,source_id,kind,occurred_at FROM competitor_changes ORDER BY id DESC LIMIT 10') as $row)$result['changes'][]=diagnostic_public_fields($row);
@@ -109,7 +154,7 @@ function diagnostic_build(Analytics $store,int $year,string $asof,string $curren
     $byId=array_fill_keys(array_column($r['customers'],'id'),true);$pairs=$r['duplicate_pairs'];$validPairs=true;foreach($pairs as $pair)if(count(array_unique($pair['ids']))!==2||array_diff($pair['ids'],array_keys($byId)))$validPairs=false;$check('duplicates.references',$validPairs,true);
     $out=['schema'=>'lavka-system-diagnostics','schema_version'=>1,'generated_at'=>utc_now(),'privacy'=>['names_included'=>$includeNames,'contacts_included'=>false,'identifiers'=>'random per-export references','raw_html_included'=>false],
         'scope'=>['year'=>$year,'as_of'=>$asof,'currency'=>$currency,'gender'=>$gender,'history_scope'=>'all eligible history in this currency as of selected date'],
-        'runtime'=>['php'=>PHP_VERSION,'memory_limit'=>ini_get('memory_limit'),'source_fingerprint'=>hash_file('sha256',__DIR__.'/Analytics.php'),'gender_fingerprint'=>hash_file('sha256',__DIR__.'/Gender.php')],
+        'runtime'=>['php'=>PHP_VERSION,'memory_limit'=>ini_get('memory_limit'),'source_fingerprint'=>hash_file('sha256',__DIR__.'/Analytics.php'),'worker_fingerprint'=>substr(hash_file('sha256',dirname(__DIR__).'/bin/competitors.php'),0,16),'evidence_fingerprint'=>substr(hash_file('sha256',__DIR__.'/CompetitorEvidence.php'),0,16),'gender_fingerprint'=>hash_file('sha256',__DIR__.'/Gender.php')],
         'checks'=>$checks,'selected'=>['metrics'=>$r['metrics'],'gender'=>array_map(function($row){return ['key'=>$row['key']]+diagnostic_numbers($row);},$r['gender_breakdown']),'loyalty'=>diagnostic_numbers($r['loyalty']),'ga4'=>diagnostic_numbers(array_intersect_key((array)$r['ga4'],array_flip(['available','daily_available','transactions_available','daily_rows','transaction_rows','totals','channels','trend']))),'crm'=>diagnostic_numbers($r['crm']['stats']),'marketing'=>diagnostic_numbers(array_intersect_key($r['marketing'],array_flip(['segments','cohorts','conversion','median_second_days','frequency','recency','rfm_matrix','first_amount','repeat_amount','repeat_amount_share','top20_customer_share','abc','hours','months'])))],
         'history'=>['annual'=>diagnostic_numbers($full['annual']),'totals'=>$full['history_totals'],'regions'=>diagnostic_numbers($full['regional'])],
         'statuses_scope'=>'Whole imported snapshot, all dates and currencies; included statuses apply to selected report.',
@@ -126,6 +171,7 @@ function diagnostic_build(Analytics $store,int $year,string $asof,string $curren
     foreach($r['gender_diagnostics']['samples'] as $sample)foreach(array_slice($sample['order_ids'],0,1) as $id)$orderIds[$id]=true;
     foreach(array_slice(array_keys($orderIds),0,40) as $id){$o=$store->orders[$id]??null;if(!$o)continue;$location=$store->geo->address($o);$row=['order_ref'=>$ref('O',(string)$id),'date'=>substr($o['date_added'],0,10),'amount'=>money(order_value($o)),'currency'=>$o['currency_code'],'status_id'=>$o['order_status_id'],'channel'=>regional_channel($store->geo,$o),'region'=>regional_key($location),'lines'=>[]];foreach(array_slice($store->lines[$id]??[],0,5) as $line)$row['lines'][]=['product_id'=>$line['product_id'],'title'=>\lavka_competitor_diagnostic_text($line['name'],120),'quantity'=>$line['quantity'],'price'=>money($line['price']),'total'=>money($line['total']),'pack'=>diagnostic_public_fields($line['pack'])];$out['samples']['orders'][]=$row;}
     try{$out['competitors']=diagnostic_competitors($store->directory);}catch(\Throwable $error){$out['competitors']=['available'=>false,'reason'=>'diagnostic_module_failed','location'=>basename($error->getFile()).':'.$error->getLine()];$check('competitors.export',false,true);}
+    if(isset($out['competitors']['terms'])){$terms=$out['competitors']['terms'];$first=$terms['rows'][0]??null;if($first)$check('competitors.terms_sources_visible',array_sum(array_column($first['cells'],'page_count')),min(350,$terms['active_pages']));}
     $out['client']=diagnostic_client($client,$ref);
     foreach($out['client']['probes'] as $probe){$expected=null;if(in_array($probe['name'],['customers_amount','customers_priority','customers_overdue'],true))$expected=count(array_filter($r['customers'],function($c){return $c['order_count']>0;}));if($probe['name']==='customers_overdue_filter')$expected=count(array_filter($r['customers'],function($c){return $c['order_count']>0&&$c['reminder']==='overdue';}));if(strpos($probe['name'],'duplicates_')===0){$kind=substr($probe['name'],11);if(in_array($kind,['all','email','phone','name'],true))$expected=count(array_filter($pairs,function($p)use($kind){return $kind==='all'||in_array($kind,$p['kinds'],true);}));}if($expected!==null)$check('browser.'.$probe['name'].'.count',$probe['count'],$expected);}
     $out['checks']=$checks;

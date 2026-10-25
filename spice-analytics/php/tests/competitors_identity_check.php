@@ -46,3 +46,9 @@ try{
     }
     echo \Lavka\encode(['product_form_and_jar_rejection'=>'passed','bulk_canonical_and_history'=>'passed','actual_page_index_and_numeric_prices'=>'passed','price_list_discovery'=>'passed','php'=>PHP_VERSION]),PHP_EOL;
 }finally{identity_cleanup($directory);}
+
+foreach ([['Асафетида','Асафетида 15%'],['Асафетида 100%','Асафетида 15%'],['Какао 22%','Какао 10%']] as $pair) {
+    $comparison=\Lavka\competitors_identity_compare($pair[0],$pair[1]);
+    if($comparison['exact']||$comparison['score']>55)throw new RuntimeException('Concentration must not be an exact match');
+}
+if(!\Lavka\competitors_identity_compare('Какао 22%','Какао 22,0%')['exact'])throw new RuntimeException('Equivalent percentage notation');

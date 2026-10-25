@@ -44,6 +44,11 @@ $stale=terms("spicery","old","Минимальный заказ — 100 грн. 
 terms("banka","conflict-a","Минимальный заказ — 400 грн.",$now);
 terms("banka","conflict-b","Минимальный заказ — 450 грн.",$now);
 terms("deluxe","discount","Скидка 10% на первый заказ за подписку на рассылку.",$now);
+// Match the real 416-product catalogue that precedes all condition pages.
+$db->beginTransaction();
+$insert=$db->prepare("INSERT INTO competitor_targets(source_id,kind,url,label,created_at,updated_at,next_check_at) VALUES('lavka','product',?,'Synthetic catalogue item',?,?,?)");
+for($i=1;$i<=416;++$i)$insert->execute(['https://lavka-speciy.com/index.php?route=product/product&product_id='.(900000+$i),$now,$now,$now]);
+$db->commit();
 echo "ok";
 '''
 
@@ -107,6 +112,7 @@ with tempfile.TemporaryDirectory() as temporary:
             page.goto(base + "/")
             page.fill("#password", password)
             page.click("button[type=submit]")
+            page.wait_for_selector(".dash-board")
             page.click("[data-view=customers]")
             page.wait_for_selector(".customer-table")
             page.on("request", lambda request: mutations.append(request.method + " " + request.url) if request.method in ["POST", "PUT", "PATCH", "DELETE"] else None)

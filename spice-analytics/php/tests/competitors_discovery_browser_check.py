@@ -59,7 +59,7 @@ with tempfile.TemporaryDirectory() as temporary:
    assert page.evaluate('competitorMatrixRows()===competitorMatrixRows()')
    page.click('[data-comp-action=matrix-next]');assert '2 / 8' in page.locator('.monitoring-matrix-pagination').inner_text()
    page.click('[data-comp-action=matrix-prev]')
-   page.click('[data-tab=coverage]');page.wait_for_selector('.monitoring-sources');assert '400' in page.locator('.monitoring-summary').inner_text();assert 'каждую минуту' in page.locator('.monitoring-panel').inner_text();assert '24 часа' in page.locator('.competitor-footer').inner_text()
+   page.click('[data-tab=coverage]');page.wait_for_selector('.monitoring-sources');assert '400' in page.locator('.monitoring-summary').inner_text();assert 'каждую минуту' in page.locator('.monitoring-panel').inner_text();assert 'раз в сутки' in page.locator('.monitoring-panel').inner_text()
    assert len(page.locator('.monitoring-sources tbody tr').all())==4
    assert not writes,writes
    for width in [1470,390,320]:

@@ -43,10 +43,15 @@ function lavka_competitors_run(array $args, ?callable $transport = null, ?callab
     if ($lock === false) throw new RuntimeException('lock_failed');
     chmod($directory . '/.competitors.lock', 0600);
     $db = null;
-    $summary = ['state' => 'ok', 'started_at' => $stamp(), 'checked' => 0, 'succeeded' => 0, 'failed' => 0, 'deferred' => 0];
+    $summary = ['state' => 'ok', 'started_at' => $stamp(), 'checked' => 0, 'succeeded' => 0, 'failed' => 0, 'deferred' => 0,'runner_revision'=>substr(hash_file('sha256',__FILE__),0,16),'php'=>PHP_VERSION,'evidence'=>['saved'=>0,'failed'=>0,'skipped'=>0,'errors'=>[]]];
     try {
         if (!flock($lock, LOCK_EX | LOCK_NB)) return ['state' => 'skipped', 'reason' => 'already_running'];
         $db = \Lavka\competitors_db($directory);
+        $capture=function(array $target,array $response,?string $code)use($db,&$summary,$stamp):void{
+            $result=lavka_competitor_evidence_capture($db,$target,$response,$code,$stamp());
+            $state=$result['state'];++$summary['evidence'][$state];
+            if(!empty($result['error_code'])&&!in_array($result['error_code'],$summary['evidence']['errors'],true))$summary['evidence']['errors'][]=$result['error_code'];
+        };
         if (array_key_exists('init-only', $args)) return ['state' => 'initialized', 'network_requests' => 0];
         require_once dirname(__DIR__) . '/src/CompetitorParser.php';
         require_once dirname(__DIR__) . '/src/CompetitorOwnCatalog.php';
@@ -94,24 +99,26 @@ function lavka_competitors_run(array $args, ?callable $transport = null, ?callab
             $scan=$db->query("SELECT p.* FROM competitor_scan_pages p WHERE p.next_check_at<='".$stamp()."' ORDER BY (SELECT COALESCE(MAX(q.checked_at),'') FROM competitor_scan_pages q WHERE q.source_id=p.source_id),(p.kind='product'),p.depth,p.id LIMIT 1")->fetch();
             if($scan) {
                 $summary['discovery']=$summary['discovery']??['checked'=>0,'links'=>0,'pages'=>0,'failed'=>0];
+                $response=null;
                 try {
                     $response=\Lavka\competitors_http_fetch($scan['url'],$transport,$guard,$scan['kind']==='sitemap');
                     $found=\Lavka\competitors_scan_parse($db,$scan,$response['body'],$response['url']);
-                    lavka_competitor_evidence_capture($db,$scan,$response,null,$stamp());
+                    $capture($scan,$response,null);
                     $db->prepare("UPDATE competitor_scan_pages SET checked_at=?,next_check_at=?,state='ok',error_code=NULL,errors=0 WHERE id=?")->execute([$stamp(),gmdate('Y-m-d\TH:i:s\Z',(int)$clock()+604800),$scan['id']]);
                     if($scan['kind']==='product'){
                         // Reuse this very HTTP response for existing watched pages.
                         // A catalogue scan must not immediately download it again.
                         $watched=$db->prepare("SELECT * FROM competitor_targets WHERE enabled=1 AND kind='product' AND source_id=? AND url=?");$watched->execute([$scan['source_id'],$scan['url']]);
                         foreach($watched->fetchAll() as $target){
-                            try{$observation=\Lavka\competitors_parse($target,$response['body'],$response['url']);\Lavka\competitors_record_attempt($db,(int)$target['id'],$observation,null,$stamp(),$response['status']);lavka_competitor_evidence_capture($db,$target,$response,null,$stamp());$summary['discovery']['prices_loaded']=($summary['discovery']['prices_loaded']??0)+1;}
-                            catch(\Lavka\CompetitorParseError $error){\Lavka\competitors_record_attempt($db,(int)$target['id'],null,$error->errorCode,$stamp(),$response['status']);lavka_competitor_evidence_capture($db,$target,$response,$error->errorCode,$stamp());}
+                            try{$observation=\Lavka\competitors_parse($target,$response['body'],$response['url']);\Lavka\competitors_record_attempt($db,(int)$target['id'],$observation,null,$stamp(),$response['status']);$capture($target,$response,null);$summary['discovery']['prices_loaded']=($summary['discovery']['prices_loaded']??0)+1;}
+                            catch(\Lavka\CompetitorParseError $error){\Lavka\competitors_record_attempt($db,(int)$target['id'],null,$error->errorCode,$stamp(),$response['status']);$capture($target,$response,$error->errorCode);}
                         }
                     }
                     $summary['discovery']['checked']++;$summary['discovery']['links']+=$found['links'];$summary['discovery']['pages']+=$found['pages'];
                 }catch(LavkaCompetitorDeferred $deferred){$summary['discovery']['deferred']=1;break;}
                 catch(\Throwable $error){$code=$error instanceof \Lavka\CompetitorHttpError?$error->errorCode:($error instanceof \Lavka\CompetitorParseError?$error->getMessage():'scan_error');if(!preg_match('/^[a-z_]{1,60}$/D',$code))$code='scan_error';
                     $db->prepare("UPDATE competitor_scan_pages SET checked_at=?,next_check_at=?,state='error',error_code=?,errors=errors+1 WHERE id=?")->execute([$stamp(),gmdate('Y-m-d\TH:i:s\Z',(int)$clock()+min(86400,3600*(1<<(min(4,(int)$scan['errors']))))),$code,$scan['id']]);
+                    if($response)$capture($scan,$response,$code);
                     $summary['discovery']['checked']++;$summary['discovery']['failed']++;
                 }
             }
@@ -131,7 +138,7 @@ function lavka_competitors_run(array $args, ?callable $transport = null, ?callab
                 $status = $response['status'];
                 $observation = \Lavka\competitors_parse($target, $response['body'], $response['url']);
                 \Lavka\competitors_record_attempt($db, (int)$target['id'], $observation, null, $stamp(), $status);
-                lavka_competitor_evidence_capture($db,$target,$response,null,$stamp());
+                $capture($target,$response,null);
                 $summary['succeeded']++;
                 if($discoveryOn && $target['source_id']!=='lavka' && $target['kind']==='product')\Lavka\competitors_index_link($db,$target['source_id'],$target['url'],$observation['title'],'page');
             } catch (LavkaCompetitorDeferred $error) {
@@ -140,13 +147,13 @@ function lavka_competitors_run(array $args, ?callable $transport = null, ?callab
             } catch (\Lavka\CompetitorHttpError $error) {
                 \Lavka\competitors_record_attempt($db, (int)$target['id'], null, $error->errorCode, $stamp(), $error->httpStatus);
                 $summary['failed']++;
-                if($response)lavka_competitor_evidence_capture($db,$target,$response,$error->errorCode,$stamp());
+                if($response)$capture($target,$response,$error->errorCode);
             } catch (\Lavka\CompetitorParseError $error) {
                 $code = isset($error->errorCode) ? $error->errorCode : $error->getMessage();
                 if (!is_string($code) || !preg_match('/^[a-z_]{1,50}$/D', $code)) $code = 'parse_error';
                 \Lavka\competitors_record_attempt($db, (int)$target['id'], null, $code, $stamp(), $status);
                 $summary['failed']++;
-                if($response)lavka_competitor_evidence_capture($db,$target,$response,$code,$stamp());
+                if($response)$capture($target,$response,$code);
             }
             $summary['checked']++;
         }

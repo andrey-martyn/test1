@@ -111,6 +111,14 @@ function lavka_competitor_diagnostic_document(string $html, string $url, string 
         if ($text === '' && !$attributes) continue;
         $result['price_nodes'][] = array_merge(lavka_competitor_diagnostic_shape($node), $attributes, ['text' => $text]);
     }
+    $result['availability_nodes']=[];
+    foreach($xpath->query('.//*[@itemprop="availability" or contains(translate(@class,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"stock") or contains(translate(@class,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"avail")]', $main) as $node){
+        if(count($result['availability_nodes'])>=8)break;
+        if(!$node instanceof DOMElement||lavka_competitor_diagnostic_excluded($node))continue;
+        $text=lavka_competitor_diagnostic_node_text($node,140);$raw=$node->getAttribute('href')?:$node->getAttribute('content');
+        $stock=\Lavka\competitor_availability($raw?:$text);
+        $result['availability_nodes'][]=lavka_competitor_diagnostic_shape($node)+['text'=>$text,'recognized'=>$stock];
+    }
     if ($kind === 'product') {
         foreach ($xpath->query('.//select/option | .//input[@type="radio"]', $main) as $node) {
             if (count($result['purchase_options']) >= 12) break;
@@ -164,18 +172,34 @@ function lavka_competitor_diagnostic_document(string $html, string $url, string 
     return $result;
 }
 
-/** Keep the entire report small enough to paste into a support conversation. */
-/** Bounded, sanitized evidence from an already downloaded public page. No extra requests. */
-function lavka_competitor_evidence_capture(PDO $db, array $target, array $response, ?string $error, string $at): void
+/** Public normalized offers, useful when prices parse but stock/packaging do not. */
+function lavka_competitor_diagnostic_offers(array $offers): array
 {
-    if (!in_array($target['kind'] ?? '', ['product','catalog'], true) || empty($response['body'])) return;
+    $result=[];
+    foreach(array_slice($offers,0,6) as $offer){
+        $row=[];foreach(['price','old_price','grams','min_quantity'] as $key)if(isset($offer[$key])&&is_numeric($offer[$key]))$row[$key]=0+$offer[$key];
+        foreach(['availability','packaging','currency','unit'] as $key)if(isset($offer[$key])&&preg_match('/^[a-zA-Z_]{1,30}$/D',(string)$offer[$key]))$row[$key]=$offer[$key];
+        foreach(['label','condition'] as $key)if(is_string($offer[$key]??null))$row[$key]=lavka_competitor_diagnostic_text($offer[$key],120);
+        $result[]=$row;
+    }
+    return $result;
+}
+
+/** Bounded evidence from a response already obtained by the ordinary worker. */
+function lavka_competitor_evidence_capture(PDO $db, array $target, array $response, ?string $error, string $at): array
+{
+    if (!in_array($target['kind'] ?? '', ['product','catalog'], true) || empty($response['body'])) return ['state'=>'skipped'];
     try {
         $evidence=lavka_competitor_diagnostic_document($response['body'],$response['url'],$target['kind']);
-        foreach (['price_nodes','purchase_options','catalog_anchors'] as $key) $evidence[$key]=array_slice($evidence[$key]??[],0,8);
+        foreach (['price_nodes','purchase_options','catalog_anchors','availability_nodes'] as $key) $evidence[$key]=array_slice($evidence[$key]??[],0,8);
         $payload=\Lavka\encode($evidence);
-        if(strlen($payload)>16000){foreach(['price_nodes','purchase_options','catalog_anchors'] as $key)$evidence[$key]=array_slice($evidence[$key],0,3);$payload=\Lavka\encode($evidence);}
-        if(strlen($payload)>16000)return;
+        if(strlen($payload)>16000){foreach(['price_nodes','purchase_options','catalog_anchors','availability_nodes'] as $key)$evidence[$key]=array_slice($evidence[$key],0,3);$payload=\Lavka\encode($evidence);}
+        if(strlen($payload)>16000)return ['state'=>'skipped','error_code'=>'evidence_size_limit'];
         $db->prepare('INSERT OR REPLACE INTO competitor_page_evidence(source_id,url,captured_at,error_code,payload) VALUES(?,?,?,?,?)')->execute([$target['source_id'],$target['url'],$at,$error,$payload]);
         $db->exec('DELETE FROM competitor_page_evidence WHERE rowid NOT IN (SELECT rowid FROM competitor_page_evidence ORDER BY (error_code IS NOT NULL) DESC,captured_at DESC LIMIT 300)');
-    } catch(Throwable $ignored) { /* Diagnostic capture must never interrupt the price queue. */ }
+        return ['state'=>'saved'];
+    } catch(Throwable $failure) {
+        // Do not interrupt price checks or expose driver errors; do expose that capture failed.
+        return ['state'=>'failed','error_code'=>$failure instanceof PDOException?'evidence_storage_failed':'evidence_structure_failed'];
+    }
 }

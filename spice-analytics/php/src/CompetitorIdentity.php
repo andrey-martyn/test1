@@ -19,7 +19,10 @@ function competitors_identity_profile(string $name,string $url=''): array
     $tokens=competitors_name_tokens(competitors_identity_name($name));
     $forms=['ground','whole','crushed','granulated','flakes','seed','leaf','dried','smoked','ceylon','cassia','black','white','red'];
     $core=array_values(array_diff($tokens,$forms,['doypack','zip','kraft','loose']));sort($core);
-    return ['tokens'=>$tokens,'core'=>$core,'jar'=>competitors_identity_jar($name,$url)];
+    preg_match_all('/(?<![\pL\d])(\d{1,3}(?:[.,]\d{1,3})?)\s*%/u',$name,$matches);
+    $percentages=[];foreach($matches[1] as $value)$percentages[(string)(float)str_replace(',','.',$value)]=true;
+    $percentages=array_keys($percentages);sort($percentages,SORT_NUMERIC);
+    return ['tokens'=>$tokens,'core'=>$core,'percentages'=>$percentages,'jar'=>competitors_identity_jar($name,$url)];
 }
 function competitors_identity_compare(string $own,string $candidate,string $url='',?array $a=null,?array $b=null): array
 {
@@ -29,6 +32,7 @@ function competitors_identity_compare(string $own,string $candidate,string $url=
         &&in_array('ground',$a['tokens'],true)!==in_array('ground',$b['tokens'],true))return ['score'=>0,'exact'=>false,'reason'=>'Целые и молотые семена — разные позиции'];
     $score=competitors_name_score($a['tokens'],$b['tokens']);
     if(!$score)return ['score'=>0,'exact'=>false,'reason'=>'Разный продукт или форма'];
+    if(($a['percentages']??[])!==($b['percentages']??[]))return ['score'=>min(55,$score),'exact'=>false,'reason'=>'Различается или не указан процент состава — проверьте концентрацию'];
     $critical=['ground','whole','crushed','granulated','flakes','seed','leaf','smoked','ceylon','cassia','black','white','red'];
     $x=array_values(array_intersect($a['tokens'],$critical));$y=array_values(array_intersect($b['tokens'],$critical));sort($x);sort($y);
     $exact=$a['core']&&$a['core']===$b['core']&&$x===$y;

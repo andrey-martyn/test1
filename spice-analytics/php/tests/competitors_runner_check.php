@@ -74,6 +74,8 @@ try {
 
     $result = lavka_competitors_run(['data' => $root, 'limit' => 5, 'seconds' => 45], $transport, $clock, $pause);
     runner_expect($result['checked'] === 1 && $result['succeeded'] === 1 && count($calls) === 2, 'One due product passes robots, parser and storage');
+    runner_expect($result['evidence']['saved']===1&&$result['evidence']['failed']===0,'Ordinary response captures evidence without extra HTTP');
+    runner_expect(strlen($result['runner_revision'])===16&&$result['php']===PHP_VERSION,'Worker identifies the actually running code');
     $stored = \Lavka\competitors_target($db, $target['id']);
     runner_expect(is_string($stored['observation']['offers'][0]['price']) && bccomp($stored['observation']['offers'][0]['price'], '75.00', 2) === 0, 'Actual parsed decimal price is stored');
     runner_expect(strtotime($stored['next_check_at']) - strtotime($stored['last_success']) === 86400, 'Successful target interval is one day');

@@ -261,14 +261,25 @@ function competitors_discovery_results(\PDO $db,string $search='',string $source
     $from=' FROM competitor_suggestions s JOIN competitor_targets o ON o.id=s.own_id JOIN competitor_search_index i ON i.id=s.candidate_id';
     $stmt=$db->prepare('SELECT count(*)'.$from.$where);$stmt->execute($args);$total=(int)$stmt->fetchColumn();
     $stmt=$db->prepare('SELECT o.id AS own_id,o.label AS own_title,o.match_group,i.id AS candidate_id,i.source_id,i.url,i.title,i.title_source,s.score,t.id AS target_id,t.match_confirmed,t.last_success,t.last_attempt,t.observation'.$from." LEFT JOIN competitor_targets t ON t.source_id=i.source_id AND t.kind='product' AND t.url=i.url".$where.' ORDER BY o.label,i.source_id,s.score DESC,i.id LIMIT 50 OFFSET '.(($page-1)*50));$stmt->execute($args);$rows=$stmt->fetchAll();
-    foreach($rows as &$row){foreach(['own_id','candidate_id','score','target_id'] as $field)$row[$field]=$row[$field]===null?null:(int)$row[$field];$row['match_confirmed']=(bool)$row['match_confirmed'];$observation=$row['observation']?decode($row['observation']):null;$row['read_title']=$observation['title']??null;$row['identity']=competitors_identity_compare($row['own_title'],$row['read_title']?:$row['title'],$row['url']);$row['offers']=$observation['offers']??[];unset($row['observation']);$row['last_attempt']=$row['last_attempt']?decode($row['last_attempt']):null;}
+    foreach($rows as &$row){foreach(['own_id','candidate_id','score','target_id'] as $field)$row[$field]=$row[$field]===null?null:(int)$row[$field];$row['match_confirmed']=(bool)$row['match_confirmed'];$observation=$row['observation']?decode($row['observation']):null;$row['read_title']=$observation['title']??null;$row['identity']=competitors_identity_compare($row['own_title'],$row['read_title']?:$row['title'],$row['url']);$row['score']=$row['identity']['score'];$row['offers']=$observation['offers']??[];unset($row['observation']);$row['last_attempt']=$row['last_attempt']?decode($row['last_attempt']):null;}
     return ['rows'=>$rows,'total'=>$total,'page'=>$page,'page_size'=>50];
+}
+
+/** An observed interval, not a claim about the host's cron configuration. */
+function competitors_run_cadence(array $runs): array
+{
+    $times=[];foreach(array_slice($runs,0,10) as $run){$stamp=$run['started_at']??null;
+        if(is_string($stamp)&&preg_match('/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/D',$stamp))$times[]=strtotime($stamp);}
+    $times=array_values(array_unique($times));rsort($times);$gaps=[];
+    for($i=1;$i<count($times);++$i){$gap=$times[$i-1]-$times[$i];if($gap>0&&$gap<=86400)$gaps[]=$gap;}
+    return ['interval_seconds'=>count($gaps)>=2?(int)round(median($gaps)):null,'interval_samples'=>count($gaps)];
 }
 
 function competitors_monitoring_status(\PDO $db,string $directory,array $targets,array $runs,array $catalog): array
 {
     $now=time();$latest=$runs[0]??null;$last=$latest['finished_at']??$latest['started_at']??null;
-    $result=['last_run'=>$last,'runner_state'=>!$last?'never':($now-strtotime($last)>1200?'overdue':'recent'),'last_batch'=>$latest,
+    $cadence=competitors_run_cadence($runs);
+    $result=['observed_interval_seconds'=>$cadence['interval_seconds'],'interval_samples'=>$cadence['interval_samples'],'last_run'=>$last,'runner_state'=>!$last?'never':($now-strtotime($last)>1200?'overdue':'recent'),'last_batch'=>$latest,
         'interval_hours'=>24,'recommended_cron_minutes'=>1,'own_products'=>0,'own_prices'=>count(array_filter(($catalog['state']??'')==='ok'?($catalog['products']??[]):[],function($p){return !empty($p['offers']);})),
         'full_catalog'=>is_file($directory.'/competitor-full-catalog.json'),'remote_products'=>0,'pending'=>0,'due'=>0,'failed'=>0,'unconfirmed'=>0,'fresh'=>0,'sources'=>[],
         'price_lists'=>$db->query('SELECT * FROM competitor_price_lists ORDER BY source_id,label LIMIT 100')->fetchAll(),'discovery_enabled'=>(bool)$db->query('SELECT enabled FROM competitor_discovery_settings WHERE id=1')->fetchColumn()];

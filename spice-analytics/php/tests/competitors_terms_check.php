@@ -52,6 +52,12 @@ terms_expect(terms_row($matrix,'regular_discounts')['best_source_ids']===[],'Dif
 terms_expect(strpos(terms_row($matrix,'dispatch')['cells']['lavka']['display'],'рабочих')!==false,'Dispatch conditions retained');
 terms_expect(terms_row($matrix,'returns')['cells']['lavka']['state']==='fresh','Return conditions presented with evidence');
 
+// A full own catalogue sorts before terms in the real overview payload.
+$catalogue=[];for($i=0;$i<416;++$i)$catalogue[]=['id'=>1000+$i,'source_id'=>'lavka','kind'=>'product','enabled'=>true];
+$large=\Lavka\competitors_terms_comparison(array_merge($catalogue,$pages),$now);
+terms_expect(terms_row($large,'minimum_order')['cells']['lavka']['value']===300.0,'416 products must not hide an existing own terms source');
+terms_expect(terms_row($large,'minimum_order')['cells']['deluxe']['value']===200.0,'Full catalogue must not hide competitor conditions');
+
 $stale=terms_target(7,'deluxe','Минимальный заказ — 50 грн.','2026-10-20T10:00:00Z');
 $noLeader=\Lavka\competitors_terms_comparison([terms_target(1,'lavka','Минимальный заказ — 300 грн.'),$stale],$now);
 terms_expect(terms_row($noLeader,'minimum_order')['cells']['deluxe']['state']==='stale','Successful old snapshot is stale');
