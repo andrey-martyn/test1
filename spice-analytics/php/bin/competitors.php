@@ -89,23 +89,36 @@ function lavka_competitors_run(array $args, ?callable $transport = null, ?callab
         };
 
         if($discoveryOn && $deadline-$clock()>=27) {
-            $scan=$db->query("SELECT p.* FROM competitor_scan_pages p WHERE p.next_check_at<='".$stamp()."' ORDER BY (SELECT COALESCE(MAX(q.checked_at),'') FROM competitor_scan_pages q WHERE q.source_id=p.source_id),p.depth,p.id LIMIT 1")->fetch();
+          for($scanIndex=0;$scanIndex<min(8,$limit)&&$deadline-$clock()>=27;$scanIndex++){
+            $scan=$db->query("SELECT p.* FROM competitor_scan_pages p WHERE p.next_check_at<='".$stamp()."' ORDER BY (SELECT COALESCE(MAX(q.checked_at),'') FROM competitor_scan_pages q WHERE q.source_id=p.source_id),(p.kind='product'),p.depth,p.id LIMIT 1")->fetch();
             if($scan) {
-                $summary['discovery']=['checked'=>0,'links'=>0,'pages'=>0,'failed'=>0];
+                $summary['discovery']=$summary['discovery']??['checked'=>0,'links'=>0,'pages'=>0,'failed'=>0];
                 try {
                     $response=\Lavka\competitors_http_fetch($scan['url'],$transport,$guard,$scan['kind']==='sitemap');
                     $found=\Lavka\competitors_scan_parse($db,$scan,$response['body'],$response['url']);
                     $db->prepare("UPDATE competitor_scan_pages SET checked_at=?,next_check_at=?,state='ok',error_code=NULL,errors=0 WHERE id=?")->execute([$stamp(),gmdate('Y-m-d\TH:i:s\Z',(int)$clock()+604800),$scan['id']]);
-                    $summary['discovery']=['checked'=>1,'failed'=>0]+$found;
-                }catch(LavkaCompetitorDeferred $deferred){$summary['discovery']['deferred']=1;}
+                    if($scan['kind']==='product'){
+                        // Reuse this very HTTP response for existing watched pages.
+                        // A catalogue scan must not immediately download it again.
+                        $watched=$db->prepare("SELECT * FROM competitor_targets WHERE enabled=1 AND kind='product' AND source_id=? AND url=?");$watched->execute([$scan['source_id'],$scan['url']]);
+                        foreach($watched->fetchAll() as $target){
+                            try{$observation=\Lavka\competitors_parse($target,$response['body'],$response['url']);\Lavka\competitors_record_attempt($db,(int)$target['id'],$observation,null,$stamp(),$response['status']);$summary['discovery']['prices_loaded']=($summary['discovery']['prices_loaded']??0)+1;}
+                            catch(\Lavka\CompetitorParseError $error){\Lavka\competitors_record_attempt($db,(int)$target['id'],null,$error->errorCode,$stamp(),$response['status']);}
+                        }
+                    }
+                    $summary['discovery']['checked']++;$summary['discovery']['links']+=$found['links'];$summary['discovery']['pages']+=$found['pages'];
+                }catch(LavkaCompetitorDeferred $deferred){$summary['discovery']['deferred']=1;break;}
                 catch(\Throwable $error){$code=$error instanceof \Lavka\CompetitorHttpError?$error->errorCode:($error instanceof \Lavka\CompetitorParseError?$error->getMessage():'scan_error');if(!preg_match('/^[a-z_]{1,60}$/D',$code))$code='scan_error';
                     $db->prepare("UPDATE competitor_scan_pages SET checked_at=?,next_check_at=?,state='error',error_code=?,errors=errors+1 WHERE id=?")->execute([$stamp(),gmdate('Y-m-d\TH:i:s\Z',(int)$clock()+min(86400,3600*(1<<(min(4,(int)$scan['errors']))))),$code,$scan['id']]);
-                    $summary['discovery']['checked']=1;$summary['discovery']['failed']=1;
+                    $summary['discovery']['checked']++;$summary['discovery']['failed']++;
                 }
             }
+            if(!$scan||$scan['kind']!=='product')break;
+          }
             $summary['matching']=\Lavka\competitors_discovery_match($db,true);
         }
-        $targets = \Lavka\competitors_due($db, $limit, $ownCatalogTargetIds);
+        $targetBudget=max(0,$limit-($summary['discovery']['checked']??0));
+        $targets = $targetBudget?\Lavka\competitors_due($db, $targetBudget, $ownCatalogTargetIds):[];
         foreach ($targets as $position => $target) {
             // A fresh robots check and product each have their own 12s total
             // timeout; reserve enough budget before starting the next target.

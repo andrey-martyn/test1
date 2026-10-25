@@ -1,0 +1,3 @@
+.loyalty-gender{margin-top:18px;padding-top:16px;border-top:1px solid var(--line);font-size:16px;line-height:1.6}.loyalty-gender>strong{display:block;color:var(--green-dark)}.loyalty-gender>strong>span{display:block;font-size:28px;margin-top:6px}.loyalty-gender p{font-size:14px;margin:8px 0}.loyalty-gender summary{cursor:pointer;min-height:32px;font-size:14px}.loyalty-table{min-width:900px}.loyalty-panel{margin-top:24px}.loyalty-table td{font-size:16px}.loyalty-table strong{font-size:20px}
+
+.regional-loyalty-details>summary{padding:10px 22px 18px;min-height:44px;font-size:16px;color:var(--green-dark);cursor:pointer}

@@ -3,6 +3,8 @@
 declare(strict_types=1);
 namespace Lavka;
 require_once __DIR__.'/common.php';
+require_once __DIR__.'/CompetitorIdentity.php';
+require_once __DIR__.'/CompetitorParser.php';
 
 /** The search index is separate from price observations and confirmations. */
 function competitors_discovery_schema(\PDO $db): void
@@ -19,14 +21,17 @@ function competitors_discovery_schema(\PDO $db): void
         CREATE TABLE IF NOT EXISTS competitor_suggestions(own_id INTEGER NOT NULL,candidate_id INTEGER NOT NULL,score INTEGER NOT NULL,
         PRIMARY KEY(own_id,candidate_id));
         CREATE TABLE IF NOT EXISTS competitor_discovery_settings(id INTEGER PRIMARY KEY CHECK(id=1),enabled INTEGER NOT NULL DEFAULT 0);");
+    $columns=array_column($db->query('PRAGMA table_info(competitor_search_index)')->fetchAll(),'name');
+    if(!in_array('details',$columns,true))$db->exec('ALTER TABLE competitor_search_index ADD COLUMN details TEXT');
+    $db->exec('CREATE TABLE IF NOT EXISTS competitor_price_lists(source_id TEXT NOT NULL,url TEXT NOT NULL,label TEXT NOT NULL,found_at TEXT NOT NULL,PRIMARY KEY(source_id,url))');
 }
 
 function competitors_scan_enqueue(\PDO $db,string $source,string $url,string $kind,int $depth=0): bool
 {
-    if ($source==='lavka' || !in_array($kind,['sitemap','catalog'],true) || $depth>6) return false;
+    if ($source==='lavka' || !in_array($kind,['sitemap','catalog','product'],true) || $depth>6) return false;
     try {$url=competitors_validate_url($url,$source);}catch(\InvalidArgumentException $ignored){return false;}
     $count=$db->prepare('SELECT count(*) FROM competitor_scan_pages WHERE source_id=?');$count->execute([$source]);
-    if ((int)$count->fetchColumn()>=1500)return false;
+    if ((int)$count->fetchColumn()>=4000)return false;
     $stmt=$db->prepare('INSERT OR IGNORE INTO competitor_scan_pages(source_id,url,kind,depth,next_check_at) VALUES(?,?,?,?,?)');
     $stmt->execute([$source,$url,$kind,$depth,utc_now()]);return $stmt->rowCount()>0;
 }
@@ -94,6 +99,7 @@ function competitors_index_link(\PDO $db,string $source,string $url,string $titl
     $stmt=$db->prepare('SELECT count(*) FROM competitor_search_index WHERE source_id=?');$stmt->execute([$source]);if((int)$stmt->fetchColumn()>=20000)return false;
     $stmt=$db->prepare('INSERT OR IGNORE INTO competitor_search_index(source_id,url,title,title_source,seen_at) VALUES(?,?,?,?,?)');$stmt->execute([$source,$url,$title,$titleSource,utc_now()]);
     // A real product title supersedes a name inferred from a URL, never vice versa.
+    if($titleSource==='catalog')$db->prepare("UPDATE competitor_search_index SET title=?,title_source='catalog',seen_at=? WHERE source_id=? AND url=? AND title_source<>'page'")->execute([$title,utc_now(),$source,$url]);
     if($titleSource==='page'){$db->prepare("UPDATE competitor_search_index SET title=?,title_source='page',seen_at=? WHERE source_id=? AND url=?")->execute([$title,utc_now(),$source,$url]);}
     return true;
 }
@@ -108,6 +114,15 @@ function competitors_scan_parse_inner(\PDO $db,array $task,string $body,string $
     if($task['kind']==='sitemap' && substr($body,0,2)==="\x1f\x8b"){$body=@gzdecode($body,2097152);if($body===false)throw new CompetitorParseError('sitemap_invalid');}
     if(strlen($body)>2097152)throw new CompetitorParseError('response_too_large');
     $found=0;$pages=0;
+    if($task['kind']==='product'){
+        list($doc,$xp)=competitor_dom($body);$scope=competitor_main_node($xp);
+        $title=competitor_first_text($xp,['.//h1'],$scope);
+        if($title==='')throw new CompetitorParseError('product_title_unavailable');
+        $observation=null;try{$observation=competitors_parse(['source_id'=>$task['source_id'],'kind'=>'product','grams_override'=>null],$body,$url);}catch(CompetitorParseError $ignored){}
+        competitors_index_link($db,$task['source_id'],$url,$title,'page');
+        $db->prepare('UPDATE competitor_search_index SET details=? WHERE source_id=? AND url=?')->execute([encode(['read_at'=>utc_now(),'observation'=>$observation]),$task['source_id'],$url]);
+        return ['links'=>1,'pages'=>0];
+    }
     if($task['kind']==='sitemap'){
         if(stripos($body,'<!DOCTYPE')!==false || stripos($body,'<!ENTITY')!==false)throw new CompetitorParseError('sitemap_invalid');
         $previous=libxml_use_internal_errors(true);$dom=new \DOMDocument();
@@ -126,15 +141,21 @@ function competitors_scan_parse_inner(\PDO $db,array $task,string $body,string $
         }
     }else {
         $observation=['links'=>[]];try{$observation=competitors_parse(['source_id'=>$task['source_id'],'kind'=>'catalog','grams_override'=>null],$body,$url);}catch(CompetitorParseError $ignored){}
-        foreach($observation['links'] as $link)$found+=(int)competitors_index_link($db,$task['source_id'],$link['url'],$link['title'],'page');
+        foreach($observation['links'] as $link){$found+=(int)competitors_index_link($db,$task['source_id'],$link['url'],$link['title'],'catalog');
+            if(!competitors_identity_jar($link['title'],$link['url']))competitors_scan_enqueue($db,$task['source_id'],$link['url'],'product',(int)$task['depth']+1);
+        }
         $previous=libxml_use_internal_errors(true);$dom=new \DOMDocument();
-        try{$dom->loadHTML($body,LIBXML_NONET);$xp=new \DOMXPath($dom);
+        try{list($dom,$xp)=competitor_dom($body);
             foreach($xp->query('//a[@href] | //link[@rel="next" and @href]') as $i=>$node){if($i>5000)break;
                 $href=competitor_absolute_url($node->getAttribute('href'),$url);if(!$href)continue;
                 $text=mb_strtolower(trim($node->textContent));$path=parse_url($href,PHP_URL_PATH)?:'';
                 $params=[];parse_str(parse_url($href,PHP_URL_QUERY)??'',$params);
                 $category=($params['route']??'')==='product/category'||preg_match('~/(?:catalog|category|katalog|spetsii|spetsiyi|pryanosti|spices)(?:/|$)~iu',$path);
                 $menu=false;for($parent=$node;$parent instanceof \DOMElement;$parent=$parent->parentNode){if(strtolower($parent->tagName)==='nav'||preg_match('/(?:^|[ _-])(?:menu|navbar|navigation|category-list|sidebar)(?:$|[ _-])/i',$parent->getAttribute('class'))){$menu=true;break;}}
+                if(preg_match('/(?:прайс|прай[сc]|price[ -]?list|прайслист)/iu',$text)&&preg_match('~\.(?:csv|xlsx?|xml|pdf)$~i',$path)){
+                    try{$safe=competitors_validate_url($href,$task['source_id']);$db->prepare('INSERT OR REPLACE INTO competitor_price_lists VALUES(?,?,?,?)')->execute([$task['source_id'],$safe,mb_substr($node->textContent,0,160),utc_now()]);}catch(\InvalidArgumentException $ignored){}continue;
+                }
+                if($menu&&!preg_match('~\.(?:html?|jpg|png|pdf|zip|xlsx?)$~i',$path))$category=true;
                 $pagination=$node->getAttribute('rel')==='next'||preg_match('~(?:[?&](?:page|PAGEN_1)=\d{1,3}(?:&|$)|/page/\d{1,3}/?$)~',$href);
                 if(in_array($href,array_column($observation['links'],'url'),true))continue;
                 if(($category&&(!preg_match('~\.(?:html?|jpg|png|pdf)$~i',$path)||$menu)&&!preg_match('~/(?:reviews|otzyvy|blog)/~i',$path))||$pagination)
@@ -148,14 +169,14 @@ function competitors_scan_parse_inner(\PDO $db,array $task,string $body,string $
 /** Name similarity only proposes links; it never establishes product identity. */
 function competitors_name_tokens(string $name): array
 {
-    $s=mb_strtolower(html_entity_decode($name,ENT_QUOTES,'UTF-8'));
+    $s=mb_strtolower(html_entity_decode(competitors_identity_name($name),ENT_QUOTES,'UTF-8'));
     $s=preg_replace('/\d+(?:[.,]\d+)?\s*(?:кг|kg|гр|г|g|мл|ml)\b/iu',' ',$s);
     $s=strtr($s,['ё'=>'е','і'=>'и','ї'=>'и','є'=>'е','ґ'=>'г']);
     $s=strtr($s,['а'=>'a','б'=>'b','в'=>'v','г'=>'g','д'=>'d','е'=>'e','ж'=>'zh','з'=>'z','и'=>'i','й'=>'i','к'=>'k','л'=>'l','м'=>'m','н'=>'n','о'=>'o','п'=>'p','р'=>'r','с'=>'s','т'=>'t','у'=>'u','ф'=>'f','х'=>'h','ц'=>'ts','ч'=>'ch','ш'=>'sh','щ'=>'sh','ы'=>'i','э'=>'e','ю'=>'yu','я'=>'ya','ь'=>'','ъ'=>'']);
     $s=strtr($s,['koritsya'=>'koritsa','korica'=>'koritsa','tseilons'=>'ceylons','tsejlons'=>'ceylons','chorn'=>'chern','tsil'=>'tsel','chasnik'=>'chesnok','kmin'=>'tmin','kurkum'=>'kurkum','pryanosti'=>'','spetsii'=>'','spetsiyi'=>'','spices'=>'']);
     preg_match_all('/[a-z]{3,}/',$s,$matches);$tokens=[];
-    foreach($matches[0] as $token){if(in_array($token,['kupit','kupiti','kupyty','kupiti','kupit','tsena','cena','price','product','catalog','content','html','gramm','gram','premium','quality','paket','upakovka','natural','online','shop','ru','ua'],true))continue;
-        foreach(['turmeric'=>'kurkum','clove'=>'clove','nutmeg'=>'muskat','ginger'=>'imbir','caraway'=>'tmin','cumin'=>'zira','kumin'=>'zira','rosemary'=>'rozmarin','basil'=>'bazilik','sesame'=>'kunzhut','vanilla'=>'vanil','garlic'=>'chesnok','dill'=>'ukrop','fennel'=>'fenhel','cocoa'=>'kakao','cacao'=>'kakao','coconut'=>'kokos','kokos'=>'kokos','sugar'=>'sahar','molot'=>'ground','melen'=>'ground','ground'=>'ground','tsel'=>'whole','whole'=>'whole','ceylon'=>'ceylon','kassi'=>'cassia','cassia'=>'cassia','kurkum'=>'kurkum','gvozdik'=>'clove','koriandr'=>'coriander','coriander'=>'coriander','cinnamon'=>'koritsa','paprik'=>'paprika','kardamon'=>'cardamom','cardamom'=>'cardamom','chern'=>'black','black'=>'black','bel'=>'white','bil'=>'white','white'=>'white','krasn'=>'red','red'=>'red','kopchen'=>'smoked','kopchen'=>'smoked','smoked'=>'smoked'] as $prefix=>$canonical)if(strpos($token,$prefix)===0){$token=$canonical;break;}
+    foreach($matches[0] as $token){if(in_array($token,['kupit','kupiti','kupyty','kupiti','kupit','tsena','cena','price','product','catalog','content','html','gramm','gram','premium','quality','paket','upakovka','natural','online','shop','ru','ua','doypack','doy','pack','zip','kraft','rossip','rossyp','rozsip','fasovka','fasovki','ves','weight','vag','rozvazhniy','nasipom'],true))continue;
+        foreach(['turmeric'=>'kurkum','clove'=>'clove','nutmeg'=>'muskat','ginger'=>'imbir','caraway'=>'tmin','cumin'=>'zira','kumin'=>'zira','rosemary'=>'rozmarin','basil'=>'bazilik','sesame'=>'kunzhut','vanilla'=>'vanil','garlic'=>'chesnok','dill'=>'ukrop','krip'=>'ukrop','fennel'=>'fenhel','cocoa'=>'kakao','cacao'=>'kakao','coconut'=>'kokos','kokos'=>'kokos','sugar'=>'sahar','semya'=>'seed','semen'=>'seed','simin'=>'seed','nasin'=>'seed','seed'=>'seed','zelen'=>'leaf','list'=>'leaf','leaf'=>'leaf','sushen'=>'dried','sushon'=>'dried','sush'=>'dried','drobl'=>'crushed','podrib'=>'crushed','crush'=>'crushed','granul'=>'granulated','hlop'=>'flakes','plastiv'=>'flakes','molot'=>'ground','melen'=>'ground','ground'=>'ground','tsel'=>'whole','whole'=>'whole','ceylon'=>'ceylon','kassi'=>'cassia','cassia'=>'cassia','kurkum'=>'kurkum','gvozdik'=>'clove','koriandr'=>'coriander','coriander'=>'coriander','cinnamon'=>'koritsa','paprik'=>'paprika','kardamon'=>'cardamom','cardamom'=>'cardamom','chern'=>'black','black'=>'black','bel'=>'white','bil'=>'white','white'=>'white','krasn'=>'red','red'=>'red','kopchen'=>'smoked','kopchen'=>'smoked','smoked'=>'smoked'] as $prefix=>$canonical)if(strpos($token,$prefix)===0){$token=$canonical;break;}
         $token=preg_replace('/(?:skaya|skii|skiy|skyi|skaya|naya|nii|nyi|aya|oyu|ogo|aya|yaya|yi|iy|ya)$/','',$token);
         if(strlen($token)>=3)$tokens[$token]=true;
     }
@@ -164,22 +185,28 @@ function competitors_name_tokens(string $name): array
 
 function competitors_name_score(array $a,array $b): int
 {
-    foreach([['ground','whole'],['ceylon','cassia'],['black','white','red']] as $group){$x=array_values(array_intersect($a,$group));$y=array_values(array_intersect($b,$group));if($x&&$y&&!array_intersect($x,$y))return 0;}
-    $weak=['ground','whole','black','white','red','smoked'];$core=array_intersect(array_diff($a,$weak),array_diff($b,$weak));if(!$core)return 0;
+    foreach([['ground','whole','crushed','granulated','flakes'],['seed','leaf'],['ceylon','cassia'],['black','white','red']] as $group){$x=array_values(array_intersect($a,$group));$y=array_values(array_intersect($b,$group));if($x&&$y&&!array_intersect($x,$y))return 0;}
+    $weak=['ground','whole','crushed','granulated','flakes','seed','leaf','dried','black','white','red','smoked'];$core=array_intersect(array_diff($a,$weak),array_diff($b,$weak));if(!$core)return 0;
     $common=count(array_intersect($a,$b));return (int)round(100*(.6*$common/max(1,count($a))+.4*$common/max(1,count($b))));
 }
 
 function competitors_discovery_match(\PDO $db,bool $autoWatch=false): array
 {
-    $index=$db->query('SELECT * FROM competitor_search_index ORDER BY id LIMIT 80000')->fetchAll();$byToken=[];$tokens=[];
-    foreach($index as $i=>$row){$tokens[$i]=competitors_name_tokens($row['title']);foreach($tokens[$i] as $token)$byToken[$token][]=$i;}
+    $index=$db->query('SELECT id,source_id,url,title,title_source,seen_at FROM competitor_search_index ORDER BY id LIMIT 80000')->fetchAll();$byToken=[];$tokens=[];$profiles=[];
+    foreach($index as $i=>$row){$profiles[$i]=competitors_identity_profile($row['title'],$row['url']);$tokens[$i]=$profiles[$i]['tokens'];foreach($tokens[$i] as $token)$byToken[$token][]=$i;}
     $own=$db->query("SELECT * FROM competitor_targets WHERE enabled=1 AND kind='product' AND source_id='lavka' AND match_group<>'' ORDER BY id")->fetchAll();
     $suggestions=[];$auto=[];$used=[];
-    foreach($own as $product){$a=competitors_name_tokens($product['label']);$pool=[];foreach(array_diff($a,['ground','whole','black','white','red','smoked']) as $token)foreach($byToken[$token]??[] as $i)$pool[$i]=true;$rank=[];
-        foreach(array_keys($pool) as $i){$score=competitors_name_score($a,$tokens[$i]);if($score<45)continue;$source=$index[$i]['source_id'];$rank[$source][]=['row'=>$index[$i],'score'=>$score];}
-        foreach($rank as $source=>$items){usort($items,function($x,$y){return $y['score']<=>$x['score']?:$x['row']['id']<=>$y['row']['id'];});
-            foreach(array_slice($items,0,3) as $item)$suggestions[]=[$product['id'],$item['row']['id'],$item['score']];
-            if($items[0]['score']>=60 && (!isset($items[1])||$items[0]['score']-$items[1]['score']>=10)){
+    // Excluded packaging remains in the audit history, outside active comparisons.
+    if($autoWatch)foreach($db->query("SELECT * FROM competitor_targets WHERE enabled=1 AND kind='product' AND source_id<>'lavka'") as $old){
+        $observation=$old['observation']?decode($old['observation']):null;$offers=$observation['offers']??[];
+        $jar=competitors_identity_jar($observation['title']??$old['label'],$old['url'])||($offers&&!array_filter($offers,function($o){return ($o['packaging']??'unknown')!=='jar';}));
+        if($jar)$db->prepare('UPDATE competitor_targets SET enabled=0,match_confirmed=0,updated_at=? WHERE id=?')->execute([utc_now(),$old['id']]);
+    }
+    foreach($own as $product){$ownProfile=competitors_identity_profile($product['label']);$a=$ownProfile['tokens'];$pool=[];foreach(array_diff($a,['ground','whole','crushed','granulated','flakes','seed','leaf','dried','black','white','red','smoked']) as $token)foreach($byToken[$token]??[] as $i)$pool[$i]=true;$rank=[];
+        foreach(array_keys($pool) as $i){$identity=competitors_identity_compare($product['label'],$index[$i]['title'],$index[$i]['url'],$ownProfile,$profiles[$i]);$score=$identity['score'];if($score<45)continue;$source=$index[$i]['source_id'];$rank[$source][]=['row'=>$index[$i],'score'=>$score,'exact'=>$identity['exact']];}
+        foreach($rank as $source=>$items){usort($items,function($x,$y){return $y['score']<=>$x['score']?:(int)(bool)competitor_weight($x['row']['title'])<=>(int)(bool)competitor_weight($y['row']['title'])?:$x['row']['id']<=>$y['row']['id'];});
+            foreach(array_slice($items,0,3) as $item){$suggestions[]=[$product['id'],$item['row']['id'],$item['score']];if($autoWatch)competitors_scan_enqueue($db,$source,$item['row']['url'],'product',1);}
+            if($items[0]['score']>=60 && (!isset($items[1])||$items[0]['score']-$items[1]['score']>=10||($items[0]['exact']&&$items[1]['exact']))){
                 $best=$items[0];$key=$best['row']['id'];$auto[$key][]=['own'=>$product,'candidate'=>$best['row'],'score'=>$best['score']];
             }
         }
@@ -187,9 +214,12 @@ function competitors_discovery_match(\PDO $db,bool $autoWatch=false): array
     $db->beginTransaction();try{$db->exec('DELETE FROM competitor_suggestions');$insert=$db->prepare('INSERT INTO competitor_suggestions VALUES(?,?,?)');foreach($suggestions as $row)$insert->execute($row);$db->commit();}catch(\Throwable $e){if($db->inTransaction())$db->rollBack();throw $e;}
     $added=0;
     if($autoWatch)foreach($auto as $items){usort($items,function($a,$b){return $b['score']<=>$a['score'];});if(isset($items[1])&&$items[0]['score']-$items[1]['score']<10)continue;$item=$items[0];
-        $exists=$db->prepare("SELECT 1 FROM competitor_targets WHERE source_id=? AND kind='product' AND (url=? OR (enabled=1 AND match_group=?))");$exists->execute([$item['candidate']['source_id'],$item['candidate']['url'],$item['own']['match_group']]);if($exists->fetchColumn())continue;
+        $exists=$db->prepare("SELECT 1 FROM competitor_targets WHERE source_id=? AND kind='product' AND url=?");$exists->execute([$item['candidate']['source_id'],$item['candidate']['url']]);if($exists->fetchColumn())continue;
         if($added>=40)break;
-        try{competitors_save_target($db,['source_id'=>$item['candidate']['source_id'],'kind'=>'product','url'=>$item['candidate']['url'],'label'=>$item['candidate']['title'],'match_group'=>$item['own']['match_group'],'match_confirmed'=>false]);$added++;}catch(CompetitorConflict $ignored){}
+        try{$saved=competitors_save_target($db,['source_id'=>$item['candidate']['source_id'],'kind'=>'product','url'=>$item['candidate']['url'],'label'=>$item['candidate']['title'],'match_group'=>$item['own']['match_group'],'match_confirmed'=>false]);$added++;
+            $lookup=$db->prepare('SELECT details FROM competitor_search_index WHERE id=?');$lookup->execute([$item['candidate']['id']]);$cached=$lookup->fetchColumn();$details=$cached?decode($cached):null;
+            if(!empty($details['observation'])&&strtotime($details['read_at']??'')>=time()-172800)competitors_record_attempt($db,(int)$saved['id'],$details['observation'],null,$details['read_at'],200);
+        }catch(CompetitorConflict $ignored){}
     }
     return ['suggestions'=>count($suggestions),'queued_candidates'=>$added];
 }
@@ -230,7 +260,7 @@ function competitors_discovery_results(\PDO $db,string $search='',string $source
     $from=' FROM competitor_suggestions s JOIN competitor_targets o ON o.id=s.own_id JOIN competitor_search_index i ON i.id=s.candidate_id';
     $stmt=$db->prepare('SELECT count(*)'.$from.$where);$stmt->execute($args);$total=(int)$stmt->fetchColumn();
     $stmt=$db->prepare('SELECT o.id AS own_id,o.label AS own_title,o.match_group,i.id AS candidate_id,i.source_id,i.url,i.title,i.title_source,s.score,t.id AS target_id,t.match_confirmed,t.last_success,t.last_attempt,t.observation'.$from." LEFT JOIN competitor_targets t ON t.source_id=i.source_id AND t.kind='product' AND t.url=i.url".$where.' ORDER BY o.label,i.source_id,s.score DESC,i.id LIMIT 50 OFFSET '.(($page-1)*50));$stmt->execute($args);$rows=$stmt->fetchAll();
-    foreach($rows as &$row){foreach(['own_id','candidate_id','score','target_id'] as $field)$row[$field]=$row[$field]===null?null:(int)$row[$field];$row['match_confirmed']=(bool)$row['match_confirmed'];$observation=$row['observation']?decode($row['observation']):null;$row['read_title']=$observation['title']??null;$row['offers']=$observation['offers']??[];unset($row['observation']);$row['last_attempt']=$row['last_attempt']?decode($row['last_attempt']):null;}
+    foreach($rows as &$row){foreach(['own_id','candidate_id','score','target_id'] as $field)$row[$field]=$row[$field]===null?null:(int)$row[$field];$row['match_confirmed']=(bool)$row['match_confirmed'];$observation=$row['observation']?decode($row['observation']):null;$row['read_title']=$observation['title']??null;$row['identity']=competitors_identity_compare($row['own_title'],$row['read_title']?:$row['title'],$row['url']);$row['offers']=$observation['offers']??[];unset($row['observation']);$row['last_attempt']=$row['last_attempt']?decode($row['last_attempt']):null;}
     return ['rows'=>$rows,'total'=>$total,'page'=>$page,'page_size'=>50];
 }
 
@@ -240,7 +270,7 @@ function competitors_monitoring_status(\PDO $db,string $directory,array $targets
     $result=['last_run'=>$last,'runner_state'=>!$last?'never':($now-strtotime($last)>1200?'overdue':'recent'),'last_batch'=>$latest,
         'interval_hours'=>24,'recommended_cron_minutes'=>1,'own_products'=>0,'own_prices'=>count(array_filter(($catalog['state']??'')==='ok'?($catalog['products']??[]):[],function($p){return !empty($p['offers']);})),
         'full_catalog'=>is_file($directory.'/competitor-full-catalog.json'),'remote_products'=>0,'pending'=>0,'due'=>0,'failed'=>0,'unconfirmed'=>0,'fresh'=>0,'sources'=>[],
-        'discovery_enabled'=>(bool)$db->query('SELECT enabled FROM competitor_discovery_settings WHERE id=1')->fetchColumn()];
+        'price_lists'=>$db->query('SELECT * FROM competitor_price_lists ORDER BY source_id,label LIMIT 100')->fetchAll(),'discovery_enabled'=>(bool)$db->query('SELECT enabled FROM competitor_discovery_settings WHERE id=1')->fetchColumn()];
     foreach(competitors_sources() as $source)if($source['id']!=='lavka')$result['sources'][$source['id']]=['tracked'=>0,'pending'=>0,'failed'=>0,'fresh'=>0,'indexed'=>0,'scan_pending'=>0,'scan_errors'=>0,'last_scan'=>null,'scan_error'=>null];
     foreach($targets as $target){if(!$target['enabled']||$target['kind']!=='product')continue;if($target['source_id']==='lavka'){$result['own_products']++;continue;}
         $result['remote_products']++;$source=&$result['sources'][$target['source_id']];$source['tracked']++;

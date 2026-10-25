@@ -7,7 +7,8 @@ const appUrl=path=>{
   return appBase+'/index.php?'+params.toString();
 };
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const num=(n,d=0)=>Number(n||0).toLocaleString('ru-RU',{maximumFractionDigits:d});
+// Round presentation only; arithmetic, API payloads and exports keep their precision.
+const num=(n,d=0)=>Number(n||0).toLocaleString('ru-RU',{maximumFractionDigits:0});
 const fmtDate=d=>d?new Date(d.slice(0,10)+'T12:00:00').toLocaleDateString('ru-RU'):'—';
 const state={detailsOpen:{},regionalCitiesOpen:false,regionalPickerOpen:false,regionalTableOpen:false,regionalNotesOpen:false,regionalYears:null,regionalRegions:null,regionalWindow:'same',regionalMeasure:'count',regionalChannel:'all',regionalExpanded:false,idsLabel:'',gender:'all',view:'overview',privacy:true,page:1,search:'',reminder:'all',periodOnly:true,sort:'amount',productMode:'variants',productSort:'amount',mapMode:'ukraine',geoMetric:'count',meta:null,report:null,customer:null};
 const PAGE=35;

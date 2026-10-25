@@ -6,6 +6,8 @@
 Концепция «факт → следующий шаг → проверка результата», сравнение регионов
 по годам и план второй фазы GA4 / Search Console / SEO —
 [ACTIONABLE_ANALYTICS.md](ACTIONABLE_ANALYTICS.md). API Google пока не подключены.
+Округление интерфейса, повторные покупки по полу/регионам и уточнённый поиск
+пакетных товаров конкурентов — [LOYALTY_MATCHING.md](LOYALTY_MATCHING.md).
 
 Текущий план: сначала `https://test.lavka-speciy.com/analytics/`, затем при необходимости
 папка `/analytics/` на основном домене. Существующая тестовая копия ocStore сохраняется.

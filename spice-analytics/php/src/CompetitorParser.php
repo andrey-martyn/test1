@@ -109,7 +109,7 @@ function competitor_packaging(string $label): string
         'doypack' => '/(?:дой[\s\-‐‑–—]*пак|doy[\s-]*(?:pack|pak))/u',
         'kraft' => '/(?:крафт|kraft)/u',
         'zip' => '/(?:пакет[\s\-‐‑–—]*струна|zip[\s-]*(?:lock|bag)?|зіп[\s-]*пак|зип[\s-]*пак)/u',
-        'jar' => '/(?:баночк|банк[аиу]|jar)/u',
+        'jar' => '/(?:баночк|банк[аиуеі]|скло|склян|стекл|(?<!\p{L})(?:jar|glass|пэт|pet)(?!\p{L}))/u',
     ] as $type => $pattern) if (preg_match($pattern, $label)) $found[] = $type;
     return count($found) === 1 ? $found[0] : 'unknown';
 }
@@ -467,15 +467,21 @@ function competitor_source_variants(\DOMXPath $xpath, \DOMNode $scope, string $t
             $productId = $block->getAttribute('data-product-id');
             if (!preg_match('/^[1-9][0-9]{0,11}$/D', $productId) || $title === '' || normalize(competitor_first_text($xpath, ['.//h1'], $block)) !== normalize($title)) continue;
             $availability = competitor_availability(competitor_first_text($xpath, ['.//*[@itemprop="availability"]', './/*[contains(concat(" ",normalize-space(@class)," ")," product-availability ")]'], $block));
-            foreach ($xpath->query('.//input[@type="radio" and @data-price and @data-description and contains(concat(" ",normalize-space(@class)," ")," product-option-value ")]', $block) as $node) {
+            $pageCurrency=competitor_meta_currency($xpath)?:competitor_currency(competitor_first_text($xpath,['.//*[@itemprop="priceCurrency"]'],$block));
+            foreach ($xpath->query('.//input[@type="radio" and @data-price and @data-description and contains(concat(" ",normalize-space(@class)," ")," product-option-value ")] | .//select[starts-with(@name,"option[")]/option[@value and @data-price and @data-description]', $block) as $node) {
+                if(competitor_related_node($node,$block,$block))continue;
+                if($node->hasAttribute('data-price-prefix')&&$node->getAttribute('data-price-prefix')!=='=')continue;
                 $nativeId = $node->getAttribute('value');
-                if (!preg_match('/^[1-9][0-9]{0,11}$/D', $nativeId) || !preg_match('/^option\[([1-9][0-9]{0,11})\]$/D', $node->getAttribute('name'), $group)) continue;
+                $optionName=$node->nodeName==='option'?$node->parentNode->getAttribute('name'):$node->getAttribute('name');
+                if (!preg_match('/^[1-9][0-9]{0,11}$/D', $nativeId) || !preg_match('/^option\[([1-9][0-9]{0,11})\]$/D', $optionName, $group)) continue;
                 if ($node->hasAttribute('id') && strpos($node->getAttribute('id'), 'product-size-'.$productId.'-') !== 0) continue;
                 $money = competitor_variant_money($node->getAttribute('data-price'));
+                if(!$money&&$pageCurrency==='UAH'&&preg_match('/^\d+(?:[.,]\d{1,6})?$/D',trim($node->getAttribute('data-price'))))$money=['price'=>competitor_decimal($node->getAttribute('data-price')),'currency'=>$pageCurrency];
                 $grams = competitor_weight($node->getAttribute('data-description'));
                 $min = $node->getAttribute('data-min-quantity');
                 if (!$money || $grams === null || !preg_match('/^[1-9][0-9]{0,5}$/D', $min)) continue;
-                if (trim($node->getAttribute('data-special')) !== '') { $warnings[] = 'variant_sale_unresolved'; continue; }
+                $special=trim($node->getAttribute('data-special'));
+                if ($special !== '' && !preg_match('/^0+(?:[.,]0+)?$/D',$special)) { $warnings[] = 'variant_sale_unresolved'; continue; }
                 $name = competitor_text($node->getAttribute('data-name'));
                 $label = $name !== '' ? $name : competitor_text($node->getAttribute('data-description'));
                 $condition = (int) $min > 1 ? 'От '.$min.' упаковок' : '';
@@ -760,6 +766,7 @@ function competitors_parse_document(array $target, string $html, string $finalUr
         if ($offer['old_price'] !== null && bccomp($offer['old_price'], $offer['price'], 2) <= 0) $offer['old_price'] = null;
         $offer['label'] = mb_substr($offer['label'], 0, 200);
         $offer['packaging'] = $offer['packaging'] ?? competitor_packaging($offer['label']);
+        if($offer['packaging']==='unknown')$offer['packaging']=competitor_packaging($base['title']);
         unset($offer['_paired_variant']);
         $identity = [$offer['label'], $offer['grams'], $offer['currency'], $offer['min_quantity'], $offer['condition']];
         if (isset($offer['variant_id'])) $identity[] = $offer['variant_id'];
