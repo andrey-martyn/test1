@@ -5,6 +5,7 @@ namespace Lavka;
 
 require_once __DIR__ . '/common.php';
 require_once __DIR__ . '/Geo.php';
+require_once __DIR__ . '/GeoAudit.php';
 require_once __DIR__ . '/Marketing.php';
 require_once __DIR__ . '/GA4.php';
 require_once __DIR__ . '/Sync.php';
@@ -322,9 +323,6 @@ final class Analytics
         $marketing = marketing($this, $customers, $groups, $period, $asof, $year);
         $overdue = 0;
         $repeat = 0;
-        $withoutRegion = 0;
-        $ips = 0;
-        $resolved = 0;
         foreach ($customers as $c) {
             if ($c['reminder'] === 'overdue' && $c['followup_eligible']) {
                 $overdue++;
@@ -333,32 +331,24 @@ final class Analytics
                 $repeat++;
             }
         }
-        foreach ($period as $o) {
-            if (!empty($o['ip'])) {
-                $ips++;
-            }
-            if (!$this->geo->address($o)['zone']) {
-                $withoutRegion++;
-            }
-            if ($this->geo->lookup($o['ip'] ?? '') !== null) {
-                $resolved++;
-            }
-        }
         foreach ($activity as &$cell) $cell['amount'] = money($cell['amount']);
         unset($cell);
         $annual = history_summary($this, $valid, $groups, $dsu, $historyYears);
         $historyTotals = ['amount' => money(sum_orders($valid)), 'order_count' => count($valid), 'customer_count' => count($groups), 'quantity' => array_sum(array_column($annual, 'quantity')), 'kilograms' => even_round(array_sum(array_column($annual, 'kilograms')), 3)];
         $total = sum_orders($period);
         $crm = crm_build($this, $customers, $groups, $dsu, $asof, $currency);
-        return ['gender_filter' => $gender, 'gender_breakdown' => $genderBreakdown, 'year' => $year, 'as_of' => $asof, 'currency' => $currency, 'week_count' => $year ? week($year . '-12-28') : 0, 'scope' => $year ? 'year' : 'all', 'crm' => $crm, 'annual' => $annual, 'history_totals' => $historyTotals, 'calendar' => $columns, 'activity' => (object) $activity, 'duplicate_pairs' => identity_pairs($customers), 'customers' => $customers, 'products' => $productRows, 'locations' => $locations['mixed'], 'location_modes' => $locations, 'geoip' => $this->geo->metadata(), 'marketing' => $marketing, 'ga4' => $gender === 'all' ? ga4_report($this->db, $year, $asof, $currency, $period) : null, 'geo_quality' => ['orders' => count($period), 'public_ip' => $ips, 'address_without_region' => $withoutRegion, 'ip_resolved' => $resolved], 'weekly' => (object) $weekly, 'metrics' => ['amount' => money($total), 'order_count' => count($period), 'customer_count' => count($periodCustomers), 'average' => $period ? money(bcdiv($total, (string) count($period), 12)) : 0, 'overdue' => $overdue, 'repeat_customers' => $repeat, 'quantity' => array_sum(array_column($productRows, 'quantity')), 'kilograms' => even_round(array_sum(array_column($productRows, 'grams')) / 1000, 3)], 'duplicates' => $this->duplicates($customers)];
+        return ['gender_filter' => $gender, 'gender_breakdown' => $genderBreakdown, 'year' => $year, 'as_of' => $asof, 'currency' => $currency, 'week_count' => $year ? week($year . '-12-28') : 0, 'scope' => $year ? 'year' : 'all', 'crm' => $crm, 'annual' => $annual, 'history_totals' => $historyTotals, 'calendar' => $columns, 'activity' => (object) $activity, 'duplicate_pairs' => identity_pairs($customers), 'customers' => $customers, 'products' => $productRows, 'locations' => $locations['mixed'], 'location_modes' => $locations, 'geoip' => $this->geo->metadata(), 'marketing' => $marketing, 'ga4' => $gender === 'all' ? ga4_report($this->db, $year, $asof, $currency, $period) : null, 'geo_quality' => geo_quality($this->geo, $period), 'weekly' => (object) $weekly, 'metrics' => ['amount' => money($total), 'order_count' => count($period), 'customer_count' => count($periodCustomers), 'average' => $period ? money(bcdiv($total, (string) count($period), 12)) : 0, 'overdue' => $overdue, 'repeat_customers' => $repeat, 'quantity' => array_sum(array_column($productRows, 'quantity')), 'kilograms' => even_round(array_sum(array_column($productRows, 'grams')) / 1000, 3)], 'duplicates' => $this->duplicates($customers)];
     }
     public function geography(array $orders, DSU $dsu, string $mode): array
     {
         $locations = [];
         foreach ($orders as $o) {
             $loc = $this->geo->resolve($o, $mode);
-            $key = encode([normalize($loc['country']), normalize($loc['zone']), normalize($loc['city']), $loc['source']]);
-            $locations[$key] = $locations[$key] ?? array_merge($loc, ['count' => 0, 'amount' => '0', 'customers' => [], 'years' => []]);
+            $key = encode([$loc['country_code'] ?: normalize($loc['country']), $loc['zone_code'] ?: normalize($loc['zone']), normalize($loc['city'])]);
+            $locations[$key] = $locations[$key] ?? array_merge($loc, ['count'=>0,'amount'=>'0','customers'=>[],'years'=>[], 'sources'=>[], 'variants'=>[], 'zone_variants'=>[]]);
+            $locations[$key]['sources'][$loc['source']] = ($locations[$key]['sources'][$loc['source']] ?? 0)+1;
+            if ($loc['original_city'] !== '') $locations[$key]['variants'][$loc['original_city']] = ($locations[$key]['variants'][$loc['original_city']] ?? 0)+1;
+            if ($loc['original_zone'] !== '') $locations[$key]['zone_variants'][$loc['original_zone']] = ($locations[$key]['zone_variants'][$loc['original_zone']] ?? 0)+1;
             $loc =& $locations[$key];
             $y = calendar_year($o['date_added']);
             $loc['years'][$y] = $loc['years'][$y] ?? ['count' => 0, 'amount' => '0', 'customers' => []];
@@ -372,6 +362,9 @@ final class Analytics
         }
         $rows = [];
         foreach ($locations as $r) {
+            $r['source'] = count($r['sources'])===1 ? (string)key($r['sources']) : 'Несколько источников';
+            $r['zone_variants'] = array_slice($r['zone_variants'],0,20,true);
+            $r['variant_count'] = count($r['variants']);$r['variants'] = array_slice($r['variants'],0,20,true);
             foreach ($r['years'] as &$y) { $y['amount'] = money($y['amount']); $y['customers'] = count($y['customers']); }
             unset($y);
             $r['amount'] = money($r['amount']);
@@ -442,7 +435,7 @@ final class Analytics
         $history = ordered($this->history[$id] ?? [], function ($a, $b) {
             return strcmp($a['date_added'], $b['date_added']);
         });
-        return ['id' => $id, 'date' => $o['date_added'], 'status' => $this->statuses[$o['order_status_id']] ?? $o['order_status_id'], 'name' => $o['firstname'] . ' ' . $o['lastname'], 'email' => $o['email'], 'phone' => $o['telephone'], 'city' => $o['shipping_city'] ?: $o['payment_city'], 'zone' => $o['shipping_zone'] ?: $o['payment_zone'], 'country' => $o['shipping_country'] ?: $o['payment_country'], 'shipping_method' => $o['shipping_method'], 'payment_method' => $o['payment_method'], 'amount' => money(order_value($o)), 'currency' => $o['currency_code'], 'lines' => $lines, 'totals' => array_map(function ($t) use ($o) {
+        return ['id' => $id, 'date' => $o['date_added'], 'status' => $this->statuses[$o['order_status_id']] ?? $o['order_status_id'], 'name' => $o['firstname'] . ' ' . $o['lastname'], 'email' => $o['email'], 'phone' => $o['telephone'], 'city' => $o['shipping_city'] ?: $o['payment_city'], 'zone' => $o['shipping_zone'] ?: $o['payment_zone'], 'country' => $o['shipping_country'] ?: $o['payment_country'], 'geography' => ['shipping_city'=>$o['shipping_city'],'shipping_zone'=>$o['shipping_zone'],'shipping_country'=>$o['shipping_country'],'payment_city'=>$o['payment_city'],'payment_zone'=>$o['payment_zone'],'payment_country'=>$o['payment_country'],'resolved'=>$this->geo->resolve($o)], 'shipping_method' => $o['shipping_method'], 'payment_method' => $o['payment_method'], 'amount' => money(order_value($o)), 'currency' => $o['currency_code'], 'lines' => $lines, 'totals' => array_map(function ($t) use ($o) {
             return ['title' => $t['title'], 'code' => $t['code'], 'value' => money(times($t['value'], $o['currency_value']))];
         }, $totals), 'history' => array_map(function ($h) {
             return ['date' => $h['date_added'], 'status' => $this->statuses[$h['order_status_id']] ?? $h['order_status_id']];

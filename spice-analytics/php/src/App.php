@@ -76,7 +76,7 @@ function cached_report(\PDO $db, string $directory, int $year, string $asof, str
 {
     $cache = $directory . '/cache';
     private_dir($cache);
-    $key = hash('sha256', revision($db) . ':php-v4-name-gender:' . $year . ':' . $asof . ':' . $currency . ':' . $gender);
+    $key = hash('sha256', revision($db) . ':php-v5-canonical-geography:' . $year . ':' . $asof . ':' . $currency . ':' . $gender);
     $file = $cache . '/report-' . $key . '.json';
     if (is_file($file)) {
         return decode(file_get_contents($file));

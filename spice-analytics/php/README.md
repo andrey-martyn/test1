@@ -262,14 +262,20 @@ Cron исключает перекрытие задач и прогревает 
 
 ## География, GA4 и резервные копии
 
+Русские/украинские названия и области объединяются по локальному справочнику,
+пустой город при явном самовывозе в Одесе восстанавливается по месту получения.
+Исходные заказы сохраняются. Проверка источников, способов доставки и оставшихся
+пропусков находится на странице «Где покупают». Правила и диагностика: [GEOGRAPHY.md](GEOGRAPHY.md).
+
 IP не отправляются внешним API. Нужен отдельный легальный City MMDB; официальный
 MaxMind reader 1.14.0 включён с лицензией и provenance. Тестовая MMDB служит только
-для тестов и не подходит для географии покупателей. Реальная геобаза ещё не установлена.
+для тестов и не подходит для географии покупателей. Состояние установленной геобазы
+видно в отчёте; без неё IP остаются неопределёнными.
 GA4 — импорт CSV и сопоставление transaction_id=order_id; аккаунт и живые отчёты не подключены.
 
 ```sh
-php bin/import_geoip.php --data "$HOME/lavka-speciy.com/analytics-private" --file /PRIVATE/geoip-city.mmdb.gz
-php bin/backup.php --data "$HOME/lavka-speciy.com/analytics-private" --destination "$HOME/lavka-speciy.com/analytics-backups"
+/usr/local/php82/bin/php bin/import_geoip.php --data /home/lavkasp/lavka-speciy.com/analytics-private-test --file /PRIVATE/geoip-city.mmdb.gz
+/usr/local/php82/bin/php bin/backup.php --data /home/lavkasp/lavka-speciy.com/analytics-private-test --destination /home/lavkasp/lavka-speciy.com/analytics-backups-test
 ```
 
 Копия — SQLite Backup API на новом PHP, согласованный VACUUM INTO на PHP 7.3,
