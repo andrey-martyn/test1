@@ -109,6 +109,14 @@ foreach(["unknown","out_of_stock","preorder"] as $stock){
         record($db,$t,[offer("458",500)],$now);
     }
 }
+$ids["found_own"]=target($db,"lavka","found-own","Матрица К — хмели-сунели","matrix-low-found",false);
+record($db,$ids["found_own"],[offer("40"),offer("293",500)],$now);
+$ids["found_available"]=target($db,"deluxe","found-available","Хмели-сунели с наличием","matrix-low-found");
+record($db,$ids["found_available"],[offer("189",500)],$now);
+$ids["found_higher"]=target($db,"banka","found-higher","Хмели-сунели — другое предложение","matrix-low-found");
+record($db,$ids["found_higher"],[offer("130",500,"UAH","pack","","unknown")],$now);
+$ids["found_unknown"]=target($db,"banka","found-unknown","Хмели-сунели — наличие не распознано","matrix-low-found");
+record($db,$ids["found_unknown"],[offer("110",500,"UAH","pack","","unknown")],gmdate("Y-m-d\TH:i:s\Z",time()-3600));
 $ids["tie_own"]=target($db,"lavka","tie-own","Матрица Г — равные цены","matrix-tie",false);
 record($db,$ids["tie_own"],[offer("90")],$now);
 $ids["tie_deluxe"]=target($db,"deluxe","tie-deluxe","Матрица Г — равная цена конкурента","matrix-tie");
@@ -231,6 +239,12 @@ with tempfile.TemporaryDirectory() as temporary:
             assert price(main.locator("td[data-source=lavka]")) == 100
             assert price(main.locator("td[data-source=deluxe]")) == 90
             assert price(main.locator("td[data-source=banka]")) == 90
+            # A lower, fresh confirmed price with unknown stock gets an outline,
+            # while the filled minimum and calculations still require stock.
+            unknown_cell=main.locator("td[data-source=specii]")
+            assert unknown_cell.evaluate("el=>el.classList.contains('is-found-minimum')")
+            assert "Минимальная найденная цена" in unknown_cell.inner_text()
+            assert price(unknown_cell) == 1
             assert price(main.locator("td[data-source=spicery]")) is None
             assert main.locator("td[data-source=specii]").evaluate("el=>el.classList.contains('not-comparable')")
             assert not main.locator("td[data-source=specii]").evaluate("el=>el.classList.contains('is-best')")
@@ -489,6 +503,9 @@ with tempfile.TemporaryDirectory() as temporary:
                 cell = row.locator("td[data-source=banka]")
                 assert price(cell) == 253 and label in cell.inner_text()
                 assert "соответствие не подтверждено" in cell.inner_text()
+                read_at=cell.locator(".competitor-cell-date time").get_attribute("datetime")
+                assert read_at and "Цена прочитана" in cell.inner_text()
+                assert not cell.evaluate("el=>el.classList.contains('is-found-minimum')")
                 cell.locator("[data-comp-action=matrix-detail]").click()
                 page.wait_for_selector("#drawer[open]")
                 assert price(row.locator("td[data-source=banka]")) == 253
@@ -513,8 +530,10 @@ with tempfile.TemporaryDirectory() as temporary:
                 cell = matrix_row(page, group, 500).locator("td[data-source=banka]")
                 assert price(cell) == 253 and label in cell.inner_text()
                 assert "Товар подтверждён вами" in cell.inner_text()
+                assert cell.locator(".competitor-cell-date time").get_attribute("datetime") == read_at
                 assert not cell.get_attribute("data-price")
                 assert not cell.evaluate("el=>el.classList.contains('is-best')")
+                assert cell.evaluate("el=>el.classList.contains('is-found-minimum')") == (stock == "unknown")
                 actual = page.evaluate("group=>{const r=competitorMatrixRows().find(r=>r.group===group&&r.grams===500);return {minimum:r.competitorMinimum,comparable:r.comparable}}", group)
                 assert actual == {"minimum": 458 if stock == "unknown" else None,
                                   "comparable": stock == "unknown"}, actual
@@ -522,7 +541,34 @@ with tempfile.TemporaryDirectory() as temporary:
                     assert matrix_row(page, group, 500).locator("[data-matrix-select]").is_disabled()
                 page.click("[data-comp-action=refresh]")
                 page.wait_for_function("()=>!competitorState.loading")
-                assert price(matrix_row(page, group, 500).locator("td[data-source=banka]")) == 253
+                reloaded=matrix_row(page, group, 500).locator("td[data-source=banka]")
+                assert price(reloaded) == 253
+                assert reloaded.locator(".competitor-cell-date time").get_attribute("datetime") == read_at
+            found=matrix_row(page,"matrix-low-found",500)
+            available=found.locator("td[data-source=deluxe]")
+            unknown=found.locator("td[data-source=banka]")
+            assert price(available)==189 and price(unknown)==110
+            assert available.evaluate("el=>el.classList.contains('is-best')")
+            assert "минимум с наличием" in available.inner_text()
+            assert unknown.evaluate("el=>el.classList.contains('is-found-minimum')")
+            assert not unknown.evaluate("el=>el.classList.contains('is-best')")
+            assert "Минимальная найденная цена" in unknown.inner_text()
+            assert "Наша выше на 55%" in found.inner_text()
+            assert "минимум конкурентов 189 UAH с подтверждённым наличием" in found.inner_text()
+            assert "Найдена цена ниже: 110 UAH" in found.inner_text()
+            assert page.evaluate("(()=>{const r=competitorMatrixRows().find(r=>r.group==='matrix-low-found'&&r.grams===500);return {found:r.foundMinimum,calculation:r.competitorMinimum}})()") == {"found":110,"calculation":189}
+            # Every displayed price carries its actual successful reading date,
+            # irrespective of product confirmation or availability eligibility.
+            assert page.locator(".competitor-matrix td:has(.competitor-cell-price)").evaluate_all("els=>els.every(el=>el.querySelector('.competitor-cell-date time')?.dateTime)")
+            expected_date=page.evaluate("id=>competitorState.data.targets.find(t=>t.id===id).last_success",ids["found_unknown"])
+            assert unknown.locator("time").get_attribute("datetime")==expected_date
+            for width in [390,320,1440]:
+                page.set_viewport_size({"width":width,"height":900})
+                assert page.evaluate("document.documentElement.scrollWidth<=innerWidth")
+            page.fill("#competitor-search","Матрица К")
+            page.locator(".competitor-matrix-scroll").scroll_into_view_if_needed()
+            page.screenshot(path=str(ARTIFACTS / "found-minimum-and-reading-dates.png"))
+            page.fill("#competitor-search","Матрица")
             assert len(mutations) == 4 and all(json.loads(m["body"]) == {"match_confirmed": True} for m in mutations), mutations
             assert observation_digest(data) == before_prices
             page.select_option("#competitor-matrix-pack", "50")
@@ -543,6 +589,7 @@ with tempfile.TemporaryDirectory() as temporary:
                           "eligibility_currency_and_ties": "passed", "batch_and_row_preview": "passed",
                           "own_price_cap_and_no_price_writes": "passed", "explicit_link_confirmation": "passed",
                           "confirmed_unknown_out_of_stock_and_preorder_prices_remain_visible": "passed",
+                          "found_minimum_outline_and_all_price_reading_dates": "passed",
                           "own_db_catalog_and_no_missing_product_fallback": "passed",
                           "unmapped_seo_and_independent_own_rows": "passed",
                           "mobile_and_source_evidence": "passed"}))
