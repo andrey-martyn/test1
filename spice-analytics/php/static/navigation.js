@@ -1,7 +1,7 @@
 /* Browser entries contain opaque keys only. Filters, drafts and identities stay
    in memory and disappear on logout/reload; no notes go into URLs or storage. */
 const uiNavigation={entries:new Map(),aliases:new Map(),current:null,drawer:null,returnToCRM:null,restoring:false,serial:0,session:crypto.randomUUID(),pendingDraft:null,backPending:false};
-const navigationFields=['view','page','search','reminder','periodOnly','sort','productMode','productSort','mapMode','geoMetric','ordersMin','ordersMax','ordersBasis','segment','ids','eligibleOnly','actionMin','geoSource','cohortCount','historyOpen','seasonMetric','seasonYears','duplicateKind','duplicateSort','duplicateDir','duplicateCustomer','crmScope','crmTier','crmSort','crmDuplicates','manualTab','manualSegment','manualSearch'];
+const navigationFields=['gender','view','page','search','reminder','periodOnly','sort','productMode','productSort','mapMode','geoMetric','ordersMin','ordersMax','ordersBasis','segment','ids','eligibleOnly','actionMin','geoSource','cohortCount','historyOpen','seasonMetric','seasonYears','duplicateKind','duplicateSort','duplicateDir','duplicateCustomer','crmScope','crmTier','crmSort','crmDuplicates','manualTab','manualSegment','manualSearch'];
 function navigationCustomerId(id){
  id=String(id);if(state.report?.customers.some(c=>c.id===id))return id;const seen=new Set();while(uiNavigation.aliases.has(id)&&!seen.has(id)){seen.add(id);id=uiNavigation.aliases.get(id);}return id;
 }
@@ -38,7 +38,7 @@ function navigationInit(){
   navigationBefore();uiNavigation.restoring=true;
   try{
    navigationHideDrawer();uiNavigation.current=event.state.lavkaUI;uiNavigation.drawer=target.drawer;uiNavigation.returnToCRM=target.returnToCRM;
-   const changed=document.getElementById('year').value!==target.period||document.getElementById('as-of').value!==target.date||document.getElementById('currency').value!==target.currency;
+   const changed=document.getElementById('year').value!==target.period||document.getElementById('as-of').value!==target.date||document.getElementById('currency').value!==target.currency||(state.report?.gender_filter||'all')!==(genderFilterViews.has(target.filters.view)?target.filters.gender:'all');
    Object.assign(state,target.filters);document.getElementById('year').value=target.period;document.getElementById('as-of').value=target.date;document.getElementById('currency').value=target.currency;
    if(changed||(!state.report&&state.view!=='overview'))await load();Object.assign(state,target.filters);render();
    if(state.view==='overview'&&!dashboardState.data)await dashboardLoad();

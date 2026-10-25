@@ -66,11 +66,17 @@ function report_params(): array
     }
     return [$year, $asof, $currency];
 }
-function cached_report(\PDO $db, string $directory, int $year, string $asof, string $currency): array
+function report_gender(): string
+{
+    $gender = $_GET['gender'] ?? 'all';
+    if (!is_string($gender) || !in_array($gender, ['all', 'male', 'female', 'unknown'], true)) fail(422, 'Неверная группа по имени');
+    return $gender;
+}
+function cached_report(\PDO $db, string $directory, int $year, string $asof, string $currency, string $gender = 'all'): array
 {
     $cache = $directory . '/cache';
     private_dir($cache);
-    $key = hash('sha256', revision($db) . ':php-v3-reactivation:' . $year . ':' . $asof . ':' . $currency);
+    $key = hash('sha256', revision($db) . ':php-v4-name-gender:' . $year . ':' . $asof . ':' . $currency . ':' . $gender);
     $file = $cache . '/report-' . $key . '.json';
     if (is_file($file)) {
         return decode(file_get_contents($file));
@@ -89,7 +95,7 @@ function cached_report(\PDO $db, string $directory, int $year, string $asof, str
             if (!in_array($currency, $s->metadata()['currencies'], true)) {
                 fail(422, 'Неизвестная валюта');
             }
-            $r = $s->report($year, $asof, $currency);
+            $r = $s->report($year, $asof, $currency, $gender);
             $db->commit();
         } catch (\Throwable $e) {
             if ($db->inTransaction()) {
@@ -328,7 +334,7 @@ function run_app(string $directory, string $publicUrl, string $assets, string $l
         }
         if ($path === '/api/report' && $method === 'GET') {
             [$year, $asof, $currency] = report_params();
-            respond(cached_report($db, $directory, $year, $asof, $currency));
+            respond(cached_report($db, $directory, $year, $asof, $currency, report_gender()));
         }
         if ($path === '/api/dashboard') {
             if ($method !== 'GET') fail(405, 'Метод не поддерживается');

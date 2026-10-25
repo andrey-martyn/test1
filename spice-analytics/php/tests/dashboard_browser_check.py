@@ -221,8 +221,11 @@ if ($file !== false && strpos($file, '/test-data/site/') === 0 && is_file($file)
             page.click('[data-action=close-dialog]')
             page.click('[data-dash-action=market-health]');assert 'Когда обновлялись данные' in page.locator('#drawer-content').inner_text();assert page.locator('#drawer-content tbody tr').count()==4;page.click('[data-action=close-dialog]')
             page.click('[data-dash-action=inventory]');assert 'пока не подключены' in page.locator('#drawer-content').inner_text();page.click('[data-action=close-dialog]')
+            page.wait_for_function('() => !uiNavigation.backPending && !uiNavigation.restoring')
             hints=[]
             for hint in page.locator('.dash-kpi .help-trigger').all():
+                hint.scroll_into_view_if_needed()
+                page.evaluate('() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
                 hint.hover();page.wait_for_selector('#help-popup:not([hidden])')
                 hints.append(page.locator('#help-popup').inner_text())
                 assert not page.locator('#drawer').evaluate('el=>el.open')

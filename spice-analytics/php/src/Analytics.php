@@ -10,6 +10,7 @@ require_once __DIR__ . '/GA4.php';
 require_once __DIR__ . '/Sync.php';
 require_once __DIR__ . '/History.php';
 require_once __DIR__ . '/CRM.php';
+require_once __DIR__ . '/Gender.php';
 final class Analytics
 {
     public $db;
@@ -141,14 +142,27 @@ final class Analytics
         }
         return $dsu;
     }
-    public function report(int $year, string $asof, string $currency): array
+    public function report(int $year, string $asof, string $currency, string $gender = 'all'): array
     {
+        if ($gender !== 'all' && !isset(NAME_GENDER_LABELS[$gender])) throw new \InvalidArgumentException('Неверная группа по имени');
         $before = array_values(array_filter($this->orders, function ($o) use ($asof) {
             return substr($o['date_added'], 0, 10) <= $asof;
         }));
         $dsu = $this->identity($before);
         $valid = array_values(array_filter($before, function ($o) use ($currency) {
             return in_array($o['order_status_id'], $this->settings['status_ids'], true) && $o['currency_code'] === $currency;
+        }));
+        $allGroups = [];
+        foreach ($valid as $o) $allGroups[$dsu->find($o['order_id'])][] = $o;
+        $genders = [];
+        foreach ($allGroups as $cid => $orders) $genders[$cid] = customer_gender_estimate($orders);
+        unset($allGroups, $orders);
+        $unfilteredPeriod = array_values(array_filter($valid, function ($o) use ($year) {
+            return $year === 0 || calendar_year($o['date_added']) === $year;
+        }));
+        $genderBreakdown = gender_sales_breakdown($unfilteredPeriod, $dsu, $genders);
+        if ($gender !== 'all') $valid = array_values(array_filter($valid, function ($o) use ($gender, $genders, $dsu) {
+            return ($genders[$dsu->find($o['order_id'])] ?? 'unknown') === $gender;
         }));
         $period = array_values(array_filter($valid, function ($o) use ($year) {
             return $year === 0 || calendar_year($o['date_added']) === $year;
@@ -240,6 +254,8 @@ final class Analytics
             $customers[] = ['id' => (string) $cid, 'name' => trim($latest['firstname'] . ' ' . $latest['lastname']) ?: 'Гость', 'email' => $latest['email'], 'phone' => $latest['telephone'], 'emails' => $emails, 'phones' => $phones, 'city' => $latest['shipping_city'] ?: $latest['payment_city'], 'country' => $latest['shipping_country'] ?: $latest['payment_country'], 'order_count' => count($selected), 'lifetime_count' => count($orders), 'amount' => money(sum_orders($selected)), 'lifetime_amount' => money(sum_orders($orders)), 'average' => $selected ? money(bcdiv(sum_orders($selected), (string) count($selected), 12)) : 0, 'last_order' => end($dates), 'days_since' => $since, 'interval_days' => $interval, 'personal_interval' => $personal, 'due_on' => add_days(end($dates), $interval), 'overdue_days' => max(0, $overdue), 'reminder' => $reminder, 'followup_eligible' => $eligible, 'action' => $action ?: new \stdClass(), 'suppression' => $suppression, 'account_count' => count($accounts), 'manual' => $manual, 'activity' => (object) $customerActivity, 'weeks' => (object) $weeks, 'order_ids' => $ids];
         }
         unset($orders);
+        foreach ($customers as &$customer) $customer['gender_estimate'] = $genders[$customer['id']] ?? 'unknown';
+        unset($customer);
         usort($customers, function ($a, $b) {
             return $b['amount'] <=> $a['amount'];
         });
@@ -334,7 +350,7 @@ final class Analytics
         $historyTotals = ['amount' => money(sum_orders($valid)), 'order_count' => count($valid), 'customer_count' => count($groups), 'quantity' => array_sum(array_column($annual, 'quantity')), 'kilograms' => even_round(array_sum(array_column($annual, 'kilograms')), 3)];
         $total = sum_orders($period);
         $crm = crm_build($this, $customers, $groups, $dsu, $asof, $currency);
-        return ['year' => $year, 'as_of' => $asof, 'currency' => $currency, 'week_count' => $year ? week($year . '-12-28') : 0, 'scope' => $year ? 'year' : 'all', 'crm' => $crm, 'annual' => $annual, 'history_totals' => $historyTotals, 'calendar' => $columns, 'activity' => (object) $activity, 'duplicate_pairs' => identity_pairs($customers), 'customers' => $customers, 'products' => $productRows, 'locations' => $locations['mixed'], 'location_modes' => $locations, 'geoip' => $this->geo->metadata(), 'marketing' => $marketing, 'ga4' => ga4_report($this->db, $year, $asof, $currency, $period), 'geo_quality' => ['orders' => count($period), 'public_ip' => $ips, 'address_without_region' => $withoutRegion, 'ip_resolved' => $resolved], 'weekly' => (object) $weekly, 'metrics' => ['amount' => money($total), 'order_count' => count($period), 'customer_count' => count($periodCustomers), 'average' => $period ? money(bcdiv($total, (string) count($period), 12)) : 0, 'overdue' => $overdue, 'repeat_customers' => $repeat, 'quantity' => array_sum(array_column($productRows, 'quantity')), 'kilograms' => even_round(array_sum(array_column($productRows, 'grams')) / 1000, 3)], 'duplicates' => $this->duplicates($customers)];
+        return ['gender_filter' => $gender, 'gender_breakdown' => $genderBreakdown, 'year' => $year, 'as_of' => $asof, 'currency' => $currency, 'week_count' => $year ? week($year . '-12-28') : 0, 'scope' => $year ? 'year' : 'all', 'crm' => $crm, 'annual' => $annual, 'history_totals' => $historyTotals, 'calendar' => $columns, 'activity' => (object) $activity, 'duplicate_pairs' => identity_pairs($customers), 'customers' => $customers, 'products' => $productRows, 'locations' => $locations['mixed'], 'location_modes' => $locations, 'geoip' => $this->geo->metadata(), 'marketing' => $marketing, 'ga4' => $gender === 'all' ? ga4_report($this->db, $year, $asof, $currency, $period) : null, 'geo_quality' => ['orders' => count($period), 'public_ip' => $ips, 'address_without_region' => $withoutRegion, 'ip_resolved' => $resolved], 'weekly' => (object) $weekly, 'metrics' => ['amount' => money($total), 'order_count' => count($period), 'customer_count' => count($periodCustomers), 'average' => $period ? money(bcdiv($total, (string) count($period), 12)) : 0, 'overdue' => $overdue, 'repeat_customers' => $repeat, 'quantity' => array_sum(array_column($productRows, 'quantity')), 'kilograms' => even_round(array_sum(array_column($productRows, 'grams')) / 1000, 3)], 'duplicates' => $this->duplicates($customers)];
     }
     public function geography(array $orders, DSU $dsu, string $mode): array
     {

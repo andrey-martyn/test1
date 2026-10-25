@@ -1,0 +1,19 @@
+.report-controls{flex-wrap:wrap}
+#gender-control[hidden],#gender-filter-note[hidden]{display:none}
+#gender-control select{min-width:175px;max-width:100%;font-size:16px;min-height:44px}
+#gender-filter-note{margin:-9px 0 22px;color:var(--muted);font-size:14px;line-height:1.6;overflow-wrap:anywhere}
+.gender-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;padding:0 23px 23px}
+.gender-card{border:1px solid var(--line);border-radius:10px;min-width:0;padding:16px;background:#fff}
+.gender-card.selected{border:2px solid var(--green);padding:15px;background:#f1f7f3}
+.gender-group{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:44px;padding:0 0 10px;border:0;background:transparent;color:var(--green-dark);font-size:18px;font-weight:650;text-align:left}
+.gender-group:hover{text-decoration:underline}
+.gender-group:focus-visible{outline:2px solid var(--green);outline-offset:4px;border-radius:4px}
+.gender-card dl{display:grid;grid-template-columns:1fr 1fr;gap:16px 12px;margin:12px 0}
+.gender-card dl>div{min-width:0}
+.gender-card dt{font-size:14px;color:var(--muted);margin-bottom:5px}
+.gender-card dd{font-size:18px;font-weight:600;margin:0;overflow-wrap:anywhere}
+.gender-card p{font-size:14px;line-height:1.6;color:var(--muted);margin:16px 0 0}
+.gender-comparison .panel-heading{flex-wrap:wrap;gap:12px}
+.gender-comparison .panel-heading h2{line-height:1.5}
+@media(max-width:1200px){.gender-cards{grid-template-columns:1fr}.gender-card dl{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:720px){.gender-cards{padding:0 18px 18px;gap:12px}.gender-card dl{grid-template-columns:1fr 1fr}.report-controls #gender-control{flex:1 1 175px;min-width:0}.report-controls #gender{width:100%;min-width:0}.gender-comparison .panel-heading>div{min-width:0}}
