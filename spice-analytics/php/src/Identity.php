@@ -21,7 +21,7 @@ function merge_identity_pairs(\PDO $db, string $directory, array $pairs, string 
     try {
         $store = new Analytics($db, $directory);
         if (!in_array($currency, $store->metadata()['currencies'], true)) fail(422, 'Неизвестная валюта');
-        $report = $store->report(0, $asof, $currency);
+        $report = $store->report(0, $asof, $currency, 'all', false);
         $available = array_fill_keys(array_column($report['duplicate_pairs'], 'id'), true);
         foreach ($normalized as $key => $_) if (!isset($available[$key])) fail(409, 'Совпадения изменились. Обновите таблицу и выберите пары заново.');
         $nodes = [];

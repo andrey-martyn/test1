@@ -9,6 +9,7 @@ final class Geo
     private $reader = null;
     private $error = null;
     private $cache = [];
+    private $addressCache = [];
     public function __construct(string $directory)
     {
         $autoload = dirname(__DIR__) . '/vendor/autoload.php';
@@ -58,14 +59,21 @@ final class Geo
     }
     public function address(array $o): array
     {
+        $fields=['shipping_city','shipping_zone','shipping_country','payment_city','payment_zone','payment_country','shipping_method'];
+        $key=encode(array_map(function($field)use($o){return $o[$field]??'';},$fields));
+        if(!isset($this->addressCache[$key]))$this->addressCache[$key]=$this->resolveAddress($o);
+        return $this->addressCache[$key];
+    }
+    private function resolveAddress(array $o): array
+    {
         $shipping = $this->location($o, 'shipping_', 'Адрес доставки', 'shipping');
-        if ($shipping['city'] !== '') return $shipping;
-        // A collection location does not assert the buyer's home and never
-        // overwrites an explicit delivery city.
-        if ($this->pickupOdesa($o) && ($shipping['country'] === '' || $shipping['country_code'] === 'UA')) {
+        // The explicitly selected Odesa collection method identifies fulfillment,
+        // including when the checkout retained the buyer's city in address fields.
+        if ($this->pickupOdesa($o)) {
             return geo_canonical(['city'=>'Одеса','zone'=>'Одеська область','zone_code'=>'UA-51','country'=>'Україна',
                 'country_code'=>'UA','original_city'=>'','original_zone'=>'','source'=>'По месту самовывоза','source_kind'=>'pickup','pickup_rule'=>'odesa']);
         }
+        if ($shipping['city'] !== '') return $shipping;
         if ($shipping['zone'] !== '') return $shipping;
         $payment = $this->location($o, 'payment_', 'Адрес оплаты', 'payment');
         if ($payment['city'] !== '' || $payment['zone'] !== '') return $payment;

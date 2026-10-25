@@ -95,6 +95,7 @@ function geo_city_part(string $city): string
     // A village must not be turned into a homonymous city by dropping its type.
     if (preg_match('/^(?:с\.|село\b|селище\b|смт\b|пгт\b)/iu', $city)) return $city;
     $city = preg_replace('/^(?:(?:город|місто)\s+|[гм]\.\s*|[гм]\s+)(?=\p{L})/iu', '', $city);
+    if(preg_match('/^(.+?)\s*\(([^()]*)\)\s*$/u',$city,$parts)&&geo_region($parts[2])!=='')$city=trim($parts[1]);
     return trim(explode(',', $city, 2)[0]);
 }
 function geo_canonical(array $location): array
@@ -107,6 +108,7 @@ function geo_canonical(array $location): array
     $location['original_zone'] = $location['original_zone'] ?? $rawZone;
     if (($countryCode !== '' && $countryCode !== 'UA') || ($country !== '' && $countryCode === '')) return $location;
     $zoneCode = isset(geo_regions()['rows'][$location['zone_code']]) ? $location['zone_code'] : geo_region($rawZone);
+    if($zoneCode===''&&$rawZone===''&&preg_match('/\(([^()]*)\)\s*$/u',$rawCity,$parts))$zoneCode=geo_region($parts[1]);
     if ($zoneCode !== '') {
         $location['zone_code'] = $zoneCode;$location['zone'] = geo_regions()['rows'][$zoneCode];
         $location['country'] = 'Україна';$location['country_code'] = 'UA';

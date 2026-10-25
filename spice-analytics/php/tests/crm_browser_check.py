@@ -34,7 +34,7 @@ with tempfile.TemporaryDirectory() as tmp:
    context=browser.new_context(viewport={'width':1536,'height':1000},permissions=['clipboard-read','clipboard-write'])
    page=context.new_page();errors=[];external=[]
    page.on('pageerror',lambda e:errors.append(str(e)));page.on('request',lambda r:external.append(r.url) if not r.url.startswith(origin+'/analytics/') else None)
-   page.goto(base+'/');page.fill('#password',password);page.click('button[type=submit]');page.click('[data-view=customers]');page.wait_for_selector('.customer-table')
+   page.goto(base+'/');page.fill('#password',password);page.click('button[type=submit]');page.wait_for_selector('.dash-board');page.click('[data-view=customers]');page.wait_for_selector('.customer-table')
    page.fill('#as-of','2026-10-20');page.dispatch_event('#as-of','change');page.wait_for_function('() => state.report.as_of==="2026-10-20"')
    page.click('#privacy');page.click('[data-view=actions]');page.select_option('#crm-scope','all')
    assert page.locator('.crm-queue tbody tr').count()==3
@@ -57,7 +57,9 @@ with tempfile.TemporaryDirectory() as tmp:
    page.check('#crm-prompt-notes');assert 'Просит напомнить' in page.locator('#crm-prompt').input_value();page.uncheck('#crm-prompt-notes')
    ai=page.locator('#crm-ai-form');ai.locator('[name=ai_text]').fill('<script>window.__aiExecuted=true</script> Уточнить срок пополнения.');ai.locator('button[type=submit]').click();page.wait_for_function('() => crmCard?.events.length===3 && !crmSaving')
    assert not page.evaluate('!!window.__aiExecuted')
-   page.locator('[data-help-title="Помощник ChatGPT"]').hover();assert page.locator('#drawer #help-popup').is_visible();page.keyboard.press('Escape')
+   hint=page.locator('[data-help-title="Помощник ChatGPT"]');hint.scroll_into_view_if_needed()
+   page.evaluate('() => new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+   hint.hover();page.wait_for_selector('#drawer #help-popup:not([hidden])');page.keyboard.press('Escape')
    out=ROOT/'test-results';out.mkdir(exist_ok=True);page.screenshot(path=str(out/'crm-journal.png'),full_page=True)
    order=deepcopy(rows['oc_order']['1']);order.update(order_id='10',total='150',date_added='2026-10-15 12:00:00',date_modified='2026-10-15 12:00:00');rows['oc_order']['10']=order
    line=deepcopy(rows['oc_order_product']['1']);line.update(order_product_id='10',order_id='10',total='150');rows['oc_order_product']['10']=line

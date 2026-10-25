@@ -6,6 +6,7 @@ namespace Lavka;
 require_once __DIR__ . '/common.php';
 require_once __DIR__ . '/Geo.php';
 require_once __DIR__ . '/GeoAudit.php';
+require_once __DIR__ . '/Regional.php';
 require_once __DIR__ . '/Marketing.php';
 require_once __DIR__ . '/GA4.php';
 require_once __DIR__ . '/Sync.php';
@@ -143,7 +144,7 @@ final class Analytics
         }
         return $dsu;
     }
-    public function report(int $year, string $asof, string $currency, string $gender = 'all'): array
+    public function report(int $year, string $asof, string $currency, string $gender = 'all', bool $includeRegional = true): array
     {
         if ($gender !== 'all' && !isset(NAME_GENDER_LABELS[$gender])) throw new \InvalidArgumentException('Неверная группа по имени');
         $before = array_values(array_filter($this->orders, function ($o) use ($asof) {
@@ -302,6 +303,7 @@ final class Analytics
             $p['amount'] = money($p['amount']);
             $p['order_count'] = count($p['orders']);
             $p['customers'] = count($p['pairs']);
+            $p['customer_ids'] = array_map('strval', array_keys($p['pairs']));
             $p['repeat_customers'] = count(array_filter($p['pairs'], function ($ids) {
                 return count($ids) > 1;
             }));
@@ -337,7 +339,12 @@ final class Analytics
         $historyTotals = ['amount' => money(sum_orders($valid)), 'order_count' => count($valid), 'customer_count' => count($groups), 'quantity' => array_sum(array_column($annual, 'quantity')), 'kilograms' => even_round(array_sum(array_column($annual, 'kilograms')), 3)];
         $total = sum_orders($period);
         $crm = crm_build($this, $customers, $groups, $dsu, $asof, $currency);
-        return ['gender_filter' => $gender, 'gender_breakdown' => $genderBreakdown, 'year' => $year, 'as_of' => $asof, 'currency' => $currency, 'week_count' => $year ? week($year . '-12-28') : 0, 'scope' => $year ? 'year' : 'all', 'crm' => $crm, 'annual' => $annual, 'history_totals' => $historyTotals, 'calendar' => $columns, 'activity' => (object) $activity, 'duplicate_pairs' => identity_pairs($customers), 'customers' => $customers, 'products' => $productRows, 'locations' => $locations['mixed'], 'location_modes' => $locations, 'geoip' => $this->geo->metadata(), 'marketing' => $marketing, 'ga4' => $gender === 'all' ? ga4_report($this->db, $year, $asof, $currency, $period) : null, 'geo_quality' => geo_quality($this->geo, $period), 'weekly' => (object) $weekly, 'metrics' => ['amount' => money($total), 'order_count' => count($period), 'customer_count' => count($periodCustomers), 'average' => $period ? money(bcdiv($total, (string) count($period), 12)) : 0, 'overdue' => $overdue, 'repeat_customers' => $repeat, 'quantity' => array_sum(array_column($productRows, 'quantity')), 'kilograms' => even_round(array_sum(array_column($productRows, 'grams')) / 1000, 3)], 'duplicates' => $this->duplicates($customers)];
+        $regional=null;
+        if($includeRegional){
+            $coverageStart='';foreach($before as $order)if($order['currency_code']===$currency){$date=substr($order['date_added'],0,10);if($coverageStart===''||$date<$coverageStart)$coverageStart=$date;}
+            $regional=regional_report($this,$valid,$groups,$dsu,$asof,$coverageStart);
+        }
+        return ['regional' => $regional, 'gender_filter' => $gender, 'gender_breakdown' => $genderBreakdown, 'year' => $year, 'as_of' => $asof, 'currency' => $currency, 'week_count' => $year ? week($year . '-12-28') : 0, 'scope' => $year ? 'year' : 'all', 'crm' => $crm, 'annual' => $annual, 'history_totals' => $historyTotals, 'calendar' => $columns, 'activity' => (object) $activity, 'duplicate_pairs' => identity_pairs($customers), 'customers' => $customers, 'products' => $productRows, 'locations' => $locations['mixed'], 'location_modes' => $locations, 'geoip' => $this->geo->metadata(), 'marketing' => $marketing, 'ga4' => $gender === 'all' ? ga4_report($this->db, $year, $asof, $currency, $period) : null, 'geo_quality' => geo_quality($this->geo, $period), 'weekly' => (object) $weekly, 'metrics' => ['amount' => money($total), 'order_count' => count($period), 'customer_count' => count($periodCustomers), 'average' => $period ? money(bcdiv($total, (string) count($period), 12)) : 0, 'overdue' => $overdue, 'repeat_customers' => $repeat, 'quantity' => array_sum(array_column($productRows, 'quantity')), 'kilograms' => even_round(array_sum(array_column($productRows, 'grams')) / 1000, 3)], 'duplicates' => $this->duplicates($customers)];
     }
     public function geography(array $orders, DSU $dsu, string $mode): array
     {
@@ -345,12 +352,21 @@ final class Analytics
         foreach ($orders as $o) {
             $loc = $this->geo->resolve($o, $mode);
             $key = encode([$loc['country_code'] ?: normalize($loc['country']), $loc['zone_code'] ?: normalize($loc['zone']), normalize($loc['city'])]);
-            $locations[$key] = $locations[$key] ?? array_merge($loc, ['count'=>0,'amount'=>'0','customers'=>[],'years'=>[], 'sources'=>[], 'variants'=>[], 'zone_variants'=>[]]);
+            $locations[$key] = $locations[$key] ?? array_merge($loc, ['count'=>0,'amount'=>'0','customers'=>[],'years'=>[], 'sources'=>[], 'variants'=>[], 'zone_variants'=>[], 'channels'=>[]]);
             $locations[$key]['sources'][$loc['source']] = ($locations[$key]['sources'][$loc['source']] ?? 0)+1;
             if ($loc['original_city'] !== '') $locations[$key]['variants'][$loc['original_city']] = ($locations[$key]['variants'][$loc['original_city']] ?? 0)+1;
             if ($loc['original_zone'] !== '') $locations[$key]['zone_variants'][$loc['original_zone']] = ($locations[$key]['zone_variants'][$loc['original_zone']] ?? 0)+1;
+            $kind=regional_channel($this->geo,$o);$cid=$dsu->find($o['order_id']);$y=calendar_year($o['date_added']);
+            $channels=&$locations[$key]['channels'];
+            if(!isset($channels[$kind]))$channels[$kind]=['count'=>0,'amount'=>'0','customers'=>[],'years'=>[],'sources'=>[],'variants'=>[],'zone_variants'=>[]];
+            $channel=&$channels[$kind];++$channel['count'];$channel['amount']=plus($channel['amount'],order_value($o));$channel['customers'][$cid]=true;
+            $channel['sources'][$loc['source']]=($channel['sources'][$loc['source']]??0)+1;
+            if($loc['original_city']!=='')$channel['variants'][$loc['original_city']]=($channel['variants'][$loc['original_city']]??0)+1;
+            if($loc['original_zone']!=='')$channel['zone_variants'][$loc['original_zone']]=($channel['zone_variants'][$loc['original_zone']]??0)+1;
+            if(!isset($channel['years'][$y]))$channel['years'][$y]=['count'=>0,'amount'=>'0','customers'=>[]];
+            ++$channel['years'][$y]['count'];$channel['years'][$y]['amount']=plus($channel['years'][$y]['amount'],order_value($o));$channel['years'][$y]['customers'][$cid]=true;
+            unset($channel,$channels);
             $loc =& $locations[$key];
-            $y = calendar_year($o['date_added']);
             $loc['years'][$y] = $loc['years'][$y] ?? ['count' => 0, 'amount' => '0', 'customers' => []];
             ++$loc['years'][$y]['count'];
             $loc['years'][$y]['amount'] = plus($loc['years'][$y]['amount'], order_value($o));
@@ -362,6 +378,12 @@ final class Analytics
         }
         $rows = [];
         foreach ($locations as $r) {
+            foreach($r['channels'] as &$channel){
+                $channel['amount']=money($channel['amount']);$channel['customers']=count($channel['customers']);
+                $channel['variant_count']=count($channel['variants']);$channel['variants']=array_slice($channel['variants'],0,20,true);$channel['zone_variants']=array_slice($channel['zone_variants'],0,20,true);
+                $channel['source']=count($channel['sources'])===1?(string)key($channel['sources']):'Несколько источников';
+                foreach($channel['years'] as &$year){$year['amount']=money($year['amount']);$year['customers']=count($year['customers']);}unset($year);
+            }unset($channel);
             $r['source'] = count($r['sources'])===1 ? (string)key($r['sources']) : 'Несколько источников';
             $r['zone_variants'] = array_slice($r['zone_variants'],0,20,true);
             $r['variant_count'] = count($r['variants']);$r['variants'] = array_slice($r['variants'],0,20,true);

@@ -119,7 +119,7 @@ function crm_context(\PDO $db, string $directory, string $cid, string $asof, str
 {
     $s = new Analytics($db, $directory);
     if (!valid_date($asof) || !in_array($currency, $s->metadata()['currencies'], true)) fail(422, 'Неверная дата или валюта');
-    $r = $s->report(0, $asof, $currency); $customer = null;
+    $r = $s->report(0, $asof, $currency, 'all', false); $customer = null;
     foreach ($r['customers'] as $c) if ($c['id'] === $cid) { $customer = $c; break; }
     if (!$customer) fail(404, 'Карточка изменилась. Обновите отчёт.');
     $before = array_values(array_filter($s->orders, function ($o) use ($asof) { return substr($o['date_added'], 0, 10) <= $asof; }));

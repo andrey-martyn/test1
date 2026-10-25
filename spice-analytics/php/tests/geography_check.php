@@ -57,7 +57,7 @@ try{
     }
     foreach(['Самовывоз Одесса','Самовивіз м. Одеса','Самовивіз в Одесі','Самовывоз в Одессе','Pickup Odessa','Самовивіз з Одеси'] as $method)geo_verify($geo->pickupOdesa(['shipping_method'=>$method]),'Pickup recognition '.$method);
     foreach(['Самовывоз','Курьер Одесса','Самовывоз Новая Одесса','Самовывоз в Новой Одессе','Самовивіз у Новій Одесі','Самовывоз Одесса недоступен','Не самовывоз Одесса'] as $method)geo_verify(!$geo->pickupOdesa(['shipping_method'=>$method]),'No invented pickup '.$method);
-    $explicit=$geo->resolve(['shipping_city'=>'Киев','shipping_country'=>'Украина','shipping_method'=>'Самовывоз Одесса','ip'=>'81.2.69.160']);geo_verify($explicit['city']==='Київ'&&$explicit['source_kind']==='shipping','Delivery city outranks pickup and IP');
+    $explicit=$geo->resolve(['shipping_city'=>'Киев','shipping_country'=>'Украина','shipping_method'=>'Самовывоз Одесса','ip'=>'81.2.69.160']);geo_verify($explicit['city']==='Одеса'&&$explicit['source_kind']==='pickup','Explicit collection identifies fulfillment, not retained buyer city');
     $partial=$geo->resolve(['shipping_zone'=>'Одесская обл.','shipping_country'=>'Украина','ip'=>'81.2.69.160']);geo_verify($partial['zone_code']==='UA-51'&&$partial['city']==='Город не указан','Partial destination is not replaced by foreign IP');
     $known=$geo->resolve(['shipping_country'=>'Украина','ip'=>'81.2.69.160']);geo_verify($known['country_code']==='UA'&&$known['source_kind']==='unknown','Known country is not replaced by IP');
     geo_verify($geo->resolve(['ip'=>'81.2.69.160'])['country_code']==='GB','IP fallback when no destination is known');
@@ -68,11 +68,11 @@ try{
     $db=\Lavka\database($directory.'/analytics.sqlite3');\Lavka\init_schema($db);$fixture=geography_fixture();\Lavka\apply_snapshot($db,$fixture,'test');
     $s=new \Lavka\Analytics($db,$directory);$report=$s->report(0,'2026-12-31','UAH');
     $odesa=array_values(array_filter($report['locations'],function($l){return $l['city']==='Одеса';}));
-    geo_verify(count($odesa)===1&&$odesa[0]['count']===3&&$odesa[0]['customers']===2&&$odesa[0]['amount']===600.0,'One city across spellings and sources with unique customers');
-    geo_verify($odesa[0]['sources']===['Адрес доставки'=>2,'По месту самовывоза'=>1]&&count($odesa[0]['variants'])===2,'Sources and real original names remain visible');
-    geo_verify($odesa[0]['years'][2025]['customers']===1&&$odesa[0]['years'][2026]['customers']===2,'Annual unique customers are recalculated');
+    geo_verify(count($odesa)===1&&$odesa[0]['count']===4&&$odesa[0]['customers']===3&&$odesa[0]['amount']===1000.0,'One city across spellings and sources with unique customers');
+    geo_verify($odesa[0]['sources']===['Адрес доставки'=>2,'По месту самовывоза'=>2]&&count($odesa[0]['variants'])===2,'Sources and real original names remain visible');
+    geo_verify($odesa[0]['years'][2025]['customers']===1&&$odesa[0]['years'][2026]['customers']===3,'Annual unique customers are recalculated');
     foreach($report['location_modes'] as $mode=>$locations){geo_verify(array_sum(array_column($locations,'count'))===16,'Each order occurs once '.$mode);geo_verify(array_sum(array_column($locations,'amount'))===$report['metrics']['amount'],'Amounts reconcile '.$mode);}
-    $q=$report['geo_quality'];geo_verify($q['pickup_odesa']===1&&$q['delivery_without_city']===6&&$q['public_ip']===4&&($q['modes']['mixed']['sources']['ip']??0)===1,'Audit counts reflect actual fields, public IPs and recovery');
+    $q=$report['geo_quality'];geo_verify($q['pickup_odesa']===2&&$q['delivery_without_city']===6&&$q['public_ip']===4&&($q['modes']['mixed']['sources']['ip']??0)===1,'Audit counts reflect actual fields, public IPs and recovery');
     geo_verify($s->order('3')['geography']['shipping_city']===''&&$s->order('3')['geography']['resolved']['city']==='Одеса','Order review shows raw fields and resolution');
     geo_verify($db->query("SELECT payload FROM raw_records WHERE table_name='oc_order' AND record_id='1'")->fetchColumn()!==false,'Raw snapshot remains available');
     $raw=$db->query("SELECT payload FROM raw_records WHERE table_name='oc_order'")->fetchAll(PDO::FETCH_COLUMN);geo_verify(in_array('Одесса',array_column(array_map('Lavka\\decode',$raw),'shipping_city'),true),'Original spelling is unchanged');

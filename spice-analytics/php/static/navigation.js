@@ -1,7 +1,7 @@
 /* Browser entries contain opaque keys only. Filters, drafts and identities stay
    in memory and disappear on logout/reload; no notes go into URLs or storage. */
 const uiNavigation={entries:new Map(),aliases:new Map(),current:null,drawer:null,returnToCRM:null,restoring:false,serial:0,session:crypto.randomUUID(),pendingDraft:null,backPending:false};
-const navigationFields=['gender','view','page','search','reminder','periodOnly','sort','productMode','productSort','mapMode','geoMetric','ordersMin','ordersMax','ordersBasis','segment','ids','eligibleOnly','actionMin','geoSource','cohortCount','historyOpen','seasonMetric','seasonYears','duplicateKind','duplicateSort','duplicateDir','duplicateCustomer','crmScope','crmTier','crmSort','crmDuplicates','manualTab','manualSegment','manualSearch'];
+const navigationFields=['detailsOpen','regionalCitiesOpen','regionalPickerOpen','regionalTableOpen','regionalNotesOpen','regionalYears','regionalRegions','regionalWindow','regionalMeasure','regionalChannel','regionalExpanded','idsLabel','gender','view','page','search','reminder','periodOnly','sort','productMode','productSort','mapMode','geoMetric','ordersMin','ordersMax','ordersBasis','segment','ids','eligibleOnly','actionMin','geoSource','cohortCount','historyOpen','seasonMetric','seasonYears','duplicateKind','duplicateSort','duplicateDir','duplicateCustomer','crmScope','crmTier','crmSort','crmDuplicates','manualTab','manualSegment','manualSearch'];
 function navigationCustomerId(id){
  id=String(id);if(state.report?.customers.some(c=>c.id===id))return id;const seen=new Set();while(uiNavigation.aliases.has(id)&&!seen.has(id)){seen.add(id);id=uiNavigation.aliases.get(id);}return id;
 }

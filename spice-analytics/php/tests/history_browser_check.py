@@ -45,6 +45,7 @@ with tempfile.TemporaryDirectory() as temporary:
             assert page.evaluate('state.report.calendar.length')==6
             page.screenshot(path=str(ROOT/'test-results/history-customers.png'),full_page=True)
             page.locator('.heat.active').first.click();page.wait_for_selector('#drawer .order-detail');page.click('[data-action=close-dialog]')
+            page.click('#navigation [data-area=sales]')
             if not page.locator('#history-summary').evaluate('(el)=>el.open'):page.locator('#history-summary>summary').click()
             page.locator('[data-action=history-year][data-year="2025"]').click();page.wait_for_function('() => state.report.year===2025')
             assert page.evaluate('state.report.metrics.amount')==200

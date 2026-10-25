@@ -179,7 +179,8 @@ if ($file !== false && strpos($file, '/test-data/site/') === 0 && is_file($file)
             assert page.locator(".dash-tasks .dash-task").count()==3
             assert page.locator(".dash-market-row").count()==1,"Only stable 500g variant generates a movement"
             assert "+10%" in page.locator(".dash-market-row").inner_text()
-            assert "Не подключено" in page.locator(".dash-bottom").inner_text()
+            assert "Не подключено" not in page.locator(".dash-bottom").inner_text()
+            assert not page.locator(".dashboard-connections").evaluate("el=>el.open")
             assert page.evaluate("window.dashboardXss") is None
             # Real sandbox banner text has to fit too, without hiding its warning.
             page.locator("#environment-banner").evaluate("el=>{el.dataset.mode='sandbox';el.innerHTML='<strong>Тестовая среда · lavkasp_test</strong><span>Продажи и каталог тестового магазина. Изменение цен доступно только после проверки плана.</span>'}")
@@ -220,6 +221,7 @@ if ($file !== false && strpos($file, '/test-data/site/') === 0 && is_file($file)
             assert 'не дата появления' in page.locator('#drawer-content').inner_text()
             page.click('[data-action=close-dialog]')
             page.click('[data-dash-action=market-health]');assert 'Когда обновлялись данные' in page.locator('#drawer-content').inner_text();assert page.locator('#drawer-content tbody tr').count()==4;page.click('[data-action=close-dialog]')
+            if not page.locator('.dashboard-connections').evaluate('el=>el.open'):page.locator('.dashboard-connections>summary').click()
             page.click('[data-dash-action=inventory]');assert 'пока не подключены' in page.locator('#drawer-content').inner_text();page.click('[data-action=close-dialog]')
             page.wait_for_function('() => !uiNavigation.backPending && !uiNavigation.restoring')
             hints=[]
@@ -275,7 +277,7 @@ if ($file !== false && strpos($file, '/test-data/site/') === 0 && is_file($file)
             for view in ['retention','opportunities','manual']:
                 page.click('[data-view='+view+']')
                 assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'),view
-            page.click('[data-view=products]');page.wait_for_selector('#content .panel')
+            page.click('[data-view=products]');page.wait_for_selector('#content .panel:visible')
             assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'),'products'
             page.click('[data-view=overview-report]');page.wait_for_selector('.mini-list')
             for view in ['seasonality','geography','ga4']:

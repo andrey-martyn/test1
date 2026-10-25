@@ -62,7 +62,8 @@ with tempfile.TemporaryDirectory() as temporary:
             page.wait_for_selector('.dash-board')
             assert page.locator('#gender-control').is_hidden()
             page.click('#navigation [data-area=sales]')
-            page.wait_for_selector('.gender-comparison')
+            page.wait_for_selector('.next-step')
+            page.locator('.gender-comparison').locator('..').locator(':scope > summary').click()
             page.select_option('#year','0')
             page.wait_for_function('() => state.report?.year===0 && state.report.metrics.amount===890')
             assert page.evaluate('state.report.gender_filter')=='all'

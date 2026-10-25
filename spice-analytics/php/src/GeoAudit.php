@@ -42,7 +42,9 @@ function geo_quality(Geo $geo, array $orders): array
             $key = encode([$mixed['city'],$mixed['zone']]);
             $unmatched[$key] = $unmatched[$key] ?? ['city'=>$mixed['city'],'zone'=>$mixed['zone'],'count'=>0];++$unmatched[$key]['count'];
         }
-        if (!geo_city_text($mixed['city']) || !$mixed['zone'] || $unknownName || $mixed['city_conflict']) {
+        // An unlisted village with a declared region is usable delivery data.
+        // Keep its spelling in diagnostics without making it an address error.
+        if (!geo_city_text($mixed['city']) || !$mixed['zone'] || $mixed['city_conflict']) {
             ++$q['needs_review'];
             $reason = $mixed['city_conflict'] ? 'Город не соответствует указанной области' : (!geo_city_text($mixed['city']) ? 'Город не удалось определить' : (!$mixed['zone'] ? 'Область не определена' : 'Название отсутствует в справочнике; сохранено как в заказе'));
             $q['unknown_orders'][] = ['id'=>(string)$o['order_id'],'date'=>substr($o['date_added'],0,10),
