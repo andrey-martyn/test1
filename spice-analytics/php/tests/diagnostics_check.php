@@ -22,7 +22,7 @@ try{
  $capture=lavka_competitor_evidence_capture($missing,['source_id'=>'banka','kind'=>'product','url'=>$response['url']],$response,null,'2026-10-25T12:00:00Z');
  dx_expect($capture===['state'=>'failed','error_code'=>'evidence_storage_failed'],'Evidence storage failures are observable without raw driver errors');
  $store=new \Lavka\Analytics($db,$dir);
- $client=['errors'=>[['type'=>'error','category'=>'missing_value','message'=>'PRIVATE_SENTINEL_NEVER_READ','script'=>'app.js','line'=>15]],'notes'=>'PRIVATE_SENTINEL_NEVER_READ','probes'=>[['name'=>'customers_amount','count'=>8,'passed'=>false,'samples'=>[['customer_id'=>'1','name'=>'PRIVATE_SENTINEL_NEVER_READ','email'=>'private@secret.test','amount'=>100]]]]];
+ $client=['price_comparison'=>['loaded'=>10,'unconfirmed'=>7,'confirmed'=>2,'unlinked'=>1,'ready_rows_500'=>1,'blocked_500'=>['stock'=>1,'PRIVATE_SENTINEL_NEVER_READ'=>123],'notes'=>'PRIVATE_SENTINEL_NEVER_READ'],'errors'=>[['type'=>'error','category'=>'missing_value','message'=>'PRIVATE_SENTINEL_NEVER_READ','script'=>'app.js','line'=>15]],'notes'=>'PRIVATE_SENTINEL_NEVER_READ','probes'=>[['name'=>'customers_amount','count'=>8,'passed'=>false,'samples'=>[['customer_id'=>'1','name'=>'PRIVATE_SENTINEL_NEVER_READ','email'=>'private@secret.test','amount'=>100]]]]];
  $report=\Lavka\diagnostic_build($store,0,'2026-12-31','UAH','all',false,$client);$json=\Lavka\encode($report);
  dx_expect($report['result']['failed']===0,'All synthetic reconciliation checks pass: '.\Lavka\encode(array_values(array_filter($report['checks'],function($r){return !$r['passed'];}))));
  dx_expect($report['selected']['metrics']['order_count']===10,'Actual eligible orders are exported');
@@ -38,6 +38,7 @@ try{
  foreach(['PRIVATE_SENTINEL','PRIVATE_REVIEW','PRIVATE_SCRIPT','private@secret.test','Саша','firstname','telephone','shipping_address','csrf'] as $private)dx_expect(strpos($json,$private)===false,'Private field omitted: '.$private);
  dx_expect(strpos($report['samples']['customers'][0]['customer_ref'],'C-')===0,'Customer IDs are pseudonymized');
  dx_expect($report['result']['client_failed']===1,'Failed browser probe stays visible');
+ dx_expect($report['client']['price_comparison']['loaded']===10&&$report['client']['price_comparison']['blocked_500']===['stock'=>1],'Comparison funnel preserves counts and drops arbitrary keys');
  $orderRefs=array_column($report['samples']['orders'],'order_ref');
  dx_expect(in_array($report['unknown_gender']['samples'][0]['order_refs'][0],$orderRefs,true),'Order references are consistent across sections');
  $named=\Lavka\diagnostic_build($store,2026,'2026-12-31','UAH','male',true);

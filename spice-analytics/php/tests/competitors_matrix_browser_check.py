@@ -414,7 +414,12 @@ with tempfile.TemporaryDirectory() as temporary:
             # Confirming a candidate is the only intended mutation here. The
             # request updates one comparison link and never contains a price.
             confirm = matrix_row(page, "matrix-confirm")
-            assert price(confirm.locator("td[data-source=spicery]")) is None
+            unconfirmed_cell=confirm.locator("td[data-source=spicery]")
+            assert price(unconfirmed_cell) == 70
+            assert "соответствие не подтверждено" in unconfirmed_cell.inner_text()
+            assert not unconfirmed_cell.get_attribute("data-price")
+            assert confirm.locator("[data-matrix-select]").is_disabled()
+            assert not page.evaluate('competitorMatrixRows().find(r=>r.group==="matrix-confirm"&&r.grams===50).comparable')
             confirm.locator("td[data-source=spicery] [data-comp-action=matrix-detail]").click()
             page.wait_for_selector("#drawer[open]")
             confirm_button = page.locator(f"#drawer [data-comp-action=matrix-confirm][data-id='{ids['confirm_spicery']}']")

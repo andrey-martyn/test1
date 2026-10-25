@@ -35,7 +35,9 @@ try {
     try{\Lavka\competitors_discovery_review($db,['pairs'=>$pairs,'confirm'=>true]);throw new RuntimeException('Unread confirmation accepted');}catch(\Lavka\CompetitorConflict $expected){}
     find_expect(!(int)$db->query("SELECT sum(match_confirmed) FROM competitor_targets WHERE source_id<>'lavka'")->fetchColumn(),'Failed batch leaves all confirmation bits unchanged');
     foreach($saved as $row){$observation=['kind'=>'product','title'=>'Куркума молотая','offers'=>[['key'=>'500','label'=>'500 г','price'=>'120','currency'=>'UAH','grams'=>500,'availability'=>'in_stock','unit'=>'pack','min_quantity'=>1,'condition'=>'','packaging'=>'doypack']],'text'=>'','links'=>[],'warnings'=>[],'method'=>'synthetic'];\Lavka\competitors_record_attempt($db,(int)$row['id'],$observation,null,\Lavka\utc_now(),200);}
+    find_expect(\Lavka\competitors_discovery_results($db,'','all',1,(int)$own['id'],'review')['total']===2,'Review filter includes only read unconfirmed matching groups');
     $review=\Lavka\competitors_discovery_review($db,['pairs'=>$pairs,'confirm'=>true]);find_expect($review['processed']===2,'Explicit batch confirms read product pairs');
+    find_expect(\Lavka\competitors_discovery_results($db,'','all',1,(int)$own['id'],'review')['total']===0&&\Lavka\competitors_discovery_results($db,'','all',1,(int)$own['id'],'confirmed')['total']===2,'Review filter and confirmed filter change after explicit batch');
     $snapshot=$db->query('SELECT id,match_confirmed FROM competitor_targets ORDER BY id')->fetchAll();
     try{\Lavka\competitors_discovery_review($db,['pairs'=>[$pairs[0],[9999999,9999999]],'confirm'=>true]);throw new RuntimeException('Forged candidate accepted');}catch(\Lavka\CompetitorConflict $expected){}
     find_expect($db->query('SELECT id,match_confirmed FROM competitor_targets ORDER BY id')->fetchAll()===$snapshot,'Invalid batch is atomic');

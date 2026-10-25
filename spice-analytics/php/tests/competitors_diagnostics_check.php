@@ -105,6 +105,7 @@ try {
     flock($lock, LOCK_UN); fclose($lock);
     $report = lavka_competitors_diagnostics_run(['data' => $root], $transport, $clock, $pause);
     diagnostic_expect($report['checked'] === 3 && $report['read_only'] && count($calls) === 6, 'Three diverse failed pages pass robots and public fetching');
+    diagnostic_expect($report['parsed']===1 && $report['failed']===2,'Completed diagnosis distinguishes fetched pages from successfully parsed data');
     diagnostic_expect(array_column($report['targets'], 'kind') === ['product', 'catalog', 'terms'], 'Default diagnostic prioritizes each failed page kind');
     diagnostic_expect(array_column($report['targets'], 'id') === [1, 3, 4], 'Disabled/successful/extra product targets are not fetched');
     diagnostic_expect($before === hash_file('sha256', $root . '/competitors.sqlite3'), 'Module database is byte-for-byte unchanged');

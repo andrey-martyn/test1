@@ -291,7 +291,7 @@ function run_app(string $directory, string $publicUrl, string $assets, string $l
                 }
                 if ($path === '/api/competitors/discovery') {
                     if ($method !== 'GET') fail(405, 'Метод не поддерживается');
-                    respond(competitors_discovery_results($competitors, (string)($_GET['search']??''), (string)($_GET['source']??'all'), (int)($_GET['page']??1), (int)($_GET['own_id']??0)));
+                    respond(competitors_discovery_results($competitors, (string)($_GET['search']??''), (string)($_GET['source']??'all'), (int)($_GET['page']??1), (int)($_GET['own_id']??0), (string)($_GET['status']??'all')));
                 }
                 if ($path === '/api/competitors/discovery/start') {
                     if ($method !== 'POST') fail(405, 'Метод не поддерживается');

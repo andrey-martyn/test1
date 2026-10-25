@@ -133,7 +133,7 @@ with tempfile.TemporaryDirectory() as temporary:
             page.click('[data-comp-action=add]')
             page.fill('#competitor-target-form [name=url]','https://deluxe.com.ua/draft')
             page.click('#competitor-tab-changes')
-            assert page.locator('#competitor-target-form').count()==0
+            assert page.locator('#competitor-target-form').count()==0,page.evaluate('({tab:competitorState.tab,formTab:competitorState.formTab,open:competitorState.formOpen})')
             page.click('#competitor-tab-links')
             assert page.input_value('#competitor-target-form [name=url]')=='https://deluxe.com.ua/draft'
             page.click('[data-comp-action=cancel-form]')

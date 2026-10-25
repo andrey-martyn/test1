@@ -43,7 +43,7 @@ function lavka_competitors_run(array $args, ?callable $transport = null, ?callab
     if ($lock === false) throw new RuntimeException('lock_failed');
     chmod($directory . '/.competitors.lock', 0600);
     $db = null;
-    $summary = ['state' => 'ok', 'started_at' => $stamp(), 'checked' => 0, 'succeeded' => 0, 'failed' => 0, 'deferred' => 0,'runner_revision'=>substr(hash_file('sha256',__FILE__),0,16),'php'=>PHP_VERSION,'evidence'=>['saved'=>0,'failed'=>0,'skipped'=>0,'errors'=>[]]];
+    $summary = ['state' => 'ok', 'started_at' => $stamp(), 'checked' => 0, 'succeeded' => 0, 'failed' => 0, 'deferred' => 0,'runner_revision'=>substr(hash_file('sha256',__FILE__),0,16),'php'=>PHP_VERSION,'parser_revision'=>substr(hash_file('sha256',dirname(__DIR__).'/src/CompetitorParser.php'),0,16),'evidence'=>['saved'=>0,'failed'=>0,'skipped'=>0,'errors'=>[]]];
     try {
         if (!flock($lock, LOCK_EX | LOCK_NB)) return ['state' => 'skipped', 'reason' => 'already_running'];
         $db = \Lavka\competitors_db($directory);

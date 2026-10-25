@@ -253,16 +253,20 @@ function competitors_discovery_review_locked(\PDO $db,array $body): array
     return ['ok'=>true,'processed'=>$count,'confirmed'=>$body['confirm'],'shop_writes'=>false];
 }
 
-function competitors_discovery_results(\PDO $db,string $search='',string $source='all',int $page=1,int $ownId=0): array
+function competitors_discovery_results(\PDO $db,string $search='',string $source='all',int $page=1,int $ownId=0,string $status='all'): array
 {
+    if(!in_array($status,['all','review','loaded','confirmed'],true))throw new \InvalidArgumentException('Неверный статус сопоставления');
     if($source!=='all')competitors_source($source);$search=mb_substr(trim($search),0,100);$page=max(1,min(10000,$page));
     $where=" WHERE o.enabled=1 AND (?='all' OR i.source_id=?) AND (o.label LIKE ? ESCAPE '\\' OR i.title LIKE ? ESCAPE '\\')";
     $pattern='%'.strtr($search,['\\'=>'\\\\','%'=>'\\%','_'=>'\\_']).'%';$where.=' AND (CAST(? AS INTEGER)=0 OR o.id=?)';$args=[$source,$source,$pattern,$pattern,$ownId,$ownId];
-    $from=' FROM competitor_suggestions s JOIN competitor_targets o ON o.id=s.own_id JOIN competitor_search_index i ON i.id=s.candidate_id';
+    $from=" FROM competitor_suggestions s JOIN competitor_targets o ON o.id=s.own_id JOIN competitor_search_index i ON i.id=s.candidate_id LEFT JOIN competitor_targets t ON t.source_id=i.source_id AND t.kind='product' AND t.url=i.url";
+    if($status!=='all')$where.=' AND t.enabled=1 AND t.last_success IS NOT NULL AND t.error_count=0';
+    if($status==='review')$where.=' AND t.match_confirmed=0 AND t.match_group=o.match_group';
+    if($status==='confirmed')$where.=' AND t.match_confirmed=1 AND t.match_group=o.match_group';
     $stmt=$db->prepare('SELECT count(*)'.$from.$where);$stmt->execute($args);$total=(int)$stmt->fetchColumn();
-    $stmt=$db->prepare('SELECT o.id AS own_id,o.label AS own_title,o.match_group,i.id AS candidate_id,i.source_id,i.url,i.title,i.title_source,s.score,t.id AS target_id,t.match_confirmed,t.last_success,t.last_attempt,t.observation'.$from." LEFT JOIN competitor_targets t ON t.source_id=i.source_id AND t.kind='product' AND t.url=i.url".$where.' ORDER BY o.label,i.source_id,s.score DESC,i.id LIMIT 50 OFFSET '.(($page-1)*50));$stmt->execute($args);$rows=$stmt->fetchAll();
-    foreach($rows as &$row){foreach(['own_id','candidate_id','score','target_id'] as $field)$row[$field]=$row[$field]===null?null:(int)$row[$field];$row['match_confirmed']=(bool)$row['match_confirmed'];$observation=$row['observation']?decode($row['observation']):null;$row['read_title']=$observation['title']??null;$row['identity']=competitors_identity_compare($row['own_title'],$row['read_title']?:$row['title'],$row['url']);$row['score']=$row['identity']['score'];$row['offers']=$observation['offers']??[];unset($row['observation']);$row['last_attempt']=$row['last_attempt']?decode($row['last_attempt']):null;}
-    return ['rows'=>$rows,'total'=>$total,'page'=>$page,'page_size'=>50];
+    $stmt=$db->prepare('SELECT o.id AS own_id,o.label AS own_title,o.match_group,i.id AS candidate_id,i.source_id,i.url,i.title,i.title_source,s.score,t.id AS target_id,t.match_confirmed,t.match_group AS target_group,t.enabled AS target_enabled,t.last_success,t.last_attempt,t.observation'.$from.$where.' ORDER BY o.label,i.source_id,s.score DESC,i.id LIMIT 50 OFFSET '.(($page-1)*50));$stmt->execute($args);$rows=$stmt->fetchAll();
+    foreach($rows as &$row){foreach(['own_id','candidate_id','score','target_id'] as $field)$row[$field]=$row[$field]===null?null:(int)$row[$field];$row['match_confirmed']=(bool)$row['match_confirmed'];$row['target_enabled']=$row['target_enabled']===null?null:(bool)$row['target_enabled'];$observation=$row['observation']?decode($row['observation']):null;$row['read_title']=$observation['title']??null;$row['identity']=competitors_identity_compare($row['own_title'],$row['read_title']?:$row['title'],$row['url']);$row['score']=$row['identity']['score'];$row['offers']=$observation['offers']??[];unset($row['observation']);$row['last_attempt']=$row['last_attempt']?decode($row['last_attempt']):null;}
+    return ['rows'=>$rows,'total'=>$total,'page'=>$page,'page_size'=>50,'status'=>$status];
 }
 
 /** An observed interval, not a claim about the host's cron configuration. */

@@ -410,6 +410,41 @@ function competitor_variant_offer(string $label, array $money, string $availabil
         'condition' => $condition, '_paired_variant' => true];
 }
 
+/** Strict primary-product evidence for source adapters, excluding recommendations. */
+function competitor_primary_json_offers(\DOMXPath $xpath, string $title, string $url): array
+{
+    if ($title === '') return [];
+    $primary = [];
+    foreach (competitor_json_nodes($xpath) as $product) {
+        if (!array_intersect(['Product', 'ProductGroup'], competitor_types($product))) continue;
+        if (!is_string($product['name'] ?? null) || normalize($product['name']) !== normalize($title)) continue;
+        if (isset($product['url'])) {
+            if (!is_string($product['url'])) continue;
+            $declared = competitor_absolute_url($product['url'], $url);
+            if ($declared === null || rtrim($declared, '/') !== rtrim($url, '/')) continue;
+        }
+        $primary[] = $product;
+    }
+    return competitor_product_json($primary, $title, $url)[0];
+}
+
+function competitor_json_price_matches(array $offer, array $money): bool
+{
+    return $offer['unit'] === 'pack' && $offer['currency'] === $money['currency'] && $offer['price'] === $money['price'];
+}
+
+/** Stock of the selected retail pack only, supported by its exact displayed price. */
+function competitor_selected_json_stock(array $offers, array $money, float $grams): string
+{
+    $states = [];
+    foreach ($offers as $offer) {
+        if (!competitor_json_price_matches($offer, $money) || $offer['condition'] !== '' || (float)$offer['min_quantity'] !== 1.0) continue;
+        if ($offer['grams'] !== null && abs($offer['grams'] - $grams) > 0.0001) continue;
+        $states[$offer['availability']] = true;
+    }
+    return count($states) === 1 ? (string)array_keys($states)[0] : 'unknown';
+}
+
 /** Known public storefront structures, restricted to their own current product. */
 function competitor_source_variants(\DOMXPath $xpath, \DOMNode $scope, string $title, string $url): array
 {
@@ -443,6 +478,7 @@ function competitor_source_variants(\DOMXPath $xpath, \DOMNode $scope, string $t
         return [$offers, 'spicery_option_prices', $warnings];
     }
     if ($host === 'deluxe.com.ua') {
+        $primaryJson = competitor_primary_json_offers($xpath, $title, $url);
         foreach ($xpath->query('//*[contains(concat(" ",normalize-space(@class)," ")," priceblock ")]') as $block) {
             if ($title === '' || normalize(competitor_first_text($xpath, ['.//h1'], $block)) !== normalize($title)) continue;
             $availability = competitor_availability(competitor_first_text($xpath, ['.//*[contains(concat(" ",normalize-space(@class)," ")," available-pr ")]', './/*[@itemprop="availability"]'], $block));
@@ -460,9 +496,15 @@ function competitor_source_variants(\DOMXPath $xpath, \DOMNode $scope, string $t
                 $grams=competitor_weight($label);
                 if ($price === null || !$visible || $price !== $visible['price'] || $grams === null) continue;
                 if(!preg_match('/^[1-9][0-9]{0,11}$/D',$nativeId))$nativeId='mass-'.(string)$grams;
-                // Nonzero data-price-new has not yet been verified against a sale page.
+                // Current pages expose an auxiliary price that may differ from
+                // both the visible and schema.org price. Never treat it as an old
+                // price or a discount. Require independent primary-product agreement.
                 $newPrice = trim($node->getAttribute('data-price-new'));
-                if ($newPrice !== '' && !preg_match('/^0(?:[.,]0+)?$/D', $newPrice)) { $warnings[] = 'variant_sale_unresolved'; continue; }
+                if ($newPrice !== '' && !preg_match('/^0(?:[.,]0+)?$/D', $newPrice)) {
+                    $confirmed = false;
+                    foreach ($primaryJson as $jsonOffer) if (competitor_json_price_matches($jsonOffer, $visible)) $confirmed = true;
+                    if (competitor_decimal($newPrice) === null || !$confirmed) { $warnings[] = 'variant_sale_unresolved'; continue; }
+                }
                 $offers[] = competitor_variant_offer($label, $visible, $availability, 'deluxe:'.substr(hash('sha256', $url), 0, 16).':'.$nativeId, $nativeId);
             }
             return [$offers, 'deluxe_variant_prices', $warnings];
@@ -470,11 +512,14 @@ function competitor_source_variants(\DOMXPath $xpath, \DOMNode $scope, string $t
         return [[], '', $warnings];
     }
     if ($host === 'banka-speciy.in.ua') {
+        $primaryJson = competitor_primary_json_offers($xpath, $title, $url);
         foreach ($xpath->query('//section[contains(concat(" ",normalize-space(@class)," ")," product ") and @data-product-id]') as $block) {
             $productId = $block->getAttribute('data-product-id');
             if (!preg_match('/^[1-9][0-9]{0,11}$/D', $productId) || $title === '' || normalize(competitor_first_text($xpath, ['.//h1'], $block)) !== normalize($title)) continue;
             $availability = competitor_availability(competitor_first_text($xpath, ['.//*[@itemprop="availability"]', './/*[contains(concat(" ",normalize-space(@class)," ")," product-availability ")]'], $block));
             $pageCurrency=competitor_meta_currency($xpath)?:competitor_currency(competitor_first_text($xpath,['.//*[@itemprop="priceCurrency"]'],$block));
+            $selected = $xpath->query('.//input[@type="radio" and @checked and contains(concat(" ",normalize-space(@class)," ")," product-option-value ")] | .//select[starts-with(@name,"option[")]/option[@selected]', $block);
+            $visiblePrice = competitor_variant_money(competitor_first_text($xpath, ['.//*[contains(concat(" ",normalize-space(@class)," ")," product-price ")]'], $block));
             foreach ($xpath->query('.//input[@type="radio" and @data-price and @data-description and contains(concat(" ",normalize-space(@class)," ")," product-option-value ")] | .//select[starts-with(@name,"option[")]/option[@value and @data-price and @data-description]', $block) as $node) {
                 if(competitor_related_node($node,$block,$block))continue;
                 if($node->hasAttribute('data-price-prefix')&&$node->getAttribute('data-price-prefix')!=='=')continue;
@@ -494,6 +539,10 @@ function competitor_source_variants(\DOMXPath $xpath, \DOMNode $scope, string $t
                 $condition = (int) $min > 1 ? 'От '.$min.' упаковок' : '';
                 if (preg_match('/(?:опт|wholesale)/iu', $label)) $condition = $condition !== '' ? $condition.'; оптовое предложение' : 'Оптовое предложение';
                 $stock = $node->hasAttribute('disabled') ? 'unknown' : $availability;
+                if ($stock === 'unknown' && !$node->hasAttribute('disabled') && $selected->length === 1 && $selected->item(0)->isSameNode($node)
+                    && (int)$min === 1 && $condition === '' && $visiblePrice && $visiblePrice === $money) {
+                    $stock = competitor_selected_json_stock($primaryJson, $money, $grams);
+                }
                 $offers[] = competitor_variant_offer($label, $money, $stock, 'banka:'.$productId.':'.$group[1].':'.$nativeId, $nativeId, $grams, (float) $min, $condition);
             }
             return [$offers, 'banka_option_prices', $warnings];

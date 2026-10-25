@@ -8,6 +8,7 @@ function statusWorkflowView(){return `<section class="panel">${panelHeading('Ð Ð
 function diagnosticsClient(){
  const result={viewport:{width:innerWidth,height:innerHeight,dpr:devicePixelRatio},engine:/Firefox/.test(navigator.userAgent)?'firefox':/Edg/.test(navigator.userAgent)?'edge':/Chrome|Chromium/.test(navigator.userAgent)?'chromium':'webkit',view:state.view,gender:reportGender(),sort:state.sort,errors:diagnosticErrors.slice(),scripts:[],probes:[]};
  for(const node of document.scripts){if(!node.src)continue;const u=new URL(node.src);result.scripts.push({name:(u.searchParams.get('route')||u.pathname).split('/').pop(),version:u.searchParams.get('v')||''});}
+ if(typeof competitorState!=='undefined'&&competitorState.data)result.price_comparison=competitorComparisonFunnel();
  if(!state.report||state.report.year!==Number(document.getElementById('year').value)||state.report.as_of!==document.getElementById('as-of').value||state.report.currency!==document.getElementById('currency').value||state.report.gender_filter!==reportGender())return result;
  const saved={};for(const key of ['periodOnly','reminder','ordersBasis','ordersMin','ordersMax','segment','ids','eligibleOnly','search','sort','duplicateCustomer','duplicateKind','duplicateSort','duplicateDir'])saved[key]=state[key];
  const sample=c=>({customer_id:c.id,amount:c.amount,order_count:c.order_count,lifetime_count:c.lifetime_count,priority:c.priority,overdue_days:c.overdue_days});

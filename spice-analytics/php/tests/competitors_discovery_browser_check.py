@@ -1,6 +1,6 @@
 """400 synthetic products: crawl visibility, batch review, pagination and layout."""
 from pathlib import Path
-import json,os,secrets,socket,subprocess,sys,tempfile,time
+import hashlib,json,os,secrets,socket,sqlite3,subprocess,sys,tempfile,time
 import httpx
 from playwright.sync_api import sync_playwright
 ROOT=Path(__file__).resolve().parents[2];sys.path[:0]=[str(ROOT),str(ROOT/'tests')]
@@ -12,7 +12,7 @@ SEED=r'''
 require 'php/src/Auth.php';require 'php/src/Competitors.php';
 $input=json_decode(stream_get_contents(STDIN),true);\Lavka\Auth::setPassword('/test-data',$input['password']);$db=\Lavka\competitors_db('/test-data');$db->exec('UPDATE competitor_targets SET enabled=0');
 $now=\Lavka\utc_now();$products=[];
-function observed($name){return ['kind'=>'product','title'=>$name,'offers'=>[['key'=>'500','label'=>'500 г','price'=>'90','currency'=>'UAH','grams'=>500,'availability'=>'in_stock','unit'=>'pack','min_quantity'=>1,'condition'=>'','packaging'=>'doypack']],'links'=>[],'text'=>'','warnings'=>[],'method'=>'synthetic'];}
+function observed($name){return ['kind'=>'product','title'=>$name,'offers'=>[['key'=>'500','label'=>'500 г','price'=>'90','currency'=>'UAH','grams'=>500,'availability'=>'in_stock','unit'=>'pack','min_quantity'=>1,'condition'=>'','packaging'=>'unknown']],'links'=>[],'text'=>'','warnings'=>[],'method'=>'synthetic'];}
 for($i=1;$i<=400;$i++){$label=$i===1?'Куркума молотая':($i===2?'Корица цейлонская':'Тестовая специя '.str_pad((string)$i,3,'0',STR_PAD_LEFT));
  $own=\Lavka\competitors_save_target($db,['source_id'=>'lavka','kind'=>'product','url'=>'https://lavka-speciy.com/index.php?route=product/product&product_id='.(900000+$i),'label'=>$label,'pack_label'=>'50 г, 500 г','match_group'=>'bulk-'.$i,'match_confirmed'=>true]);
  $products[]=['target_id'=>$own['id'],'product_id'=>900000+$i,'source_product_id'=>900000+$i,'label'=>$label,'url'=>$own['url'],'offers'=>array_map(function($o){$o['price']='100';return $o;},observed($label)['offers']),'warnings'=>[]];
@@ -55,6 +55,19 @@ with tempfile.TemporaryDirectory() as temporary:
    assert page.locator('.competitor-matrix tbody tr').count()==50
    assert page.locator('.monitoring-summary').count()==0
    assert '400' in page.locator('.monitoring-matrix-pagination').inner_text()
+   assert page.evaluate('competitorComparisonFunnel().loaded===1 && competitorComparisonFunnel().unconfirmed===1 && competitorComparisonFunnel().ready_rows_500===0')
+   assert 'соответствие не подтверждено' in page.locator('.competitor-matrix tbody').inner_text()
+   assert page.locator('[data-next-action=competitor-matches-loaded]').count()==1
+   assert page.evaluate('diagnosticsClient().price_comparison.unconfirmed')==1
+   page.click('[data-next-action=competitor-matches-loaded]');page.wait_for_function('() => !monitoringState.loading')
+   assert page.locator('.monitoring-matches tbody tr').count()==1
+   assert page.locator('#monitoring-search [name=status]').input_value()=='review'
+   page.click('[data-comp-action=matching-exact]')
+   assert page.evaluate('monitoringState.selected.size')==1
+   assert not page.evaluate('competitorMatrixRows().find(r=>r.group==="bulk-1"&&r.grams===500).comparable')
+   page.click('[data-comp-action=matching-clear]')
+   page.click('[data-tab=products]')
+
    start=time.monotonic();page.evaluate('competitorsRender()');render_seconds=time.monotonic()-start;assert render_seconds<5,render_seconds
    assert page.evaluate('competitorMatrixRows()===competitorMatrixRows()')
    page.click('[data-comp-action=matrix-next]');assert '2 / 8' in page.locator('.monitoring-matrix-pagination').inner_text()
@@ -66,6 +79,7 @@ with tempfile.TemporaryDirectory() as temporary:
     page.set_viewport_size({'width':width,'height':844});assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'),width
     page.screenshot(path=str(OUT/f'coverage-{width}.png'),full_page=True)
    page.set_viewport_size({'width':1470,'height':900});page.click('[data-tab=matching]');page.wait_for_function('() => !monitoringState.loading');assert page.locator('[data-monitoring-pair]').count(),(page.evaluate('monitoringState'),errors,page.locator('#competitor-tabpanel').inner_text()[:2000])
+   page.select_option('#monitoring-search [name=status]','all');page.locator('#monitoring-search button[type=submit]').click();page.wait_for_function('() => !monitoringState.loading')
    assert page.locator('[data-monitoring-pair]').count()==2
    # Unread candidates cannot be confirmed; loading is an explicit queue operation.
    unread=page.locator('.monitoring-matches tbody tr').filter(has_text='Корица цейлонская');unread.locator('input').check()
@@ -80,9 +94,43 @@ with tempfile.TemporaryDirectory() as temporary:
    page.set_viewport_size({'width':390,'height':844});assert page.evaluate('document.documentElement.scrollWidth<=innerWidth');page.screenshot(path=str(OUT/'matching-390.png'),full_page=True)
    page.set_viewport_size({'width':1470,'height':900});page.click('[data-tab=products]');page.wait_for_selector('.competitor-matrix')
    assert page.evaluate('competitorMatrixRows().find(r=>r.group==="bulk-1"&&r.grams===500).comparable')
+   assert page.evaluate('competitorComparisonFunnel().confirmed===1 && competitorComparisonFunnel().unconfirmed===0 && competitorComparisonFunnel().ready_rows_500===1')
+   page.click('[data-comp-action=matrix-all-packs]');assert page.locator('#competitor-matrix-pack').input_value()=='all'
+
    page.click('[data-tab=coverage]');page.click('[data-comp-action=discovery-start]');page.wait_for_function('() => !monitoringState.busy');assert page.evaluate('competitorState.data.monitoring.discovery_enabled')
+   # Reproduce the user's gap: 110 loaded cards, only 3 confirmed 500g rows.
+   extra=r'''require 'php/src/Competitors.php';$db=\Lavka\competitors_db('/test-data');$now=\Lavka\utc_now();
+   for($i=3;$i<=111;$i++){$own=$db->query("SELECT * FROM competitor_targets WHERE source_id='lavka' AND match_group='bulk-".$i."'")->fetch();
+    $url='https://deluxe.com.ua/synthetic-flow-'.$i.'.html';
+    $target=\Lavka\competitors_save_target($db,['source_id'=>'deluxe','kind'=>'product','url'=>$url,'label'=>$own['label'],'match_group'=>$own['match_group'],'match_confirmed'=>$i<=4]);
+    $obs=['kind'=>'product','title'=>$own['label'],'offers'=>[['key'=>'500','label'=>'500 г','price'=>'90','currency'=>'UAH','grams'=>500,'availability'=>'in_stock','unit'=>'pack','min_quantity'=>1,'condition'=>'','packaging'=>'unknown','variant_id'=>'deluxe:'.$i.':500']],'links'=>[],'text'=>'','warnings'=>[],'method'=>'synthetic'];
+    \Lavka\competitors_record_attempt($db,$target['id'],$obs,null,$now,200);\Lavka\competitors_index_link($db,'deluxe',$url,$own['label'],'page');
+    $q=$db->prepare('SELECT id FROM competitor_search_index WHERE source_id=? AND url=?');$q->execute(['deluxe',$url]);$candidate=(int)$q->fetchColumn();
+    $db->prepare('INSERT OR REPLACE INTO competitor_suggestions(own_id,candidate_id,score) VALUES(?,?,100)')->execute([(int)$own['id'],$candidate]);
+   }'''
+   subprocess.run(docker+['-i',IMAGE,'php','-r',extra],check=True,stdout=subprocess.DEVNULL)
+   def prices_digest():
+    with sqlite3.connect(data/'competitors.sqlite3') as connection:
+     return hashlib.sha256(repr(connection.execute('SELECT target_id,payload FROM competitor_observations ORDER BY id').fetchall()).encode()).hexdigest()
+   prices_before=prices_digest()
+   page.click('[data-tab=products]');page.evaluate('competitorsLoad()');page.wait_for_function('() => !competitorState.loading')
+   funnel=page.evaluate('competitorComparisonFunnel()')
+   assert (funnel['loaded'],funnel['confirmed'],funnel['unconfirmed'],funnel['ready_rows_500'])==(110,3,107,3),funnel
+   assert page.evaluate('competitorState.data.targets.length')>=510
+   page.click('[data-next-action=competitor-matches-loaded]');page.wait_for_function('() => !monitoringState.loading')
+   assert page.evaluate('monitoringState.data.total')==107
+   page.click('[data-comp-action=matching-exact]');assert page.evaluate('monitoringState.selected.size')==50
+   page.locator('[data-comp-action=matching-confirm]').first.click();page.wait_for_function('() => !monitoringState.busy && !monitoringState.loading')
+   page.click('[data-tab=products]')
+   funnel=page.evaluate('competitorComparisonFunnel()')
+   assert (funnel['loaded'],funnel['confirmed'],funnel['unconfirmed'],funnel['ready_rows_500'])==(110,53,57,53),funnel
+   assert prices_digest()==prices_before,'Confirming links must not change downloaded prices'
+   assert page.evaluate('diagnosticsClient().price_comparison.ready_rows_500')==53
+   for width in [390,320]:
+    page.set_viewport_size({'width':width,'height':844});assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'),width
+   page.screenshot(path=str(OUT/'comparison-funnel-320.png'),full_page=True)
    assert not errors,errors;assert not external,external
    browser.close()
-   print(json.dumps({'green_kpi_and_identical_menu_layout':'passed','400_products_paged_and_cached':'passed','render_seconds':round(render_seconds,3),'runner_visibility':'passed','human_batch_confirmation_and_queue':'passed','mobile_320_390':'passed','external_requests':external,'javascript_errors':errors,'php_image':IMAGE}))
+   print(json.dumps({'green_kpi_and_identical_menu_layout':'passed','400_products_paged_and_cached':'passed','render_seconds':round(render_seconds,3),'runner_visibility':'passed','human_batch_confirmation_and_queue':'passed','110_loaded_3_to_53_compared_without_price_changes':'passed','mobile_320_390':'passed','external_requests':external,'javascript_errors':errors,'php_image':IMAGE}))
  finally:
   subprocess.run(['docker','rm','-f',name],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);server.wait(timeout=15)

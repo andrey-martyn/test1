@@ -87,7 +87,7 @@ function lavka_competitors_diagnostics_run(array $args, ?callable $transport = n
             if (!$added) break;
         }
         $rows->finalize(); $db->close(); $db = null;
-        $report = ['state' => 'ok', 'read_only' => true, 'selected' => count($targets), 'checked' => 0, 'deferred' => 0, 'targets' => []];
+        $report = ['state' => 'ok', 'read_only' => true, 'parser_revision'=>substr(hash_file('sha256',dirname(__DIR__).'/src/CompetitorParser.php'),0,16), 'selected' => count($targets), 'checked' => 0, 'parsed' => 0, 'failed' => 0, 'deferred' => 0, 'targets' => []];
         if (!$targets) return $report;
         $cache = $directory . '/competitor-http-cache';
         \Lavka\private_dir($cache);
@@ -132,6 +132,8 @@ function lavka_competitors_diagnostics_run(array $args, ?callable $transport = n
             } catch (\Lavka\CompetitorHttpError $error) {
                 $item['error_code'] = $error->errorCode; $item['http'] = ['status' => $error->httpStatus]; $report['checked']++;
             } catch (Throwable $ignored) { $item['error_code'] = 'diagnostic_error'; $report['checked']++; }
+            if (isset($item['parser']['method'])) ++$report['parsed'];
+            elseif (($item['error_code'] ?? '') !== 'request_deferred') ++$report['failed'];
             $report['targets'][] = $item;
         }
         $report['seconds'] = round($clock() - $started, 3);

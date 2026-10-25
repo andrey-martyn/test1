@@ -3,3 +3,7 @@
 @media(max-width:720px){.monitoring-summary{gap:10px}.monitoring-summary article{padding:14px 12px}.monitoring-summary strong{font-size:20px}.monitoring-panel{padding:16px 12px}.monitoring-panel .competitor-section-heading{padding:0}.monitoring-search{display:grid;grid-template-columns:1fr}.monitoring-batch .button,.monitoring-batch-bottom .button{width:100%;font-size:15px}.monitoring-panel>p{font-size:16px}.monitoring-runtime{padding:14px}.monitoring-panel .table-scroll{margin-inline:-12px;max-width:calc(100% + 24px)}}
 @media(max-width:350px){.monitoring-summary{grid-template-columns:1fr}}
 .competitors-module .help-trigger{width:28px;height:28px;min-width:28px;min-height:28px;padding:0;border-radius:50%}.competitors-module .monitoring-panel p{font-size:16px}.monitoring-sources td:first-child .competitor-text-button{display:block;margin:8px 0 0;text-align:left}
+
+.competitor-readiness{padding:16px 18px;border:1px solid #cbd8ce;border-left:4px solid #205b46;border-radius:10px;background:#f3f7f3;margin:12px 0 18px;line-height:1.6}
+.competitors-module .competitor-readiness p{margin:0 0 8px;font-size:16px}.competitor-readiness .monitoring-actions{margin:10px 0 0}.competitor-readiness summary{cursor:pointer;margin-top:12px}.competitor-readiness ul{padding-left:22px}
+@media(max-width:720px){.competitor-readiness{padding:14px 12px}.competitor-readiness .button{white-space:normal;max-width:100%}}

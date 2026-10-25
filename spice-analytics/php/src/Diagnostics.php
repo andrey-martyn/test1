@@ -37,7 +37,7 @@ function diagnostic_public_fields(array $row, int $depth=0): array
 {
     if($depth>5)return [];
     $numeric=['id','target_id','own_id','candidate_id','score','price','old_price','grams','grams_override','min_quantity','enabled','match_confirmed','queued','count','checked','succeeded','failed','deferred','saved','skipped','suggestions','queued_candidates','prices_loaded','limit','budget_seconds','status','http_status','bytes','errors','seconds','peak_mb','links','pages'];
-    $enums=['source_id','kind','state','error_code','method','currency','unit','availability','packaging','packaging_override','packaging_source','runner_revision','php'];
+    $enums=['source_id','kind','state','error_code','method','currency','unit','availability','packaging','packaging_override','packaging_source','runner_revision','parser_revision','php'];
     $text=['title','label','pack_label','match_group','condition'];$out=[];
     foreach($numeric as $key)if(isset($row[$key])&&(is_numeric($row[$key])||is_bool($row[$key])))$out[$key]=is_bool($row[$key])?$row[$key]:0+$row[$key];
     foreach($enums as $key)if(isset($row[$key]))$out[$key]=diagnostic_enum($row[$key]);
@@ -78,13 +78,13 @@ function diagnostic_saved_pages(string $directory): array
     if(!is_file($file)||is_link($file)||filesize($file)>131072)return ['available'=>false];
     try{$input=decode(file_get_contents($file));}catch(\Throwable $ignored){return ['available'=>false,'reason'=>'invalid_saved_report'];}
     if(($input['schema']??'')!=='lavka-public-pages-v1'||!is_array($input['report']??null))return ['available'=>false,'reason'=>'invalid_saved_report'];
-    $keys=array_fill_keys(explode(' ','schema collected_at collector_revision report state reason read_only selected checked deferred seconds targets id source kind label url http status final_url bytes parser method error_code offers_count links_count offers document title h1 canonical og_url scope tag class itemprop has_h1 product_meta name value price_nodes text content data-price data-price-value data-base-price data-weight data-grams data-option-value-id data-product-option-value-id data-price-prefix data-prefix price-prefix purchase_options control selected catalog_anchors href ancestors depth context availability_nodes recognized price old_price grams min_quantity availability packaging currency unit condition document_error truncated sku_options structured_offers current_label data-treevalue data-price-id data-price-new'),true);
+    $keys=array_fill_keys(explode(' ','schema collected_at collector_revision parser_revision report state reason read_only selected checked parsed failed deferred seconds targets id source kind label url http status final_url bytes parser method error_code offers_count links_count offers document title h1 canonical og_url scope tag class itemprop has_h1 product_meta name value price_nodes text content data-price data-price-value data-base-price data-weight data-grams data-option-value-id data-product-option-value-id data-price-prefix data-prefix price-prefix purchase_options control selected catalog_anchors href ancestors depth context availability_nodes recognized price old_price grams min_quantity availability packaging currency unit condition document_error truncated sku_options structured_offers current_label data-treevalue data-price-id data-price-new'),true);
     $walk=function($value,int $depth=0,string $field='')use(&$walk,$keys){
         if($depth>10)return null;
         if(is_array($value)){$out=[];foreach(array_slice($value,0,40,true) as $key=>$part){if(!is_int($key)&&!isset($keys[$key]))continue;$out[$key]=$walk($part,$depth+1,(string)$key);}return $out;}
         if(is_string($value)){
             if($field==='collected_at' && competitors_terms_timestamp($value)!==null)return $value;
-            if($field==='collector_revision' && preg_match('/^[a-f0-9]{16}$/D',$value))return $value;
+            if(in_array($field,['collector_revision','parser_revision'],true) && preg_match('/^[a-f0-9]{16}$/D',$value))return $value;
             if($field==='id' && ($publicId=\lavka_competitor_diagnostic_id($value))!==null)return $publicId;
             return \lavka_competitor_diagnostic_text($value,700);
         }
@@ -132,6 +132,12 @@ function diagnostic_competitors(string $directory): array
 function diagnostic_client(array $input, callable $ref): array
 {
     $result=['viewport'=>[],'scripts'=>[],'errors'=>[],'probes'=>[]];
+    if(is_array($input['price_comparison']??null)){
+        $result['price_comparison']=[];
+        foreach(['loaded','unlinked','unconfirmed','confirmed','ready_rows_all','ready_rows_500','ready_rows_50'] as $key)if(is_numeric($input['price_comparison'][$key]??null))$result['price_comparison'][$key]=max(0,min(1000000,(int)$input['price_comparison'][$key]));
+        $result['price_comparison']['blocked_500']=[];
+        foreach(['own','pack','packaging','stock','conditional','unknown','error','stale','pending','missing'] as $key)if(is_numeric($input['price_comparison']['blocked_500'][$key]??null))$result['price_comparison']['blocked_500'][$key]=max(0,min(1000000,(int)$input['price_comparison']['blocked_500'][$key]));
+    }
     foreach(['width','height','dpr'] as $key)if(is_numeric($input['viewport'][$key]??null))$result['viewport'][$key]=max(0,min(20000,(float)$input['viewport'][$key]));
     $enums=['engine'=>['chromium','firefox','webkit','edge'],'view'=>['overview','overview-report','products','customers','actions','retention','segments','opportunities','seasonality','geography','ga4','manual','competitors','settings'],'gender'=>['all','male','female','unknown'],'sort'=>['amount','priority','last','overdue','name']];
     foreach($enums as $key=>$allowed)$result[$key]=in_array($input[$key]??null,$allowed,true)?$input[$key]:'';
@@ -159,7 +165,7 @@ function diagnostic_build(Analytics $store,int $year,string $asof,string $curren
     $byId=array_fill_keys(array_column($r['customers'],'id'),true);$pairs=$r['duplicate_pairs'];$validPairs=true;foreach($pairs as $pair)if(count(array_unique($pair['ids']))!==2||array_diff($pair['ids'],array_keys($byId)))$validPairs=false;$check('duplicates.references',$validPairs,true);
     $out=['schema'=>'lavka-system-diagnostics','schema_version'=>1,'generated_at'=>utc_now(),'privacy'=>['names_included'=>$includeNames,'contacts_included'=>false,'identifiers'=>'random per-export references','raw_html_included'=>false],
         'scope'=>['year'=>$year,'as_of'=>$asof,'currency'=>$currency,'gender'=>$gender,'history_scope'=>'all eligible history in this currency as of selected date'],
-        'runtime'=>['php'=>PHP_VERSION,'memory_limit'=>ini_get('memory_limit'),'source_fingerprint'=>hash_file('sha256',__DIR__.'/Analytics.php'),'worker_fingerprint'=>substr(hash_file('sha256',dirname(__DIR__).'/bin/competitors.php'),0,16),'evidence_fingerprint'=>substr(hash_file('sha256',__DIR__.'/CompetitorEvidence.php'),0,16),'gender_fingerprint'=>hash_file('sha256',__DIR__.'/Gender.php')],
+        'runtime'=>['php'=>PHP_VERSION,'memory_limit'=>ini_get('memory_limit'),'source_fingerprint'=>hash_file('sha256',__DIR__.'/Analytics.php'),'worker_fingerprint'=>substr(hash_file('sha256',dirname(__DIR__).'/bin/competitors.php'),0,16),'parser_fingerprint'=>substr(hash_file('sha256',__DIR__.'/CompetitorParser.php'),0,16),'evidence_fingerprint'=>substr(hash_file('sha256',__DIR__.'/CompetitorEvidence.php'),0,16),'gender_fingerprint'=>hash_file('sha256',__DIR__.'/Gender.php')],
         'checks'=>$checks,'selected'=>['metrics'=>$r['metrics'],'gender'=>array_map(function($row){return ['key'=>$row['key']]+diagnostic_numbers($row);},$r['gender_breakdown']),'loyalty'=>diagnostic_numbers($r['loyalty']),'ga4'=>diagnostic_numbers(array_intersect_key((array)$r['ga4'],array_flip(['available','daily_available','transactions_available','daily_rows','transaction_rows','totals','channels','trend']))),'crm'=>diagnostic_numbers($r['crm']['stats']),'marketing'=>diagnostic_numbers(array_intersect_key($r['marketing'],array_flip(['segments','cohorts','conversion','median_second_days','frequency','recency','rfm_matrix','first_amount','repeat_amount','repeat_amount_share','top20_customer_share','abc','hours','months'])))],
         'history'=>['annual'=>diagnostic_numbers($full['annual']),'totals'=>$full['history_totals'],'regions'=>diagnostic_numbers($full['regional'])],
         'statuses_scope'=>'Whole imported snapshot, all dates and currencies; included statuses apply to selected report.',
