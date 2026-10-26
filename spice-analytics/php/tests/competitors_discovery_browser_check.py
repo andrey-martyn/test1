@@ -58,9 +58,9 @@ with tempfile.TemporaryDirectory() as temporary:
    assert '400' in page.locator('.monitoring-matrix-pagination').inner_text()
    assert page.evaluate('competitorComparisonFunnel().loaded===1 && competitorComparisonFunnel().unconfirmed===1 && competitorComparisonFunnel().ready_rows_500===0')
    assert 'соответствие не подтверждено' in page.locator('.competitor-matrix tbody').inner_text()
-   assert page.locator('[data-next-action=competitor-matches-loaded]').count()==1
+   assert page.locator('[data-comp-action=matching-loaded]').count()==1
    assert page.evaluate('diagnosticsClient().price_comparison.unconfirmed')==1
-   page.click('[data-next-action=competitor-matches-loaded]');page.wait_for_function('() => !monitoringState.loading')
+   page.click('[data-comp-action=matching-loaded]');page.wait_for_function('() => !monitoringState.loading')
    assert page.locator('.monitoring-matches tbody tr').count()==1
    assert page.locator('#monitoring-search [name=status]').input_value()=='review'
    page.click('[data-comp-action=matching-exact]')
@@ -96,7 +96,7 @@ with tempfile.TemporaryDirectory() as temporary:
    page.set_viewport_size({'width':1470,'height':900});page.click('[data-tab=products]');page.wait_for_selector('.competitor-matrix')
    assert page.evaluate('competitorMatrixRows().find(r=>r.group==="bulk-1"&&r.grams===500).comparable')
    assert page.evaluate('competitorComparisonFunnel().confirmed===1 && competitorComparisonFunnel().unconfirmed===0 && competitorComparisonFunnel().ready_rows_500===1')
-   page.click('[data-comp-action=matrix-all-packs]');assert page.locator('#competitor-matrix-pack').input_value()=='all'
+   page.select_option('#competitor-matrix-pack','all');assert page.locator('#competitor-matrix-pack').input_value()=='all'
 
    page.click('[data-tab=coverage]');page.click('[data-comp-action=discovery-start]');page.wait_for_function('() => !monitoringState.busy');assert page.evaluate('competitorState.data.monitoring.discovery_enabled')
    # Reproduce the user's gap: 110 loaded cards, only 3 confirmed 500g rows.

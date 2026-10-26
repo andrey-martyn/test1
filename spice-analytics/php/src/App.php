@@ -246,6 +246,10 @@ function run_app(string $directory, string $publicUrl, string $assets, string $l
             // HTTP reads saved observations or queues CLI work; it never fetches sites.
             $competitors = competitors_db($directory);
             try {
+                if ($path === '/api/competitors/revision') {
+                    if ($method !== 'GET') fail(405, 'Метод не поддерживается');
+                    respond(competitors_revision($competitors, $directory));
+                }
                 if ($path === '/api/competitors') {
                     if ($method !== 'GET') fail(405, 'Метод не поддерживается');
                     require_once __DIR__ . '/CompetitorSandboxJobs.php';

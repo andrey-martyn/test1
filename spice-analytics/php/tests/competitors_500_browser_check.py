@@ -47,6 +47,7 @@ targets = [
     target(7, 'spicery', 691, [offer('300', 500, 'zip')]),
     target(8, 'lavka', 692, [], True),
     target(9, 'deluxe', 692, [offer('320', 500, 'zip', variant='zip-other'),
+                            offer('330', 500, 'kraft', variant='kraft-other'),
                             offer('300', 500, 'jar', variant='jar-other')]),
     target(10, 'lavka', 693, [], True),
     target(11, 'deluxe', 693, [offer('470', 500)]),
@@ -84,6 +85,8 @@ def main():
                          '<main><div id="content"></div></main><dialog id="drawer"><span id="drawer-label"></span>'
                          '<div id="drawer-content"></div></dialog></body></html>')
         page.add_script_tag(content=helpers)
+        page.add_script_tag(content=(ROOT / 'static/help.js').read_text())
+        page.add_script_tag(content=(ROOT / 'static/monitoring.js').read_text())
         page.add_script_tag(content=script)
         page.evaluate('(data)=>{competitorState.data=data;competitorsRender();}', data)
         assert page.locator('#competitor-matrix-pack').input_value() == '500'
@@ -130,7 +133,7 @@ def main():
 
         # A chosen package can be changed explicitly; source defaults never mix types.
         page.evaluate("""()=>{competitorState.data.targets.find(t=>t.id===9).packaging='jar';competitorsRender();}""")
-        assert page.locator('tr[data-matrix-row="product-692|500"] td[data-source=deluxe]').get_attribute('data-price') == '300.00'
+        assert page.locator('tr[data-matrix-row="product-692|500"] td[data-source=deluxe]').get_attribute('data-price') is None  # jars stay excluded
         page.evaluate("competitorOpenForm(competitorState.data.targets.find(t=>t.id===2))")
         page.select_option('select[name=packaging]', 'zip')
         body = page.evaluate('competitorBody(competitorState.draft)')

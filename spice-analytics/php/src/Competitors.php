@@ -285,6 +285,18 @@ function competitors_replace_target(\PDO $db, int $id, array $body): array
     }
 }
 
+/** Small polling response; no page downloads and no queue mutations. */
+function competitors_revision(\PDO $db, string $directory): array
+{
+    $hash = hash_init('sha256');
+    foreach ($db->query('SELECT id,enabled,queued,source_id,kind,url,label,match_group,match_confirmed,match_method,match_evidence,grams_override,pack_label,packaging,last_success,last_attempt,next_check_at,fingerprint FROM competitor_targets ORDER BY id') as $row) {
+        hash_update($hash, encode($row)."\n");
+    }
+    $catalog = $directory.'/own-catalog.json'; clearstatcache(true, $catalog);
+    hash_update($hash, !is_link($catalog) && is_file($catalog) ? hash_file('sha256', $catalog) : 'no-catalog');
+    return ['revision'=>hash_final($hash), 'server_now'=>utc_now()];
+}
+
 function competitors_overview(\PDO $db, ?string $directory = null): array
 {
     $targets = array_map(__NAMESPACE__ . '\\competitors_target_row', $db->query('SELECT * FROM competitor_targets ORDER BY CASE source_id WHEN \'lavka\' THEN 0 ELSE 1 END,source_id,kind,id')->fetchAll());
