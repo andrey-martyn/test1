@@ -86,6 +86,10 @@ $gap=observed('50');$gap['offers'][0]['grams']=50;$gap['offers'][0]['label']='Д
 \Lavka\competitors_record_attempt($db,$gapOwn['id'],$gap,null,$now,200);
 $gapOther=\Lavka\competitors_save_target($db,['source_id'=>'deluxe','kind'=>'product','url'=>'https://deluxe.com.ua/synthetic-gap.html','label'=>'Есть цена 500 г','match_group'=>'synthetic-gap','match_confirmed'=>true]);
 \Lavka\competitors_record_attempt($db,$gapOther['id'],observed('200'),null,$now,200);
+$equalOwn=\Lavka\competitors_save_target($db,['source_id'=>'lavka','kind'=>'product','url'=>'https://lavka-speciy.com/synthetic-equal','label'=>'Равная цена','match_group'=>'synthetic-equal']);
+\Lavka\competitors_record_attempt($db,$equalOwn['id'],observed('150'),null,$now,200);
+$equalOther=\Lavka\competitors_save_target($db,['source_id'=>'deluxe','kind'=>'product','url'=>'https://deluxe.com.ua/synthetic-equal.html','label'=>'Равная цена','match_group'=>'synthetic-equal','match_confirmed'=>true]);
+\Lavka\competitors_record_attempt($db,$equalOther['id'],observed('150'),null,$now,200);
 echo "ok";
 '''
 
@@ -213,7 +217,7 @@ if ($file !== false && strpos($file, '/test-data/site/') === 0 && is_file($file)
             assert 'Сейчас в сравнении:' in page.locator('.dash-market-items').inner_text()
             assert page.locator('.dash-market-row[data-dash-action=position]').count()>0
             page.evaluate('() => {competitorState.data=window.syntheticMarketBackup;delete window.syntheticMarketBackup;render();}')
-            # The shared four competitor actions work directly from Today.
+            # Four attention cards share the comparison counters and open the exact work lists.
             def home():
                 if page.locator('#drawer').evaluate('el=>el.open'):
                     page.click('[data-action=close-dialog]')
@@ -222,22 +226,35 @@ if ($file !== false && strpos($file, '/test-data/site/') === 0 && is_file($file)
             def extra_action(key):
                 page.click('[data-dash-action=all-workflows]')
                 page.locator('#drawer [data-dash-action=workflow][data-key="'+key+'"]').click()
-            expected_actions=page.evaluate("competitorReadinessSummary('500').actions")
+            summary=page.evaluate("competitorReadinessSummary('500')")
             assert result['workflows']['duplicate_pairs']>0
-            for item in expected_actions:
-                button=page.locator('.dash-workflows-primary [data-key="'+item['key']+'"]')
-                assert button.count()==1 and button.locator('.dash-workflow-count').inner_text()==str(item['count'])
+            assert page.locator('.dash-workflows-primary>.button').count()==4
+            assert page.locator('.dash-workflows-heading [data-dash-action=workflow]').count()==0
+            assert page.locator('.dash-workflows [data-key=prices-ready]').count()==0
+            price_card=page.locator('.dash-workflows [data-key=price-differences]')
+            assert price_card.locator('.above').inner_text().startswith('↑ '+str(summary['above']))
+            assert price_card.locator('.below').inner_text().startswith('↓ '+str(summary['below']))
+            for key,count in [('confirm-products',summary['f']['unconfirmed']+summary['f']['unlinked']),('price-errors',summary['errors']),('contact-matches',result['workflows']['duplicate_pairs'])]:
+                assert page.locator('.dash-workflows-primary [data-key="'+key+'"] .dash-workflow-count').inner_text()==str(count)
             page.evaluate('Object.assign(competitorState,{matrixPack:"50",matrixStatus:"gaps",source:"banka",search:"no match",archived:true})')
-            page.click('[data-dash-action=workflow][data-key=prices-ready]')
-            page.wait_for_selector('.competitor-readiness')
-            assert page.input_value('#competitor-matrix-pack')=='500' and page.input_value('#competitor-matrix-status')=='ready'
-            assert page.evaluate('competitorVisibleRows().every(r=>r.comparable)')
+            price_card.click()
+            page.wait_for_selector('.competitor-matrix')
+            assert page.input_value('#competitor-matrix-pack')=='500' and page.input_value('#competitor-matrix-status')=='difference'
+            assert page.input_value('#competitor-matrix-sort')=='difference'
+            assert page.evaluate('competitorVisibleRows().length')==summary['above']+summary['below']
+            assert page.evaluate('competitorVisibleRows().every(r=>r.above||r.below)')
+            assert page.evaluate('competitorMatrixRows().some(r=>r.equal)'), 'Equal prices must exist but stay outside the attention list'
             assert page.evaluate('competitorState.search==="" && competitorState.source==="all" && !competitorState.archived')
+            assert page.evaluate('() => {const rows=competitorVisibleRows();return rows.every((r,i)=>!i||Math.abs(rows[i-1].priceGapPercent)>=Math.abs(r.priceGapPercent))}')
+            page.select_option('#competitor-matrix-status','above')
+            assert page.evaluate('competitorVisibleRows().length>0 && competitorVisibleRows().every(r=>r.above)')
+            page.select_option('#competitor-matrix-status','below')
+            assert page.evaluate('competitorVisibleRows().length>0 && competitorVisibleRows().every(r=>r.below)')
             home()
-            page.click('[data-dash-action=workflow][data-key=prices-above]')
+            extra_action('prices-above')
             page.wait_for_selector('.competitor-matrix')
             assert page.input_value('#competitor-matrix-status')=='above' and page.input_value('#competitor-matrix-sort')=='above'
-            assert page.evaluate('competitorVisibleRows().length>0 && competitorVisibleRows().every(r=>r.above)')
+            assert page.evaluate('competitorVisibleRows().length')==summary['above']
             home()
             page.click('[data-dash-action=workflow][data-key=confirm-products]')
             page.wait_for_function('() => !monitoringState.loading && competitorState.tab==="matching"')
@@ -266,14 +283,24 @@ if ($file !== false && strpos($file, '/test-data/site/') === 0 && is_file($file)
             home()
             page.evaluate('() => {dashboardState.error="Синтетическая ошибка чтения";render()}')
             assert page.locator('.dash-workflows [data-key=contact-matches]').count()==0
+            assert page.locator('.dash-workflows-primary [data-key=sales-sync]').count()==1
             page.click('.dash-workflows [data-key=sales-sync]')
             assert 'Откуда берутся заказы' in page.locator('#drawer-content').inner_text()
             assert 'Синтетическая ошибка чтения' in page.locator('#drawer-content').inner_text()
             page.click('[data-action=close-dialog]')
             page.evaluate('() => {dashboardState.error="";dashboardState.marketError="Синтетическая ошибка источника";render()}')
             assert page.locator('.dash-workflows-primary [data-key=market-reload]').count()==1
-            assert page.locator('.dash-workflows-primary [data-key=prices-ready]').count()==0
+            assert page.locator('.dash-workflows-primary [data-key=price-differences]').count()==0
             page.evaluate('() => {dashboardState.marketError="";render()}')
+            # Clear states keep four stable places without suggesting nonexistent work.
+            page.evaluate('() => {window.savedWorkflowSummary=competitorReadinessSummary;window.savedDuplicateCount=dashboardState.data.workflows.duplicate_pairs;competitorReadinessSummary=()=>({above:0,below:0,errors:0,ready:1,queued:0,f:{unconfirmed:0,unlinked:0,blocked_500:{}},actions:[]});dashboardState.data.workflows.duplicate_pairs=0;render()}')
+            assert page.locator('.dash-workflows-primary>.button:disabled').count()==4
+            page.click('[data-dash-action=all-workflows]')
+            assert page.locator('#drawer [data-key=prices-ready]').count()==0
+            for key in ['price-differences','confirm-products','price-errors','contact-matches']:
+                assert page.locator('#drawer [data-key="'+key+'"]').count()==0
+            page.click('[data-action=close-dialog]')
+            page.evaluate('() => {competitorReadinessSummary=window.savedWorkflowSummary;dashboardState.data.workflows.duplicate_pairs=window.savedDuplicateCount;delete window.savedWorkflowSummary;delete window.savedDuplicateCount;render()}')
             assert not mutations,mutations
             measures=[]
             for width,height in [(1280,720),(1470,850),(390,844),(320,740)]:
@@ -284,7 +311,12 @@ if ($file !== false && strpos($file, '/test-data/site/') === 0 && is_file($file)
                 assert sizes["scrollWidth"]<=width,(sizes,page.locator('body *').evaluate_all('els=>els.filter(e=>e.getBoundingClientRect().right>innerWidth+1).map(e=>({tag:e.tagName,cls:e.className,right:e.getBoundingClientRect().right})).slice(-20)'))
                 assert page.locator('.dash-task strong').first.evaluate('el=>parseFloat(getComputedStyle(el).fontSize)')>=16
                 assert page.locator('.dash-kpi small').first.evaluate('el=>parseFloat(getComputedStyle(el).fontSize)')>=14
-                if width>=1280:assert sizes['bottom']<=height,(sizes, 'Main dashboard must fit the laptop viewport')
+                if width>=1280:
+                    assert sizes['bottom']<=height,(sizes, 'Main dashboard must fit the laptop viewport')
+                    cards=page.locator('.dash-workflows-primary>.button').evaluate_all('els=>els.map(e=>({top:e.getBoundingClientRect().top,height:e.getBoundingClientRect().height,width:e.getBoundingClientRect().width}))')
+                    assert max(c['top'] for c in cards)-min(c['top'] for c in cards)<1,cards
+                    assert max(c['height'] for c in cards)-min(c['height'] for c in cards)<1,cards
+                    assert max(c['width'] for c in cards)-min(c['width'] for c in cards)<1,cards
                 measures.append(sizes)
             page.set_viewport_size({"width":1280,"height":720})
             page.click('[data-dash-action=group][data-value=weeks]')

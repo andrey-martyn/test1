@@ -98,25 +98,34 @@ function dashboardMarketPanel(market){return `<section class="dash-panel dash-ma
 function dashboardComparisonLabel(){const c=dashboardState.data.comparison;return c.days?'1–'+c.days+' '+new Date(c.current_start+'T12:00:00').toLocaleDateString('ru-RU',{month:'short'})+' · '+c.current_start.slice(0,4)+' ↔ '+c.previous_start.slice(0,4):'Полных дней для сравнения пока нет';}
 function dashboardWorkflows(){
   const d=dashboardState.data,market=competitorState.data,available=market&&!dashboardState.marketError,summary=available?competitorReadinessSummary('500'):null;
-  const primary=summary?summary.actions:[{key:'market-reload',label:'Обновить данные конкурентов',primary:true,description:'Не удалось получить свежую сводку. Повторите чтение сохранённых результатов.'}],extra=[];
-  if(d&&!dashboardFresh())extra.push({key:'sales-sync',label:'Проверить обновление продаж',description:'Продажи требуют обновления. Здесь можно посмотреть состояние синхронизации и инструкции.'});
+  const primary=summary?[
+    {key:'price-differences',label:'Различия цен',above:summary.above,below:summary.below,disabled:!summary.above&&!summary.below,description:'Наша цена выше или ниже минимальной пригодной цены конкурента за 500 г. Откроются только различающиеся цены, начиная с наибольшего отклонения.'},
+    {key:'confirm-products',label:'Подтвердить товары',count:summary.f.unconfirmed+summary.f.unlinked,disabled:!summary.f.unconfirmed&&!summary.f.unlinked,description:'Загруженные карточки, для которых нужно проверить, что это тот же товар.'},
+    {key:'price-errors',label:'Ошибки чтения',count:summary.errors,disabled:!summary.errors,description:'Страницы с неудачной проверкой. В списке есть причина, время и действия для каждой карточки.'}
+  ]:[{key:'market-reload',label:'Обновить данные конкурентов',description:'Не удалось получить свежую сводку. Повторите чтение сохранённых результатов.'}],extra=[];
   const m=available?market.monitoring:null;
   if(m&&(m.runner_state==='overdue'||m.runner_state==='never'&&m.pending>0))extra.push({key:'price-runner',label:m.runner_state==='never'?'Настроить проверку цен':'Проверить загрузку цен',description:m.runner_state==='never'?'Фоновый обработчик ещё не запускался. Откроется настройка расписания.':'Проверки давно не запускались. Откроется состояние обработчика и расписание.'});
-  if(dashboardFresh()&&d.workflows?.duplicate_pairs)extra.push({key:'contact-matches',label:'Проверить совпадения контактов',count:d.workflows.duplicate_pairs,description:'Возможные совпадения покупателей за всю историю в этой валюте. Это пары для проверки, а не готовое решение об объединении.'});
+  if(dashboardFresh())primary.push({key:'contact-matches',label:'Сверить клиентов',count:d.workflows?.duplicate_pairs||0,disabled:!d.workflows?.duplicate_pairs,description:'Возможные совпадения покупателей за всю историю в этой валюте. Это пары для проверки, а не готовое решение об объединении.'});
+  else primary.push({key:'sales-sync',label:'Проверить обновление продаж',description:'Продажи требуют обновления. Здесь можно посмотреть состояние синхронизации и инструкции.'});
   if(summary){
+    if(summary.above)extra.push({key:'prices-above',label:'Где наша цена выше',count:summary.above,description:'Цены 500 г выше минимума конкурентов, начиная с наибольшего отклонения.'});
     if(summary.below)extra.push({key:'prices-below',label:'Где наша цена ниже',count:summary.below,description:'Цены 500 г ниже минимума конкурентов, начиная с наибольшего отклонения. Проверьте маржу и условия предложения.'});
+    if(!summary.ready&&!summary.f.unconfirmed&&!summary.f.unlinked)extra.push(summary.actions.find(item=>item.key==='find-products'));
     for(const [kind,count] of Object.entries(summary.f.blocked_500))if(competitorTaskLabels[kind])extra.push({key:'comparison-'+kind,label:competitorTaskLabels[kind],count,taskKind:kind,description:{own:'У нашего товара нет пригодной цены 500 г. Откроются конкретные товары и ссылки в магазин.',stock:'Наличие мешает сравнению. Откроются предложения, которые нужно проверить.',pack:'Не найдена цена точной фасовки 500 г. Можно посмотреть другой вес или подобрать ссылку.',packaging:'Нужно выбрать подходящую упаковку для сравнения.',conditional:'Цена зависит от условий покупки. Проверьте ограничения в карточке.'}[kind]||'Откроются карточки, которым нужна проверка.'});
   }
-  return {primary,extra,all:[...primary,...extra],queued:summary?.queued||0};
+  return {primary,extra,all:[...primary,...extra].filter(item=>!item.disabled),queued:summary?.queued||0};
 }
-function dashboardWorkflowButton(item,classes=''){return `<button type="button" class="button ${item.primary?'primary':''} ${classes}" data-dash-action="workflow" data-key="${esc(item.key)}">${esc(item.label)}${item.count!==undefined?' <span class="dash-workflow-count">'+num(item.count)+'</span>':''}</button>`;}
+function dashboardWorkflowButton(item,classes=''){
+  const differences=item.key==='price-differences',counts=differences?`<span class="dash-price-count above">↑ ${num(item.above)} <span>выше</span></span><span class="dash-price-divider" aria-hidden="true">/</span><span class="dash-price-count below">↓ ${num(item.below)} <span>ниже</span></span>`:item.count!==undefined?'<span class="dash-workflow-count">'+num(item.count)+'</span>':'';
+  return `<button type="button" class="button ${classes}" data-dash-action="workflow" data-key="${esc(item.key)}" ${item.disabled?'disabled':''}${differences?' aria-label="Различия цен: наша выше — '+num(item.above)+', наша ниже — '+num(item.below)+'. Сравнение 500 г"':''}><span class="dash-workflow-label">${esc(item.label)}</span>${counts?'<span class="dash-workflow-counts">'+counts+'</span>':''}</button>`;
+}
 function dashboardWorkflowsView(){
-  const flow=dashboardWorkflows(),featured=flow.extra.find(t=>t.key==='sales-sync')||flow.extra.find(t=>t.key==='contact-matches')||flow.extra[0];
-  return `<section class="dash-workflows" aria-labelledby="dash-workflows-title"><div class="dash-workflows-heading"><h2 id="dash-workflows-title">Что сделать дальше</h2>${featured?dashboardWorkflowButton(featured,'dash-featured-workflow'):''}<button class="dash-link" type="button" data-dash-action="all-workflows">Все действия →</button></div><div class="dash-workflows-primary">${flow.primary.map(item=>dashboardWorkflowButton(item)).join('')}</div></section>`;
+  const flow=dashboardWorkflows();
+  return `<section class="dash-workflows" aria-labelledby="dash-workflows-title"><div class="dash-workflows-heading"><h2 id="dash-workflows-title">Что сделать дальше</h2><button class="dash-link" type="button" data-dash-action="all-workflows">Все действия →</button></div><div class="dash-workflows-primary">${flow.primary.map(item=>dashboardWorkflowButton(item)).join('')}</div></section>`;
 }
 function dashboardOpenWorkflows(){
   const flow=dashboardWorkflows();state.customer=null;openDrawer('ЧТО СДЕЛАТЬ ДАЛЬШЕ');
-  $('#drawer-content').innerHTML=`<div class="dash-detail dash-workflow-list"><h2>Что сделать дальше</h2><p>Выберите действие — откроется нужный список с подходящими фильтрами.</p>${flow.all.map(item=>`<section class="dash-workflow-item">${dashboardWorkflowButton(item)}<p>${esc(item.description)}</p></section>`).join('')}${flow.queued?'<div class="dash-workflow-queue"><strong>В очереди на проверку: '+num(flow.queued)+'</strong><p>Эти страницы обрабатываются автоматически. Повторно отправлять их не нужно.</p><button class="button" data-dash-action="workflow" data-key="price-queue">Посмотреть очередь →</button></div>':''}</div>`;
+  $('#drawer-content').innerHTML=`<div class="dash-detail dash-workflow-list"><h2>Что сделать дальше</h2><p>Выберите действие — откроется нужный список с подходящими фильтрами.</p>${flow.all.map(item=>`<section class="dash-workflow-item">${dashboardWorkflowButton(item)}<p>${esc(item.description)}</p></section>`).join('')||'<p>Сейчас нет задач, требующих проверки.</p>'}${flow.queued?'<div class="dash-workflow-queue"><strong>В очереди на проверку: '+num(flow.queued)+'</strong><p>Эти страницы обрабатываются автоматически. Повторно отправлять их не нужно.</p><button class="button" data-dash-action="workflow" data-key="price-queue">Посмотреть очередь →</button></div>':''}</div>`;
 }
 async function dashboardRunWorkflow(key){
   const flow=dashboardWorkflows(),task=flow.all.find(item=>item.key===key);
@@ -130,7 +139,7 @@ async function dashboardRunWorkflow(key){
   }
   const c=competitorState;c.tab=key==='price-errors'?'errors':key==='price-runner'?'coverage':['confirm-products','find-products'].includes(key)?'matching':'products';
   c.source='all';c.search='';c.archived=false;c.matrixPack='500';c.matrixPage=1;
-  c.matrixStatus=key==='prices-ready'?'ready':key==='prices-above'?'above':key==='prices-below'?'below':'all';c.matrixSort=key==='prices-above'?'above':key==='prices-below'?'below':'name';
+  c.matrixStatus=key==='price-differences'?'difference':key==='prices-above'?'above':key==='prices-below'?'below':'all';c.matrixSort=key==='price-differences'?'difference':key==='prices-above'?'above':key==='prices-below'?'below':'name';
   navigate('competitors');
   if(key==='confirm-products'||key==='find-products')await monitoringOpen('all',0,key==='confirm-products'?'review':'all');
   else if(task?.taskKind||key==='price-queue')competitorTasks(task?.taskKind||'queue');
