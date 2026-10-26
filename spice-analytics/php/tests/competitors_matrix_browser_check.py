@@ -615,6 +615,66 @@ with tempfile.TemporaryDirectory() as temporary:
             assert observation_digest(data) == before_prices
             page.select_option("#competitor-matrix-pack", "50")
 
+            # An erroneous watched URL is replaced through one atomic action;
+            # direct URL edits remain locked so two pages never share a history.
+            page.fill("#competitor-search","Матрица В")
+            current=matrix_row(page,"matrix-confirm")
+            assert price(current.locator("td[data-source=spicery]"))==70
+            current.locator("td[data-source=spicery] [data-comp-action=matrix-detail]").click()
+            page.locator(f"#drawer .competitor-target-actions [data-comp-action=edit][data-id='{ids['confirm_spicery']}']").click()
+            url_input=page.locator("#competitor-target-form [name=url]")
+            original_url=url_input.input_value()
+            assert url_input.get_attribute("readonly") is not None
+            page.click("[data-comp-action=replace-url]")
+            assert url_input.get_attribute("readonly") is None and url_input.input_value()==""
+            assert page.locator("#competitor-target-form [name=match_confirmed]").count()==0
+            page.fill("#competitor-target-form [name=label]","Изменение, которое отменяем")
+            page.click("[data-comp-action=cancel-replacement]")
+            assert url_input.input_value()==original_url and url_input.get_attribute("readonly") is not None
+            assert page.locator("#competitor-target-form [name=match_confirmed]").is_checked()
+            page.click("[data-comp-action=replace-url]")
+            for width in [390,320,1440]:
+                page.set_viewport_size({"width":width,"height":900})
+                assert page.evaluate("document.documentElement.scrollWidth<=innerWidth")
+                assert page.locator(".competitor-form-panel").evaluate("el=>el.scrollWidth<=el.clientWidth")
+            page.screenshot(path=str(ARTIFACTS / "replace-competitor-url-form.png"))
+            url_input.fill("https://other.invalid/not-this-store")
+            page.click("#competitor-target-form button[type=submit]")
+            page.wait_for_function("()=>!competitorState.saving")
+            assert page.locator(".competitor-form-error").count()==1
+            assert url_input.input_value()=="https://other.invalid/not-this-store"
+            overview=page.request.get(base+"/index.php?route=/api/competitors").json()
+            original=next(t for t in overview['targets'] if t['id']==ids['confirm_spicery'])
+            assert original['enabled'] and original['url']==original_url
+            correct_url="https://spiceryshop.com.ua/content/products/synthetic-corrected-spice"
+            url_input.fill(correct_url)
+            page.click("#competitor-target-form button[type=submit]")
+            page.wait_for_function("()=>!competitorState.saving&&!competitorState.loading&&!competitorState.formOpen")
+            overview=page.request.get(base+"/index.php?route=/api/competitors").json()
+            archived=next(t for t in overview['targets'] if t['id']==ids['confirm_spicery'])
+            replacement=next(t for t in overview['targets'] if t['url']==correct_url)
+            assert not archived['enabled'] and archived['observation']==original['observation']
+            assert replacement['enabled'] and replacement['queued'] and replacement['match_group']=='matrix-confirm'
+            assert replacement['observation'] is None and replacement['last_success'] is None
+            assert not replacement['match_confirmed'] and replacement['match_method']=='unreviewed'
+            assert replacement['grams_override'] is None and replacement['packaging']==original['packaging'] and replacement['packaging_effective']=='doypack'
+            current=matrix_row(page,"matrix-confirm")
+            assert price(current.locator("td[data-source=spicery]")) is None
+            assert "Ожидает первой проверки" in current.locator("td[data-source=spicery]").inner_text()
+            current.locator("td[data-source=spicery] [data-comp-action=matrix-detail]").click()
+            page.locator(f"#drawer [data-comp-action=history][data-id='{replacement['id']}']").click()
+            page.wait_for_selector(".competitor-replacement-history")
+            assert "Прежняя ссылка сохранена в архиве" in page.locator("#drawer").inner_text()
+            assert page.locator("#drawer .competitor-history-snapshot").count()==0
+            page.locator(f"#drawer .competitor-replacement-history [data-id='{ids['confirm_spicery']}']").click()
+            page.wait_for_function("()=>document.querySelector('#drawer-content')?.innerText.includes('Эта ссылка заменена')")
+            assert page.locator("#drawer .competitor-history-snapshot").count()==1
+            assert page.locator(f"#drawer a[href='{original_url}']").count()>=1
+            page.click("[data-action=close-dialog]")
+            replace_requests=[m for m in mutations if '%2Freplace' in m['url']]
+            assert len(replace_requests)==2 and all(m['method']=='POST' for m in replace_requests),replace_requests
+            assert all('match_confirmed' not in json.loads(m['body']) for m in replace_requests)
+
             # Errors remain discoverable in their own view; normal navigation
             # back to the matrix preserves actual analytics totals.
             page.click("#competitor-tab-errors")
@@ -633,6 +693,7 @@ with tempfile.TemporaryDirectory() as temporary:
                           "confirmed_unknown_out_of_stock_and_preorder_prices_remain_visible": "passed",
                           "found_minimum_outline_and_all_price_reading_dates": "passed",
                           "source_policy_without_false_stock_and_blocked_variant_exclusion": "passed",
+                          "atomic_url_replacement_cancel_failure_and_preserved_history": "passed",
                           "own_db_catalog_and_no_missing_product_fallback": "passed",
                           "unmapped_seo_and_independent_own_rows": "passed",
                           "mobile_and_source_evidence": "passed"}))

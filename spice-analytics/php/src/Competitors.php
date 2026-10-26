@@ -126,6 +126,8 @@ function competitors_db(string $directory): \PDO
             CREATE TABLE IF NOT EXISTS competitor_changes(id INTEGER PRIMARY KEY,target_id INTEGER NOT NULL REFERENCES competitor_targets(id),source_id TEXT NOT NULL,kind TEXT NOT NULL,message TEXT NOT NULL,occurred_at TEXT NOT NULL,before_payload TEXT,after_payload TEXT);
             CREATE TABLE IF NOT EXISTS competitor_discoveries(target_id INTEGER NOT NULL REFERENCES competitor_targets(id),source_id TEXT NOT NULL,url TEXT NOT NULL,title TEXT NOT NULL,first_seen TEXT NOT NULL,baseline INTEGER NOT NULL,PRIMARY KEY(target_id,url));
             CREATE TABLE IF NOT EXISTS competitor_runs(id INTEGER PRIMARY KEY,started_at TEXT NOT NULL,payload TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS competitor_target_replacements(old_target_id INTEGER PRIMARY KEY REFERENCES competitor_targets(id),new_target_id INTEGER NOT NULL REFERENCES competitor_targets(id),replaced_at TEXT NOT NULL,CHECK(old_target_id<>new_target_id));
+            CREATE INDEX IF NOT EXISTS competitor_target_replacements_new ON competitor_target_replacements(new_target_id);
             CREATE TABLE IF NOT EXISTS competitor_migrations(name TEXT PRIMARY KEY,applied_at TEXT NOT NULL);
             PRAGMA user_version=1;');
         require_once __DIR__ . '/CompetitorDiscovery.php';
@@ -233,6 +235,56 @@ function competitors_save_target(\PDO $db, array $body, ?int $id = null, bool $s
     return competitors_target($db, $id);
 }
 
+/** Replace an address without attributing old observations to a different page. */
+function competitors_replace_target(\PDO $db, int $id, array $body): array
+{
+    $allowed = ['url', 'label', 'grams_override', 'pack_label', 'packaging', 'match_group'];
+    if (array_diff(array_keys($body), $allowed)) throw new \InvalidArgumentException('Неизвестные поля замены ссылки');
+    $db->beginTransaction();
+    try {
+        // Take the same write lock as discovery review before reading decisions.
+        $db->exec('UPDATE competitor_discovery_settings SET enabled=enabled WHERE id=1');
+        $old = competitors_target($db, $id);
+        if ($old['source_id'] === 'lavka') throw new CompetitorConflict('Ссылки нашего каталога изменяются через настройку товара, а не заменой страницы конкурента');
+        $url = competitors_validate_url(competitors_text($body['url'] ?? null, 2000, 'новая ссылка', false), $old['source_id']);
+        if ($url === $old['url']) throw new \InvalidArgumentException('Укажите другой адрес страницы');
+        $prior = $db->prepare('SELECT new_target_id FROM competitor_target_replacements WHERE old_target_id=?');
+        $prior->execute([$id]); $replacementId = $prior->fetchColumn();
+        if ($replacementId) {
+            $target = competitors_target($db, (int)$replacementId);
+            if ($target['url'] !== $url) throw new CompetitorConflict('Эта ссылка уже заменена. Откройте новую карточку из истории прежней');
+            $db->commit();
+            return ['target'=>$target, 'archived_id'=>$id, 'reused'=>true];
+        }
+        $group = competitors_text($body['match_group'] ?? $old['match_group'], 120, 'группа сравнения');
+        if ($old['kind'] !== 'product' && $group !== '') throw new \InvalidArgumentException('Группа сравнения доступна только для товаров');
+        $lookup = $db->prepare('SELECT id FROM competitor_targets WHERE source_id=? AND kind=? AND url=?');
+        $lookup->execute([$old['source_id'], $old['kind'], $url]); $existingId = $lookup->fetchColumn();
+        $existing = $existingId ? competitors_target($db, (int)$existingId) : null;
+        if ($existing && $existing['match_group'] !== $group) throw new CompetitorConflict('Эта ссылка уже есть в другой группе сравнения: '.$existing['label'].'. Проверьте её карточку; прежняя ссылка не изменена');
+        $now = utc_now();
+        $db->prepare('UPDATE competitor_targets SET enabled=0,queued=0,updated_at=? WHERE id=?')->execute([$now, $id]);
+        if ($existing) {
+            // Existing evidence and explicit decisions belong to this exact URL.
+            $target = competitors_save_target($db, ['enabled'=>true], (int)$existingId);
+            $db->prepare('UPDATE competitor_targets SET queued=1,next_check_at=? WHERE id=?')->execute([$now, $existingId]);
+            $target = competitors_target($db, (int)$existingId);
+        } else {
+            $fields = ['source_id'=>$old['source_id'], 'kind'=>$old['kind'], 'url'=>$url, 'enabled'=>true,
+                'label'=>$body['label'] ?? '', 'grams_override'=>$body['grams_override'] ?? null,
+                'pack_label'=>$body['pack_label'] ?? $old['pack_label'], 'packaging'=>$body['packaging'] ?? $old['packaging'], 'match_group'=>$group];
+            // Omit match_confirmed: a fresh read can use automatic matching.
+            $target = competitors_save_target($db, $fields);
+        }
+        $db->prepare('INSERT INTO competitor_target_replacements(old_target_id,new_target_id,replaced_at) VALUES(?,?,?)')->execute([$id, $target['id'], $now]);
+        $db->commit();
+        return ['target'=>$target, 'archived_id'=>$id, 'reused'=>$existing !== null];
+    } catch (\Throwable $error) {
+        if ($db->inTransaction()) $db->rollBack();
+        throw $error;
+    }
+}
+
 function competitors_overview(\PDO $db, ?string $directory = null): array
 {
     $targets = array_map(__NAMESPACE__ . '\\competitors_target_row', $db->query('SELECT * FROM competitor_targets ORDER BY CASE source_id WHEN \'lavka\' THEN 0 ELSE 1 END,source_id,kind,id')->fetchAll());
@@ -259,7 +311,15 @@ function competitors_history(\PDO $db, int $id): array
     $observations = []; foreach ($stmt as $r) $observations[] = ['checked_at' => $r['checked_at'], 'observation' => decode($r['payload'])];
     $stmt = $db->prepare('SELECT checked_at,state,error_code,http_status FROM competitor_attempts WHERE target_id=? ORDER BY id DESC LIMIT 100'); $stmt->execute([$id]);
     $attempts = []; foreach ($stmt as $r) { $r['http_status'] = $r['http_status'] === null ? null : (int) $r['http_status']; $attempts[] = $r; }
-    return ['target' => $target, 'observations' => $observations, 'attempts' => $attempts];
+    $relations = [];
+    $q = $db->prepare('SELECT old_target_id,new_target_id,replaced_at FROM competitor_target_replacements WHERE old_target_id=? OR new_target_id=? ORDER BY replaced_at DESC LIMIT 100');
+    $q->execute([$id, $id]);
+    foreach ($q as $row) {
+        $forward = (int)$row['old_target_id'] === $id;
+        $other = competitors_target($db, (int)$row[$forward ? 'new_target_id' : 'old_target_id']);
+        $relations[] = ['direction'=>$forward ? 'replacement' : 'replaces', 'target_id'=>$other['id'], 'label'=>$other['label'], 'url'=>$other['url'], 'replaced_at'=>$row['replaced_at']];
+    }
+    return ['target' => $target, 'observations' => $observations, 'attempts' => $attempts, 'replacements'=>$relations];
 }
 
 function competitors_catalog_target_ids(array $catalog): array

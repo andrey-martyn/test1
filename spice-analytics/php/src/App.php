@@ -305,6 +305,10 @@ function run_app(string $directory, string $publicUrl, string $assets, string $l
                     if ($method !== 'POST') fail(405, 'Метод не поддерживается');
                     respond(competitors_save_target($competitors, request_json(), null, analytics_environment_summary($directory)['mode'] === 'sandbox'), 201);
                 }
+                if (preg_match('~^/api/competitors/targets/([1-9][0-9]{0,9})/replace$~D', $path, $m)) {
+                    if ($method !== 'POST') fail(405, 'Метод не поддерживается');
+                    respond(competitors_replace_target($competitors, (int)$m[1], request_json()), 201);
+                }
                 if (preg_match('~^/api/competitors/targets/([1-9][0-9]{0,9})$~D', $path, $m)) {
                     if ($method === 'GET') respond(competitors_history($competitors, (int) $m[1]));
                     if ($method === 'PUT') respond(competitors_save_target($competitors, request_json(), (int) $m[1], analytics_environment_summary($directory)['mode'] === 'sandbox'));
