@@ -263,3 +263,27 @@ function competitors_terms_comparison(array $targets,?string $now=null): array
     unset($row);
     return ['version'=>1,'source_ids'=>$sourceIds,'fresh_hours'=>48,'rows'=>$rows];
 }
+
+
+/** Describe changed commercial facts; wording edits are never declared a new sale. */
+function competitors_terms_changes(string $before, string $after): array
+{
+    $group = function (string $text): array {
+        $rows=[];
+        foreach (competitors_terms_extract($text) as $fact) $rows[$fact['row']][]=$fact;
+        return $rows;
+    };
+    $old=$group($before);$new=$group($after);$changes=[];
+    foreach (competitors_terms_rows() as $row) {
+        $id=$row['id'];$left=$old[$id]??[];$right=$new[$id]??[];
+        $signature=function(array $facts)use($id): string {
+            $values=array_map(function($fact)use($id){return encode([$fact['value'],in_array($id,['first_order_discount','regular_discounts','promotions'],true)?$fact['quote']:null]);},$facts);
+            sort($values,SORT_STRING);return encode($values);
+        };
+        if ($signature($left)===$signature($right)) continue;
+        $display=function(array $facts): string {return implode('; ',array_unique(array_column($facts,'display')));};
+        $changes[]=['row'=>$id,'label'=>$row['label'],'before'=>$display($left),'after'=>$display($right),
+            'before_quotes'=>array_slice(array_column($left,'quote'),0,3),'after_quotes'=>array_slice(array_column($right,'quote'),0,3)];
+    }
+    return $changes;
+}

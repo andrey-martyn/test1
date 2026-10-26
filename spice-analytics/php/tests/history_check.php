@@ -38,6 +38,8 @@ try {
     verify(array_sum(array_column($all['products'][0]['years'],'quantity'))===10,'Product yearly quantities');
     verify(array_sum(array_column($all['locations'][0]['years'],'count'))===5,'Geography yearly order counts');
     $year=$store->report(2021,'2022-12-31','UAH');
+    verify(count($year['monthly_purchases'])===12 && array_sum(array_column($year['monthly_purchases'],'amount'))===$year['metrics']['amount'],'Twelve monthly buckets reconcile with the filtered yearly total');
+    verify(array_sum(array_column($year['monthly_purchases'],'count'))===$year['metrics']['order_count'],'Monthly counts use the same order eligibility');
     verify($year['metrics']['amount']===275.0 && $year['metrics']['order_count']===3,'Selected calendar-year amount');
     verify($year['calendar'][0]['start']==='2021-01-01' && end($year['calendar'])['end']==='2021-12-31','Clipped weeks cover calendar boundaries');
     verify(((array)$year['activity'])['2020-12-28']['amount']===75.0 && array_sum(array_column((array)$year['activity'],'count'))===3,'Weeks use actual Monday date, with no cross-year collision');

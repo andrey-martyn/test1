@@ -308,6 +308,9 @@ function competitors_overview(\PDO $db, ?string $directory = null): array
     $result = ['sources' => competitors_sources(), 'targets' => $targets, 'changes' => $changes, 'discoveries' => $discoveries, 'runs' => $runs, 'settings' => ['interval_hours' => 24, 'max_product_targets' => COMPETITOR_MAX_PRODUCTS, 'max_targets' => COMPETITOR_MAX_TARGETS, 'catalog_coverage' => 'watched_pages', 'comparison_basis' => 'exact_pack', 'initial_grams' => 500, 'shop_price_writes' => false], 'server_now' => utc_now()];
     require_once __DIR__ . '/CompetitorTerms.php';
     $result['terms_comparison'] = competitors_terms_comparison($targets, $result['server_now']);
+    foreach ($result['changes'] as &$change) if ($change['kind'] === 'terms') {
+        $change['commercial_changes'] = competitors_terms_changes((string)($change['before']['text']??''), (string)($change['after']['text']??''));
+    } unset($change);
     if ($directory !== null) {
         require_once __DIR__ . '/CompetitorOwnCatalog.php';
         $result['own_catalog'] = competitors_own_catalog_read($directory);

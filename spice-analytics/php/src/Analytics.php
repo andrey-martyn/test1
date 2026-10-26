@@ -267,9 +267,17 @@ final class Analytics
             return $b['amount'] <=> $a['amount'];
         });
         $products = [];
-        $weekly = [];
+        $weekly = []; $monthly = [];
+        if ($year) for ($m=1;$m<=12;++$m) {
+            $start=sprintf('%04d-%02d-01',$year,$m);
+            $monthly[$m]=['month'=>$m,'start'=>$start,'end'=>(new \DateTimeImmutable($start,report_timezone()))->format('Y-m-t'),'amount'=>'0','count'=>0,'order_ids'=>[]];
+        }
         $periodCustomers = [];
         foreach ($period as $o) {
+            if ($year) {
+                $m=(int)substr($o['date_added'],5,2);$monthly[$m]['amount']=plus($monthly[$m]['amount'],order_value($o));
+                ++$monthly[$m]['count'];$monthly[$m]['order_ids'][]=(string)$o['order_id'];
+            }
             $key = activity_key($o['date_added'], $year);
             $first = $groups[$dsu->find($o['order_id'])][0]['order_id'] === $o['order_id'];
             $activity[$key] = $activity[$key] ?? ['amount' => '0', 'count' => 0, 'first_count' => 0, 'repeat_count' => 0];
@@ -323,6 +331,7 @@ final class Analytics
             $w['amount'] = money($w['amount']);
         }
         unset($w);
+        foreach ($monthly as &$m) $m['amount']=money($m['amount']);unset($m);
         $locations = [];
         foreach (['mixed', 'address', 'ip'] as $mode) {
             $locations[$mode] = $this->geography($period, $dsu, $mode);
@@ -349,7 +358,7 @@ final class Analytics
             $coverageStart='';foreach($before as $order)if($order['currency_code']===$currency){$date=substr($order['date_added'],0,10);if($coverageStart===''||$date<$coverageStart)$coverageStart=$date;}
             $regional=regional_report($this,$valid,$groups,$dsu,$asof,$coverageStart);
         }
-        return ['loyalty' => $includeRegional?['gender'=>$genderLoyalty,'regional'=>loyalty_report($this->geo,$groups,$asof,$year)]:null, 'regional' => $regional, 'gender_filter' => $gender, 'gender_breakdown' => $genderBreakdown, 'gender_diagnostics'=>$genderDiagnostics, 'year' => $year, 'as_of' => $asof, 'currency' => $currency, 'week_count' => $year ? week($year . '-12-28') : 0, 'scope' => $year ? 'year' : 'all', 'crm' => $crm, 'annual' => $annual, 'history_totals' => $historyTotals, 'calendar' => $columns, 'activity' => (object) $activity, 'duplicate_pairs' => identity_pairs($customers), 'customers' => $customers, 'products' => $productRows, 'locations' => $locations['mixed'], 'location_modes' => $locations, 'geoip' => $this->geo->metadata(), 'marketing' => $marketing, 'ga4' => $gender === 'all' ? ga4_report($this->db, $year, $asof, $currency, $period) : null, 'geo_quality' => geo_quality($this->geo, $period), 'weekly' => (object) $weekly, 'metrics' => ['amount' => money($total), 'order_count' => count($period), 'customer_count' => count($periodCustomers), 'average' => $period ? money(bcdiv($total, (string) count($period), 12)) : 0, 'overdue' => $overdue, 'repeat_customers' => $repeat, 'quantity' => array_sum(array_column($productRows, 'quantity')), 'kilograms' => even_round(array_sum(array_column($productRows, 'grams')) / 1000, 3)], 'duplicates' => $this->duplicates($customers)];
+        return ['loyalty' => $includeRegional?['gender'=>$genderLoyalty,'regional'=>loyalty_report($this->geo,$groups,$asof,$year)]:null, 'regional' => $regional, 'gender_filter' => $gender, 'gender_breakdown' => $genderBreakdown, 'gender_diagnostics'=>$genderDiagnostics, 'year' => $year, 'as_of' => $asof, 'currency' => $currency, 'week_count' => $year ? week($year . '-12-28') : 0, 'scope' => $year ? 'year' : 'all', 'crm' => $crm, 'annual' => $annual, 'history_totals' => $historyTotals, 'calendar' => $columns, 'activity' => (object) $activity, 'duplicate_pairs' => identity_pairs($customers), 'customers' => $customers, 'products' => $productRows, 'locations' => $locations['mixed'], 'location_modes' => $locations, 'geoip' => $this->geo->metadata(), 'marketing' => $marketing, 'ga4' => $gender === 'all' ? ga4_report($this->db, $year, $asof, $currency, $period) : null, 'geo_quality' => geo_quality($this->geo, $period), 'monthly_purchases' => array_values($monthly), 'weekly' => (object) $weekly, 'metrics' => ['amount' => money($total), 'order_count' => count($period), 'customer_count' => count($periodCustomers), 'average' => $period ? money(bcdiv($total, (string) count($period), 12)) : 0, 'overdue' => $overdue, 'repeat_customers' => $repeat, 'quantity' => array_sum(array_column($productRows, 'quantity')), 'kilograms' => even_round(array_sum(array_column($productRows, 'grams')) / 1000, 3)], 'duplicates' => $this->duplicates($customers)];
     }
     public function geography(array $orders, DSU $dsu, string $mode): array
     {

@@ -67,12 +67,17 @@ $catalog=\Lavka\competitors_save_target($db,["source_id"=>"banka","kind"=>"catal
 function cataloged($extra=false) {$links=[["url"=>"https://banka-speciy.in.ua/ua/synthetic-base","title"=>"Базовый товар"]];if($extra)$links[]=["url"=>"https://banka-speciy.in.ua/ua/synthetic-new-item","title"=>"Новая замеченная смесь"];return ["kind"=>"catalog","title"=>"Каталог","offers"=>[],"links"=>$links,"text"=>"","warnings"=>[],"method"=>"synthetic"];}
 \Lavka\competitors_record_attempt($db,$catalog["id"],cataloged(),null,$old,200);
 \Lavka\competitors_record_attempt($db,$catalog["id"],cataloged(true),null,$now,200);
+$terms=\Lavka\competitors_save_target($db,['source_id'=>'deluxe','kind'=>'terms','url'=>'https://deluxe.com.ua/synthetic-delivery.html','label'=>'Доставка']);
+$termsOld=['kind'=>'terms','title'=>'Доставка','offers'=>[],'links'=>[],'text'=>'Бесплатная доставка Новой почтой в отделение от 2000 грн.','warnings'=>[],'method'=>'synthetic'];
+$termsNew=$termsOld;$termsNew['text']='Бесплатная доставка Новой почтой в отделение от 2500 грн.';
+\Lavka\competitors_record_attempt($db,$terms['id'],$termsOld,null,$old,200);
+\Lavka\competitors_record_attempt($db,$terms['id'],$termsNew,null,$now,200);
 echo "ok";
 '''
 
 today = datetime.now(ZoneInfo("Europe/Kyiv")).date()
 month = today.replace(day=1)
-previous = (month-timedelta(days=1)).replace(day=1)
+previous = month.replace(year=month.year-1)
 with tempfile.TemporaryDirectory() as temporary:
     data = Path(temporary)
     original = snapshot()
@@ -177,13 +182,18 @@ if ($file !== false && strpos($file, '/test-data/site/') === 0 && is_file($file)
             assert page.request.post(base+"/index.php?route=/api/dashboard",headers={"Origin":origin},data={}).status==405
             assert page.locator(".dash-kpi").count()==4
             assert page.locator(".dash-tasks .dash-task").count()==3
-            assert page.locator(".dash-market-row").count()==1,"Only stable 500g variant generates a movement"
-            assert "+10%" in page.locator(".dash-market-row").inner_text()
-            assert "Не подключено" not in page.locator(".dash-bottom").inner_text()
+            assert page.evaluate('dashboardMarket().prices.length')==1,"Only a stable variant generates a movement"
+            assert "+10%" in page.locator(".dash-market-row").first.inner_text()
+            assert page.locator('.dash-middle>.dash-panel').count()==3
+            assert result['comparison']['previous_start']==str(previous) and result['comparison']['basis']=='same_month_last_year'
             assert not page.locator(".dashboard-connections").evaluate("el=>el.open")
             assert page.evaluate("window.dashboardXss") is None
             # Real sandbox banner text has to fit too, without hiding its warning.
             page.locator("#environment-banner").evaluate("el=>{el.dataset.mode='sandbox';el.innerHTML='<strong>Тестовая среда · lavkasp_test</strong><span>Продажи и каталог тестового магазина. Изменение цен доступно только после проверки плана.</span>'}")
+            page.evaluate('() => {window.syntheticMarketBackup=competitorState.data;competitorState.data={...competitorState.data,changes:[],discoveries:[]};render();}')
+            assert 'Сейчас в сравнении:' in page.locator('.dash-market-items').inner_text()
+            assert page.locator('.dash-market-row[data-dash-action=position]').count()>0
+            page.evaluate('() => {competitorState.data=window.syntheticMarketBackup;delete window.syntheticMarketBackup;render();}')
             measures=[]
             for width,height in [(1280,720),(1470,850),(390,844),(320,740)]:
                 page.set_viewport_size({"width":width,"height":height})
@@ -193,6 +203,7 @@ if ($file !== false && strpos($file, '/test-data/site/') === 0 && is_file($file)
                 assert sizes["scrollWidth"]<=width,(sizes,page.locator('body *').evaluate_all('els=>els.filter(e=>e.getBoundingClientRect().right>innerWidth+1).map(e=>({tag:e.tagName,cls:e.className,right:e.getBoundingClientRect().right})).slice(-20)'))
                 assert page.locator('.dash-task strong').first.evaluate('el=>parseFloat(getComputedStyle(el).fontSize)')>=16
                 assert page.locator('.dash-kpi small').first.evaluate('el=>parseFloat(getComputedStyle(el).fontSize)')>=14
+                if width>=1280:assert sizes['bottom']<=height,(sizes, 'Main dashboard must fit the laptop viewport')
                 measures.append(sizes)
             page.set_viewport_size({"width":1280,"height":720})
             page.click('[data-dash-action=group][data-value=weeks]')
@@ -214,6 +225,12 @@ if ($file !== false && strpos($file, '/test-data/site/') === 0 && is_file($file)
             page.wait_for_selector('.dash-price-change')
             assert '500 UAH' in page.locator('.dash-price-change').inner_text()
             assert 'noopener' in page.locator('#drawer-content a').first.get_attribute('rel')
+            page.click('[data-action=close-dialog]')
+            page.click('[data-dash-action=market-tab][data-value=terms]')
+            assert '2 000' in page.locator('.dash-market-items').inner_text() and '2 500' in page.locator('.dash-market-items').inner_text()
+            page.locator('.dash-market-row').first.click()
+            assert 'Раньше:' in page.locator('#drawer-content').inner_text() and 'Теперь:' in page.locator('#drawer-content').inner_text()
+            assert page.locator('#drawer .dash-commercial-change').count()==1
             page.click('[data-action=close-dialog]')
             page.click('[data-dash-action=market-tab][data-value=news]')
             assert 'Новая замеченная смесь' in page.locator('.dash-market-items').inner_text()

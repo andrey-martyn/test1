@@ -107,6 +107,10 @@ variant_expect($selected['grams'] === 20.0 && $selected['price'] === '62.00' && 
 variant_expect($selected['variant_id'] === 'specii:44:31_10' && in_array('variant_prices_unavailable', $result['warnings'], true), 'Missing prices for other variants remain explicit');
 variant_rejects(function () use ($target, $specii, $speciiUrl) { \Lavka\competitors_parse($target, str_replace('bx_active move', '', $specii), $speciiUrl); });
 
+$savedCumin=\Lavka\competitors_parse(['source_id'=>'specii','kind'=>'product','grams_override'=>500],file_get_contents(__DIR__.'/fixtures/specii-cumin-selected.html'),'https://www.specii.in.ua/catalog/izmelchennye-pryanosti/kumin-zira-molotyy/');
+variant_expect(count($savedCumin['offers'])===1 && $savedCumin['offers'][0]['price']==='32.00' && $savedCumin['offers'][0]['grams']===20.0,'Actual saved cumin page proves only 20 g at 32 UAH; 500 g labels never inherit this price');
+variant_expect($savedCumin['offers'][0]['source_variant_id']==='31_10' && $savedCumin['offers'][0]['availability']==='in_stock','The selected SKU and explicit stock are read, hidden out-of-stock UI is ignored');
+
 foreach (['Дой-пак 500 г' => 'doypack', 'DoyPak 50 g' => 'doypack', 'Крафт-пакет 500 г' => 'kraft',
     'Пакет-струна РЕ 500 г' => 'zip', 'Баночка 100 мл / 30 г' => 'jar', '500 г' => 'unknown',
     'Дой-пак или крафт-пакет' => 'unknown'] as $label => $expected) {

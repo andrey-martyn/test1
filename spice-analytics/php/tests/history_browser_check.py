@@ -49,6 +49,15 @@ with tempfile.TemporaryDirectory() as temporary:
             if not page.locator('#history-summary').evaluate('(el)=>el.open'):page.locator('#history-summary>summary').click()
             page.locator('[data-action=history-year][data-year="2025"]').click();page.wait_for_function('() => state.report.year===2025')
             assert page.evaluate('state.report.metrics.amount')==200
+            assert page.locator('[data-chart=purchase-months] [data-chart-bar]').count()==12
+            assert 'Покупки по месяцам' in page.locator('#content').inner_text()
+            assert page.evaluate('state.report.monthly_purchases.reduce((sum,m)=>sum+m.amount,0)')==200
+            assert page.evaluate('state.report.monthly_purchases[0].order_ids')==['105']
+            page.locator('[data-purchase-month="1"]').click()
+            page.wait_for_selector('#drawer .purchase-month-detail .order-detail')
+            assert 'январь 2025' in page.locator('#drawer .drawer-name').inner_text().lower()
+            assert '1 заказов' in page.locator('#drawer .purchase-month-detail').inner_text()
+            page.click('[data-action=close-dialog]')
             page.select_option('#year','0');page.wait_for_function('() => state.report.year===0')
             page.click('[data-view=overview-report]');page.click('[data-view=seasonality]');assert page.locator('[data-chart=months] [data-chart-bar]').count()==12
             page.select_option('#season-metric','amount')

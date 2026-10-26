@@ -42,3 +42,5 @@
   .merge-toolbar-bottom .merge-overlap{width:100%;margin:0!important}
 }
 @supports(width:1cqw){@media(max-width:720px){.duplicate-table{--duplicate-pair-width:100cqw}}}
+
+.purchase-month-note{font-size:14px;margin:4px 22px 18px;color:#43564d}[data-purchase-month]{cursor:pointer}[data-purchase-month]:focus-visible{outline:2px solid #205b46;outline-offset:3px}.purchase-month-detail>p{font-size:16px;line-height:1.6}

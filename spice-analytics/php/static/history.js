@@ -16,10 +16,42 @@ function verticalChart(groups,{money=false,label='Вертикальная ди�
   const perGroup=Math.max(1,...groups.map(g=>g.items.length)),width=Math.max(740,groups.length*Math.max(43,perGroup*12+12)+70),left=64,plot=width-left-15,groupWidth=plot/Math.max(groups.length,1),barWidth=Math.min(perGroup===1?37:13,(groupWidth-12)/perGroup),bottom=220;
   const val=v=>money?num(v,0):num(v,1);
   const grid=Array.from({length:5},(_,i)=>{const value=max*i/4,y=bottom-i*47;return `<line x1="${left}" x2="${width-10}" y1="${y}" y2="${y}" stroke="#e7ece5"/><text x="${left-8}" y="${y+4}" text-anchor="end" fill="#708077" font-size="14">${val(value)}</text>`;}).join('');
-  const bars=groups.map((g,idx)=>{const center=left+groupWidth*(idx+.5);return g.items.map((item,j)=>{const height=Math.max(0,Number(item.value)||0)/max*188,x=center+(j-(g.items.length-1)/2)*barWidth-barWidth*.42,title=item.detail||`${g.label}${item.label?' · '+item.label:''}: ${money?cash(item.value):num(item.value)+' заказов'}`;return `<rect class="chart-bar" data-chart-bar data-value="${Number(item.value)||0}" x="${x}" y="${bottom-height}" width="${barWidth*.84}" height="${height}" rx="3" fill="${item.color||colors[j%colors.length]}" tabindex="0" role="img" aria-label="${esc(title)}"><title>${esc(title)}</title></rect>${g.items.length===1?`<text x="${center}" y="${bottom-height-8}" text-anchor="middle" fill="#315e44" font-size="14">${val(item.value)}</text>`:''}`;}).join('')+`<text x="${center}" y="247" text-anchor="middle" fill="#64756b" font-size="14">${esc(g.label)}</text>`;}).join('');
+  const bars=groups.map((g,idx)=>{const center=left+groupWidth*(idx+.5);return g.items.map((item,j)=>{const height=Math.max(0,Number(item.value)||0)/max*188,x=center+(j-(g.items.length-1)/2)*barWidth-barWidth*.42,title=item.detail||`${g.label}${item.label?' · '+item.label:''}: ${money?cash(item.value):num(item.value)+' заказов'}`;return `<rect class="chart-bar" data-chart-bar data-value="${Number(item.value)||0}" x="${x}" y="${bottom-height}" width="${barWidth*.84}" height="${height}" rx="3" fill="${item.color||colors[j%colors.length]}" tabindex="0" role="${item.month?'button':'img'}" ${item.month?'data-purchase-month="'+item.month+'"':''} aria-label="${esc(title)}"><title>${esc(title)}</title></rect>${g.items.length===1?`<text x="${center}" y="${bottom-height-8}" text-anchor="middle" fill="#315e44" font-size="14">${val(item.value)}</text>`:''}`;}).join('')+`<text x="${center}" y="247" text-anchor="middle" fill="#64756b" font-size="14">${esc(g.label)}</text>`;}).join('');
   return `${series.length?`<div class="chart-legend">${series.map((s,i)=>`<span><i style="background:${colors[i%colors.length]}"></i>${esc(s)}</span>`).join('')}</div>`:''}<div class="chart-scroll"><svg data-chart="${kind}" class="vertical-chart" viewBox="0 0 ${width} 268" style="min-width:${Math.min(width,900)}px" role="img" aria-label="${esc(label)}">${grid}${bars}</svg></div>`;
 }
-function purchaseChart(){const r=state.report;return verticalChart(r.calendar.map(c=>({label:c.label,items:[{value:r.activity[c.key]?.amount||0,detail:`${c.kind==='year'?c.label:fmtDate(c.start)+' — '+fmtDate(c.end)}: ${cash(r.activity[c.key]?.amount||0)}, заказов ${r.activity[c.key]?.count||0}`}]})),{money:true,label:r.year?'Суммы заказов по неделям календарного года':'Суммы заказов по календарным годам'});}
+function purchaseChart(){
+  const r=state.report,names=['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+  if(r.year){
+    const months=r.monthly_purchases||[];
+    return verticalChart(months.map(m=>({label:names[m.month-1],items:[{value:m.amount,month:m.month,detail:`${names[m.month-1]} ${r.year}: ${cash(m.amount)}, заказов ${m.count}${m.start>r.as_of?' · месяц ещё не наступил':m.end>r.as_of?' · по '+fmtDate(r.as_of):''}. Нажмите для заказов.`}]})),{money:true,label:'Суммы заказов по месяцам '+r.year+' года',kind:'purchase-months'})+'<p class="purchase-month-note">Нажмите месяц для списка заказов.</p>';
+  }
+  return verticalChart(r.calendar.map(c=>({label:c.label,items:[{value:r.activity[c.key]?.amount||0,detail:`${c.label}: ${cash(r.activity[c.key]?.amount||0)}, заказов ${r.activity[c.key]?.count||0}`}]})),{money:true,label:'Суммы заказов по календарным годам'});
+}
+let purchaseMonthSequence=0,purchaseMonthState=null;
+async function openPurchaseMonth(month){
+  const r=state.report,bucket=r?.monthly_purchases?.find(m=>m.month===month);if(!r?.year||!bucket)return;
+  const sequence=++purchaseMonthSequence;purchaseMonthState={sequence,ids:bucket.order_ids,loaded:0,busy:false};
+  state.customer=null;openDrawer('ЗАКАЗЫ ЗА МЕСЯЦ');
+  document.getElementById('drawer-content').innerHTML=`<div class="purchase-month-detail" data-sequence="${sequence}"><h2 class="drawer-name">${esc(new Date(bucket.start+'T12:00:00').toLocaleDateString('ru-RU',{month:'long',year:'numeric'}))}</h2><p>${num(bucket.count)} заказов · ${cash(bucket.amount)}${bucket.end>r.as_of&&bucket.start<=r.as_of?' · по '+fmtDate(r.as_of):''}</p><div id="purchase-month-orders"></div><p id="purchase-month-status" role="status"></p><button class="button" type="button" data-purchase-more hidden>Показать ещё</button></div>`;
+  await loadPurchaseMonth();
+}
+async function loadPurchaseMonth(){
+  const job=purchaseMonthState,root=document.querySelector('#drawer[open] .purchase-month-detail');
+  if(!job||job.busy||Number(root?.dataset.sequence)!==job.sequence)return;job.busy=true;
+  const status=root.querySelector('#purchase-month-status'),button=root.querySelector('[data-purchase-more]');button.disabled=true;status.textContent='Загружаем заказы…';
+  try{
+    const ids=job.ids.slice(job.loaded,job.loaded+20),orders=[];
+    for(let start=0;start<ids.length;start+=5)orders.push(...await Promise.all(ids.slice(start,start+5).map(id=>api('/api/orders/'+encodeURIComponent(id)))));
+    if(!root.isConnected||!document.getElementById('drawer').open||purchaseMonthState!==job)return;
+    root.querySelector('#purchase-month-orders').insertAdjacentHTML('beforeend',orders.map(o=>orderHTML(o,true)).join(''));
+    job.loaded+=orders.length;status.textContent=job.ids.length?'Показано '+job.loaded+' из '+job.ids.length:'Заказов за этот месяц нет.';
+    button.hidden=job.loaded>=job.ids.length;button.textContent='Показать ещё '+Math.min(20,job.ids.length-job.loaded);
+  }catch(error){if(root.isConnected){status.textContent=error.message;button.hidden=false;button.textContent='Повторить загрузку';}}
+  finally{job.busy=false;if(button.isConnected)button.disabled=false;}
+}
+document.addEventListener('click',event=>{const month=event.target.closest('[data-purchase-month]');if(month)openPurchaseMonth(Number(month.dataset.purchaseMonth));if(event.target.closest('[data-purchase-more]'))loadPurchaseMonth();});
+document.addEventListener('keydown',event=>{const month=event.target.closest('[data-purchase-month]');if(month&&['Enter',' '].includes(event.key)){event.preventDefault();openPurchaseMonth(Number(month.dataset.purchaseMonth));}});
+
 function repeatChart(){const r=state.report,max=Math.max(1,...r.calendar.map(c=>(r.activity[c.key]?.count||0))),width=Math.max(740,r.calendar.length*15+70),step=(width-70)/Math.max(1,r.calendar.length);return `<div class="chart-legend"><span><i style="background:#b9d2b5"></i>Первая покупка</span><span><i style="background:#316a4c"></i>Повторный заказ</span></div><div class="chart-scroll"><svg data-chart="repeat" class="vertical-chart" viewBox="0 0 ${width} 255" role="img" aria-label="Новые и повторные заказы по ${r.year?'неделям':'годам'}">${r.calendar.map((c,i)=>{const v=r.activity[c.key]||{},a=180*(v.first_count||0)/max,b=180*(v.repeat_count||0)/max,x=55+i*step,w=Math.max(5,Math.min(38,step-5)),title=`${c.label}: первых ${v.first_count||0}, повторных ${v.repeat_count||0}`;return `<g role="img" tabindex="0" aria-label="${esc(title)}"><title>${esc(title)}</title><rect x="${x}" y="${210-a-b}" width="${w}" height="${b}" fill="#316a4c"/><rect x="${x}" y="${210-a}" width="${w}" height="${a}" fill="#b9d2b5"/></g>${(!r.year||i%4===0||i===r.calendar.length-1)?`<text x="${x+w/2}" y="237" text-anchor="middle" font-size="14" fill="#708077">${esc(c.label)}</text>`:''}`;}).join('')}</svg></div>`;}
 function monthlyChart(){
   const r=state.report,names=['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'],compare=!r.year&&state.seasonYears,metric=state.seasonMetric,series=compare?r.annual.map(y=>String(y.year)):[];

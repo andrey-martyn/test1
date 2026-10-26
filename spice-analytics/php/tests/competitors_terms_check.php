@@ -109,6 +109,9 @@ terms_expect(array_column($cash,'value')===['На счёт'],'Cashless payment n
 terms_expect(terms_facts('Наложенным платежом не отправляем.','payment_methods')===[],'Negated payment method excluded');
 
 // Overview integration reads local saved observations only. No MySQL or HTTP.
+$changes=\Lavka\competitors_terms_changes('Бесплатная доставка Новой почтой в отделение от 2000 грн.','Бесплатная доставка Новой почтой в отделение от 2500 грн.');
+terms_expect(count($changes)===1 && $changes[0]['row']==='free_delivery_np_branch' && strpos($changes[0]['before'],'2 000')!==false && strpos($changes[0]['after'],'2 500')!==false,'Changed commercial facts carry the actual old and new values');
+terms_expect(\Lavka\competitors_terms_changes('Бесплатная доставка Новой почтой в отделение от 2000 грн.','Бесплатная доставка Новой почтой в отделение от 2000 грн.')===[],'Identical commercial text creates no event');
 $dir=sys_get_temp_dir().'/lavka-terms-test-'.bin2hex(random_bytes(5));
 mkdir($dir,0700);
 try {
