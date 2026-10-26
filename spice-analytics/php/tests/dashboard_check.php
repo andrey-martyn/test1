@@ -15,9 +15,10 @@ $report=['currency'=>'UAH','customers'=>[
     customer_dashboard('5','2026-01-01',['8'],['segment'=>'sleeping','priority'=>90]),
     customer_dashboard('6','2026-01-01',['9'],['followup_eligible'=>false,'suppression'=>'Отложено']),
     customer_dashboard('7','2026-01-01',['10'],['followup_eligible'=>false,'suppression'=>'Недавний контакт']),
-], 'crm'=>['customers'=>(object)['4'=>['state'=>'waiting']]]];
+], 'duplicate_pairs'=>[['id'=>'synthetic-pair-a'],['id'=>'synthetic-pair-b']], 'crm'=>['customers'=>(object)['4'=>['state'=>'waiting']]]];
 $orders=[order_dashboard('1','2025-03-01','100'),order_dashboard('11','2025-04-01','9999'),order_dashboard('12','2026-02-01','9999'),order_dashboard('13','2025-03-31','500'),order_dashboard('2','2026-03-01','50.25'),order_dashboard('3','2026-03-03','20'),order_dashboard('4','2026-03-02','30'),order_dashboard('5','2026-03-03','40'),order_dashboard('other-currency','2026-03-01','10000'),order_dashboard('cancelled','2026-03-01','10000')];
 $r=\Lavka\dashboard_projection($report,$orders,'2026-03-03');
+expect_dashboard($r['workflows']['duplicate_pairs']===2,'Dashboard exposes a pair count without contact details');
 expect_dashboard($r['metrics']['amount']===140.25 && $r['metrics']['count']===4,'Only eligible report order IDs contribute; today included in month total');
 expect_dashboard($r['metrics']['customers']===2 && $r['metrics']['repeat_customers']===1 && $r['metrics']['repeat_share']===50.0,'Unique people with a purchase before month start, not repeated orders or two purchases in current month');
 expect_dashboard($r['comparison']['days']===2 && $r['comparison']['current']['amount']===80.25 && $r['comparison']['previous']['amount']===100.0,'Today and intervening months excluded from equal-day yearly comparison');

@@ -77,7 +77,7 @@ function nextStepWrap(node,title,open=false){
 function nextStepLayout(view,root){
  if(view==='overview'){
   const bottom=root.querySelector('.dash-bottom');if(!bottom)return;const dormant=[...bottom.children].filter(panel=>panel.querySelector('[data-dash-action=inventory],[data-dash-action=inbox]'));
-  if(dormant.length){const details=document.createElement('details');details.className='dashboard-connections report-detail';details.dataset.detailKey='overview:connections';details.open=!!state.detailsOpen[details.dataset.detailKey];const summary=document.createElement('summary');summary.textContent='Данные, которые подключим позже';details.append(summary);dormant.forEach(panel=>details.append(panel));bottom.after(details);if(bottom.children.length)bottom.classList.add('one-panel');else bottom.remove();}return;
+  if(dormant.length){const details=document.createElement('details');details.className='dashboard-connections report-detail';details.dataset.detailKey='overview:connections';details.open=!!state.detailsOpen[details.dataset.detailKey];const summary=document.createElement('summary');summary.textContent='Данные, которые подключим позже';details.append(summary);dormant.forEach(panel=>details.append(panel));bottom.after(details);if(bottom.children.length)bottom.classList.add('one-panel');else bottom.remove();const note=root.querySelector('.dash-note');if(note){const footer=document.createElement('div');footer.className='dashboard-footer';note.before(footer);footer.append(details,note);}}return;
  }
  if(view==='retention')root.insertAdjacentHTML('beforeend',loyaltyView('gender'));
  const advice=nextStepData(view);nextStepCurrent=advice;if(advice)root.insertAdjacentHTML('afterbegin',nextStepCard(advice));

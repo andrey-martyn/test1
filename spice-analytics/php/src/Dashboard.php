@@ -71,14 +71,14 @@ function dashboard_projection(array $report, iterable $orders, string $today): a
         'comparison' => ['basis' => 'same_month_last_year', 'days' => $closedDays, 'current_start' => $start, 'current_end' => $closedDays ? $currentEnd : null,
             'previous_start' => $previousStart, 'previous_end' => $closedDays ? $previousEnd : null, 'current' => $metrics($closed), 'previous' => $metrics($prior)],
         'days' => array_values($days), 'previous_days' => array_values($previousDays),
-        'actions' => $actions, 'action_count' => count($actions), 'sources' => ['inventory' => 'not_connected', 'inbox' => 'not_connected', 'costs' => 'not_connected']];
+        'actions' => $actions, 'action_count' => count($actions), 'workflows' => ['duplicate_pairs' => count($report['duplicate_pairs'] ?? [])], 'sources' => ['inventory' => 'not_connected', 'inbox' => 'not_connected', 'costs' => 'not_connected']];
 }
 
 function cached_dashboard(\PDO $db, string $directory, string $today, string $currency): array
 {
     $cache = $directory . '/cache'; private_dir($cache);
     $sourceRevision = revision($db);
-    $key = hash('sha256', $sourceRevision . ':dashboard-v2-seasonal:' . $today . ':' . $currency);
+    $key = hash('sha256', $sourceRevision . ':dashboard-v3-workflows:' . $today . ':' . $currency);
     $path = $cache . '/dashboard-' . $key . '.json';
     if (is_file($path)) return decode(file_get_contents($path));
     $report = cached_report($db, $directory, 0, $today, $currency);

@@ -72,6 +72,20 @@ $termsOld=['kind'=>'terms','title'=>'Доставка','offers'=>[],'links'=>[],
 $termsNew=$termsOld;$termsNew['text']='Бесплатная доставка Новой почтой в отделение от 2500 грн.';
 \Lavka\competitors_record_attempt($db,$terms['id'],$termsOld,null,$old,200);
 \Lavka\competitors_record_attempt($db,$terms['id'],$termsNew,null,$now,200);
+$unconfirmed=\Lavka\competitors_save_target($db,['source_id'=>'banka','kind'=>'product','url'=>'https://banka-speciy.in.ua/ua/synthetic-unconfirmed','label'=>'Гвоздика — кандидат','match_group'=>'synthetic-clove','match_confirmed'=>false]);
+\Lavka\competitors_record_attempt($db,$unconfirmed['id'],observed('530'),null,$now,200);
+$failed=\Lavka\competitors_save_target($db,['source_id'=>'specii','kind'=>'product','url'=>'https://www.specii.in.ua/synthetic-error','label'=>'Ошибка цены','match_group'=>'synthetic-clove']);
+\Lavka\competitors_record_attempt($db,$failed['id'],null,'variant_prices_unavailable',$now,200);
+$pending=\Lavka\competitors_save_target($db,['source_id'=>'specii','kind'=>'product','url'=>'https://www.specii.in.ua/synthetic-queue','label'=>'Очередь','match_group'=>'synthetic-clove']);
+$lowOwn=\Lavka\competitors_save_target($db,['source_id'=>'lavka','kind'=>'product','url'=>'https://lavka-speciy.com/synthetic-low','label'=>'Товар ниже рынка','match_group'=>'synthetic-low']);
+\Lavka\competitors_record_attempt($db,$lowOwn['id'],observed('100'),null,$now,200);
+$lowOther=\Lavka\competitors_save_target($db,['source_id'=>'deluxe','kind'=>'product','url'=>'https://deluxe.com.ua/synthetic-low.html','label'=>'Товар ниже рынка','match_group'=>'synthetic-low','match_confirmed'=>true]);
+\Lavka\competitors_record_attempt($db,$lowOther['id'],observed('150'),null,$now,200);
+$gapOwn=\Lavka\competitors_save_target($db,['source_id'=>'lavka','kind'=>'product','url'=>'https://lavka-speciy.com/synthetic-gap','label'=>'Нет нашей цены 500 г','match_group'=>'synthetic-gap']);
+$gap=observed('50');$gap['offers'][0]['grams']=50;$gap['offers'][0]['label']='Дой-пак 50 г';
+\Lavka\competitors_record_attempt($db,$gapOwn['id'],$gap,null,$now,200);
+$gapOther=\Lavka\competitors_save_target($db,['source_id'=>'deluxe','kind'=>'product','url'=>'https://deluxe.com.ua/synthetic-gap.html','label'=>'Есть цена 500 г','match_group'=>'synthetic-gap','match_confirmed'=>true]);
+\Lavka\competitors_record_attempt($db,$gapOther['id'],observed('200'),null,$now,200);
 echo "ok";
 '''
 
@@ -106,6 +120,9 @@ with tempfile.TemporaryDirectory() as temporary:
             add(customer, today-timedelta(days=age), str(customer*100))
     for day in range(1, today.day+1):
         add(100 if day%2 else 101, month.replace(day=day), str(100+day*20))
+    for cid,age in [(501,110),(502,100)]:
+        duplicate_id=add(cid,today-timedelta(days=age))
+        rows["oc_order"][duplicate_id].update(firstname="Проверка",lastname="Совпадений")
     add(100, previous, "700")
     add(300, today, "99999", status="0")
     add(301, today, "99999", currency="USD")
@@ -138,7 +155,9 @@ if ($file !== false && strpos($file, '/test-data/site/') === 0 && is_file($file)
     subprocess.run(docker+["-i",IMAGE,"php","-r",SEED],input=json.dumps({"password":password}).encode(),capture_output=True,check=True)
     with socket.socket() as listener:
         listener.bind(("127.0.0.1",0)); port=listener.getsockname()[1]
-    server=subprocess.Popen(docker+["--name",name,"-p",f"127.0.0.1:{port}:8000",IMAGE,"php","-S","0.0.0.0:8000","-t","/test-data/site","/test-data/router.php"],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    server_log=(ARTIFACTS/"server.log").open("w")
+    server=subprocess.Popen(docker+["--name",name,"-p",f"127.0.0.1:{port}:8000",IMAGE,"php","-S","0.0.0.0:8000","-t","/test-data/site","/test-data/router.php"],stdout=subprocess.DEVNULL,stderr=server_log)
+    server_log.close()
     origin=f"http://127.0.0.1:{port}";base=origin+"/analytics"
     try:
         for _ in range(300):
@@ -146,7 +165,7 @@ if ($file !== false && strpos($file, '/test-data/site/') === 0 && is_file($file)
                 if httpx.get(base+"/index.php?route=/health",trust_env=False,timeout=2).status_code==200:break
             except httpx.TransportError: pass
             time.sleep(.1)
-        else: raise RuntimeError("Synthetic dashboard server did not start")
+        else: raise RuntimeError("Synthetic dashboard server did not start: "+(ARTIFACTS/"server.log").read_text()[-3000:])
         assert httpx.get(base+"/index.php?route=/api/dashboard",trust_env=False).status_code==401
         for filename, expected in [("app.js", stale_script), ("style.css", stale_style)]:
             stale = httpx.get(base+"/static/"+filename,trust_env=False)
@@ -194,6 +213,68 @@ if ($file !== false && strpos($file, '/test-data/site/') === 0 && is_file($file)
             assert 'Сейчас в сравнении:' in page.locator('.dash-market-items').inner_text()
             assert page.locator('.dash-market-row[data-dash-action=position]').count()>0
             page.evaluate('() => {competitorState.data=window.syntheticMarketBackup;delete window.syntheticMarketBackup;render();}')
+            # The shared four competitor actions work directly from Today.
+            def home():
+                if page.locator('#drawer').evaluate('el=>el.open'):
+                    page.click('[data-action=close-dialog]')
+                page.click('[data-view=overview]')
+                page.wait_for_function('() => !dashboardState.loading && state.view==="overview"')
+            def extra_action(key):
+                page.click('[data-dash-action=all-workflows]')
+                page.locator('#drawer [data-dash-action=workflow][data-key="'+key+'"]').click()
+            expected_actions=page.evaluate("competitorReadinessSummary('500').actions")
+            assert result['workflows']['duplicate_pairs']>0
+            for item in expected_actions:
+                button=page.locator('.dash-workflows-primary [data-key="'+item['key']+'"]')
+                assert button.count()==1 and button.locator('.dash-workflow-count').inner_text()==str(item['count'])
+            page.evaluate('Object.assign(competitorState,{matrixPack:"50",matrixStatus:"gaps",source:"banka",search:"no match",archived:true})')
+            page.click('[data-dash-action=workflow][data-key=prices-ready]')
+            page.wait_for_selector('.competitor-readiness')
+            assert page.input_value('#competitor-matrix-pack')=='500' and page.input_value('#competitor-matrix-status')=='ready'
+            assert page.evaluate('competitorVisibleRows().every(r=>r.comparable)')
+            assert page.evaluate('competitorState.search==="" && competitorState.source==="all" && !competitorState.archived')
+            home()
+            page.click('[data-dash-action=workflow][data-key=prices-above]')
+            page.wait_for_selector('.competitor-matrix')
+            assert page.input_value('#competitor-matrix-status')=='above' and page.input_value('#competitor-matrix-sort')=='above'
+            assert page.evaluate('competitorVisibleRows().length>0 && competitorVisibleRows().every(r=>r.above)')
+            home()
+            page.click('[data-dash-action=workflow][data-key=confirm-products]')
+            page.wait_for_function('() => !monitoringState.loading && competitorState.tab==="matching"')
+            assert page.input_value('#monitoring-search [name=status]')=='review'
+            assert page.evaluate('monitoringState.source==="all" && monitoringState.own===0 && monitoringState.search===""')
+            home()
+            page.click('[data-dash-action=workflow][data-key=price-errors]')
+            page.wait_for_selector('.competitor-error-card')
+            assert page.locator('.competitor-error-card').count()==1
+            home()
+            extra_action('prices-below')
+            page.wait_for_selector('.competitor-matrix')
+            assert page.input_value('#competitor-matrix-status')=='below' and page.input_value('#competitor-matrix-sort')=='below'
+            assert page.evaluate('competitorVisibleRows().length>0 && competitorVisibleRows().every(r=>r.below)')
+            home()
+            extra_action('comparison-own')
+            page.wait_for_selector('#drawer .competitor-task-list[data-kind=own]')
+            assert page.locator('#drawer .competitor-task-card').count()==1
+            home()
+            page.evaluate('() => {document.getElementById("year").value="2025";document.getElementById("as-of").value="2025-01-01";state.duplicateKind="email";state.duplicateCustomer="999999"}')
+            page.click('.dash-workflows [data-dash-action=workflow][data-key=contact-matches]')
+            page.wait_for_function('() => state.view==="duplicates" && state.report?.year===0')
+            assert page.input_value('#as-of')==str(today)
+            assert page.evaluate('duplicateRows().length')==result['workflows']['duplicate_pairs']
+            assert page.evaluate('state.duplicateKind==="all" && state.duplicateCustomer===null')
+            home()
+            page.evaluate('() => {dashboardState.error="Синтетическая ошибка чтения";render()}')
+            assert page.locator('.dash-workflows [data-key=contact-matches]').count()==0
+            page.click('.dash-workflows [data-key=sales-sync]')
+            assert 'Откуда берутся заказы' in page.locator('#drawer-content').inner_text()
+            assert 'Синтетическая ошибка чтения' in page.locator('#drawer-content').inner_text()
+            page.click('[data-action=close-dialog]')
+            page.evaluate('() => {dashboardState.error="";dashboardState.marketError="Синтетическая ошибка источника";render()}')
+            assert page.locator('.dash-workflows-primary [data-key=market-reload]').count()==1
+            assert page.locator('.dash-workflows-primary [data-key=prices-ready]').count()==0
+            page.evaluate('() => {dashboardState.marketError="";render()}')
+            assert not mutations,mutations
             measures=[]
             for width,height in [(1280,720),(1470,850),(390,844),(320,740)]:
                 page.set_viewport_size({"width":width,"height":height})
