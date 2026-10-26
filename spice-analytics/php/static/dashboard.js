@@ -108,8 +108,8 @@ function dashboardWorkflows(){
   if(dashboardFresh())primary.push({key:'contact-matches',label:'Сверить клиентов',count:d.workflows?.duplicate_pairs||0,disabled:!d.workflows?.duplicate_pairs,description:'Возможные совпадения покупателей за всю историю в этой валюте. Это пары для проверки, а не готовое решение об объединении.'});
   else primary.push({key:'sales-sync',label:'Проверить обновление продаж',description:'Продажи требуют обновления. Здесь можно посмотреть состояние синхронизации и инструкции.'});
   if(summary){
-    if(summary.above)extra.push({key:'prices-above',label:'Где наша цена выше',count:summary.above,description:'Цены 500 г выше минимума конкурентов, начиная с наибольшего отклонения.'});
-    if(summary.below)extra.push({key:'prices-below',label:'Где наша цена ниже',count:summary.below,description:'Цены 500 г ниже минимума конкурентов, начиная с наибольшего отклонения. Проверьте маржу и условия предложения.'});
+    if(summary.above)extra.push({key:'prices-above',label:'Наша цена выше',count:summary.above,description:'Цены 500 г выше минимума конкурентов, начиная с наибольшего отклонения.'});
+    if(summary.below)extra.push({key:'prices-below',label:'Наша цена ниже',count:summary.below,description:'Цены 500 г ниже минимума конкурентов, начиная с наибольшего отклонения. Проверьте маржу и условия предложения.'});
     if(!summary.ready&&!summary.f.unconfirmed&&!summary.f.unlinked)extra.push(summary.actions.find(item=>item.key==='find-products'));
     for(const [kind,count] of Object.entries(summary.f.blocked_500))if(competitorTaskLabels[kind])extra.push({key:'comparison-'+kind,label:competitorTaskLabels[kind],count,taskKind:kind,description:{own:'У нашего товара нет пригодной цены 500 г. Откроются конкретные товары и ссылки в магазин.',stock:'Наличие мешает сравнению. Откроются предложения, которые нужно проверить.',pack:'Не найдена цена точной фасовки 500 г. Можно посмотреть другой вес или подобрать ссылку.',packaging:'Нужно выбрать подходящую упаковку для сравнения.',conditional:'Цена зависит от условий покупки. Проверьте ограничения в карточке.'}[kind]||'Откроются карточки, которым нужна проверка.'});
   }

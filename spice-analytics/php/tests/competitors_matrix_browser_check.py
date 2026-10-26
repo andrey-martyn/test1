@@ -277,8 +277,8 @@ with tempfile.TemporaryDirectory() as temporary:
 
             # Only usable offers determine price position; the unconfirmed,
             # stale, wholesale and unavailable 1 UAH offers above stay excluded.
-            page.select_option('#competitor-matrix-status','lowest')
-            assert matrix_row(page,'matrix-own-cheap').count()==1 and matrix_row(page,'matrix-tie').count()==1
+            page.select_option('#competitor-matrix-status','below')
+            assert matrix_row(page,'matrix-own-cheap').count()==1 and matrix_row(page,'matrix-tie').count()==0
             assert matrix_row(page,'matrix-main').count()==0 and matrix_row(page,'matrix-none').count()==0
             assert 'Наша ниже на 30%' in matrix_row(page,'matrix-own-cheap').inner_text()
             assert 'Разница: 30 UAH' in matrix_row(page,'matrix-own-cheap').inner_text()
@@ -300,6 +300,54 @@ with tempfile.TemporaryDirectory() as temporary:
             page.select_option('#competitor-matrix-sort','below')
             assert page.evaluate('() => {const rows=competitorVisibleRows(),first=rows.findIndex(r=>!r.comparable);return first<0||rows.slice(first).every(r=>!r.comparable)}')
             page.select_option('#competitor-matrix-sort','name')
+
+            # Price filters partition the usable rows without overlapping aliases.
+            options=page.locator('#competitor-matrix-status option').evaluate_all('els=>els.map(e=>({value:e.value,label:e.textContent}))')
+            assert [o['value'] for o in options]==['all','ready','difference','above','below','equal','gaps'],options
+            assert len({o['label'] for o in options})==len(options)
+            positions={}
+            for status in ['above','below','equal','ready','difference']:
+                page.select_option('#competitor-matrix-status',status)
+                positions[status]=set(page.evaluate('competitorVisibleRows().map(r=>r.key)'))
+            assert not positions['above']&positions['below'] and not positions['equal']&(positions['above']|positions['below'])
+            assert positions['ready']==positions['above']|positions['below']|positions['equal']
+            assert positions['difference']==positions['above']|positions['below']
+            assert page.locator('.competitor-action-group').count()==2
+            assert page.locator('.competitor-action-group').first.locator('[data-comp-action=matrix-show-above]').count()==1
+            assert page.locator('.competitor-action-group').first.locator('[data-comp-action=matrix-show-below]').count()==1
+            # Both shortcuts reset unrelated search/page and preserve the chosen packs.
+            for pack in ['50','all','minimum','500']:
+                page.select_option('#competitor-matrix-pack',pack)
+                summary=page.evaluate('competitorReadinessSummary(competitorState.matrixPack)')
+                expected_ready=page.evaluate('competitorRowsForPack().filter(r=>r.comparable).length')
+                assert summary['ready']==expected_ready
+                if pack=='minimum':
+                    assert page.evaluate('() => {const rows=competitorMatrixRows();return competitorRowsForPack().every(r=>{const weights=rows.filter(x=>x.rowGroup===r.rowGroup&&x.cells.lavka.eligible).map(x=>x.grams);return r.grams===(weights.length?Math.min(...weights):50);});}')
+                for status in ['above','below']:
+                    button=page.locator('[data-comp-action=matrix-show-'+status+']')
+                    assert button.locator('.competitor-action-count').inner_text()==str(summary[status])
+                    if not summary[status]:
+                        assert button.is_disabled()
+                        continue
+                    page.evaluate('() => {competitorState.search="unrelated search";competitorState.matrixPage=9;}')
+                    button.click()
+                    assert page.input_value('#competitor-matrix-pack')==pack
+                    assert page.input_value('#competitor-matrix-status')==status and page.input_value('#competitor-matrix-sort')==status
+                    assert page.evaluate('competitorVisibleRows().length')==summary[status]
+                    assert page.evaluate('competitorState.search==="" && competitorState.matrixPage===1')
+                    assert page.locator('[data-comp-action=matrix-show-'+status+']').get_attribute('aria-pressed')=='true'
+            page.select_option('#competitor-matrix-pack','50')
+            page.select_option('#competitor-matrix-status','difference')
+            page.fill('#competitor-search','nothing matches this search')
+            page.locator('[data-comp-action=matrix-reset]').click()
+            assert page.input_value('#competitor-search')=='' and page.input_value('#competitor-matrix-status')=='all'
+            assert page.input_value('#competitor-matrix-pack')=='50' and page.input_value('#competitor-matrix-sort')=='name'
+            for width in [1440,390,320]:
+                page.set_viewport_size({'width':width,'height':1000})
+                assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'),width
+                page.locator('.competitor-readiness').screenshot(path=str(ARTIFACTS/f'actions-clean-{width}.png'))
+            page.set_viewport_size({'width':1440,'height':1000})
+            page.fill('#competitor-search','Матрица')
 
             # Other actual packs get their own rows; a 200g price is never
             # divided into a fictitious 50g offer in the primary comparison.
@@ -596,7 +644,7 @@ with tempfile.TemporaryDirectory() as temporary:
             page.click("[data-action=close-dialog]")
             page.select_option("#competitor-matrix-status","above")
             assert matrix_row(page,"matrix-stock-policy",500).count()==1
-            page.select_option("#competitor-matrix-status","lowest")
+            page.select_option("#competitor-matrix-status","below")
             assert matrix_row(page,"matrix-stock-policy",500).count()==0
             page.select_option("#competitor-matrix-status","all")
             page.fill("#competitor-search","Матрица Л")
@@ -688,7 +736,7 @@ with tempfile.TemporaryDirectory() as temporary:
             assert not external, external
             browser.close()
         print(json.dumps({"php_image": IMAGE, "exact_packs_50_200": "passed",
-                          "eligibility_currency_and_ties": "passed", "batch_and_row_preview": "passed",
+                          "eligibility_currency_and_ties": "passed", "distinct_price_filters_and_symmetric_shortcuts": "passed", "batch_and_row_preview": "passed",
                           "own_price_cap_and_no_price_writes": "passed", "explicit_link_confirmation": "passed",
                           "confirmed_unknown_out_of_stock_and_preorder_prices_remain_visible": "passed",
                           "found_minimum_outline_and_all_price_reading_dates": "passed",
