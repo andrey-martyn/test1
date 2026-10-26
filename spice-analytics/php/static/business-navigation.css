@@ -4,3 +4,18 @@
 @media(max-width:1100px){.sidebar nav button,.dashboard-mode .sidebar nav button{font-size:14px;padding-left:9px;padding-right:9px}}
 @media(max-width:720px){.sidebar nav button,.dashboard-mode .sidebar nav button{font-size:14px;padding:10px;min-height:44px}.sidebar nav button[data-area=settings]{margin-top:0}.sidebar nav{gap:5px}.business-subnav{flex-wrap:nowrap;overflow-x:auto;max-width:100%;overscroll-behavior-x:contain;margin-bottom:16px;padding-bottom:10px}.business-subnav button{white-space:nowrap;flex-shrink:0;min-height:44px;font-size:14px}.panel-heading p{font-size:14px}}
 @media print{.business-subnav{display:none}}
+
+/* Fixed icon cells and an internal focus ring keep the sidebar geometry stable. */
+.sidebar #navigation button{position:relative;display:flex;align-items:center;justify-content:flex-start;gap:12px;border:0;border-radius:9px;text-align:left}
+.sidebar #navigation .nav-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 24px;width:24px;height:24px;line-height:0}
+.sidebar #navigation .nav-icon svg{display:block;width:24px;height:24px;flex-shrink:0}
+.sidebar #navigation .nav-label{display:block;min-width:0;line-height:1.4}
+.sidebar #navigation button.active{color:var(--brand-red-dark);background:var(--brand-red-tint);box-shadow:inset 3px 0 var(--brand-red)}
+.sidebar #navigation button:focus:not(:focus-visible){outline:none}
+.sidebar #navigation button:focus-visible{outline:2px solid #205b46;outline-offset:-5px}
+
+#business-journey{margin-top:24px;padding-top:18px;border-top:1px solid var(--line)}
+#business-journey[hidden]{display:none}.business-journey-heading{font-size:16px;font-weight:650;margin-bottom:10px}.business-journey-links{display:flex;flex-wrap:wrap;gap:8px}.business-journey-links .button{min-height:44px;white-space:normal;text-align:left}.business-directory{margin-top:12px}.business-directory>summary{display:flex;align-items:center;gap:8px;min-height:44px;cursor:pointer;font-size:15px;color:#205b46;font-weight:600;list-style:none}.business-directory>summary::-webkit-details-marker{display:none}.business-directory>summary:before{content:'▸'}.business-directory[open]>summary:before{content:'▾'}.business-directory-groups{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;padding:12px 0}.business-directory-groups section{min-width:0}.business-directory-groups h4{font-size:15px;margin:0 0 6px}.business-directory-groups .button{display:block;min-height:44px;width:100%;padding:8px 0;border:0;background:none;color:#205b46;text-align:left;white-space:normal;font-size:14px;line-height:1.4;box-shadow:none}.business-directory-groups .button:hover{text-decoration:underline}
+@media(max-width:900px){.business-directory-groups{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.business-directory-groups{grid-template-columns:1fr}.business-journey-links{flex-direction:column}.business-journey-links .button{width:100%}}
+@media print{#business-journey,.business-directory{display:none}}

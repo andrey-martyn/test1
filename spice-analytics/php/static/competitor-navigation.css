@@ -1,15 +1,19 @@
 /* One shared sticky navigation style for reports and competitor research. */
 :is(.competitors-module .competitor-nav,#section-navigation){position:sticky;top:8px;z-index:25;display:flex;align-items:stretch;gap:4px;background:#fff;border:1px solid #9eafa6;box-shadow:0 3px 12px #183d2920;border-radius:12px;padding:6px;margin:0 0 18px;isolation:isolate;flex-wrap:nowrap;overflow:visible}
 #section-navigation[hidden]{display:none}
-:is(.competitors-module .competitor-tabs,#section-navigation .section-tabs){position:relative;display:flex;flex:1;min-width:0;flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;gap:5px;border:0;margin:0;scrollbar-width:thin;scrollbar-color:#789d88 #eef3ef}
-:is(.competitors-module .competitor-nav,#section-navigation) :is(.competitor-tabs,.section-tabs) button{flex:0 0 auto;font-size:16px;font-weight:600;line-height:1.35;white-space:nowrap;min-height:46px;padding:11px 15px;border:1px solid transparent;border-radius:7px;background:#edf3ef;color:#294739;margin:0}
+:is(.competitors-module .competitor-tabs,#section-navigation .section-tabs){position:relative;display:flex;flex:1;min-width:0;flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;gap:5px;border:0;margin:0;height:48px;scrollbar-width:none}
+:is(.competitors-module .competitor-nav,#section-navigation) :is(.competitor-tabs,.section-tabs) button{flex:0 0 auto;font-size:16px;font-weight:600;line-height:1.35;white-space:nowrap;height:48px;min-height:48px;padding:11px 15px;border:1px solid transparent;border-radius:7px;background:#edf3ef;color:#294739;margin:0}
 :is(.competitors-module .competitor-nav,#section-navigation) :is(.competitor-tabs,.section-tabs) button:hover{background:#dceade;color:#133c29}
 :is(.competitors-module .competitor-nav .competitor-tabs button.active,#section-navigation .section-tabs button[aria-current=page]){background:#18583e;color:white;border-color:#18583e;box-shadow:none}
 :is(.competitors-module .competitor-nav,#section-navigation) button:focus-visible{outline:3px solid #b52a22;outline-offset:-3px}
-:is(.competitors-module .competitor-nav,#section-navigation) .competitor-tab-arrow{flex:0 0 32px;min-width:0;padding:0;border:1px solid #c3d0c8;border-radius:7px;background:#fff;color:#18583e;font-size:27px;cursor:pointer}
+:is(.competitors-module .competitor-nav,#section-navigation) .competitor-tab-arrow{display:grid;place-items:center;align-self:center;flex:0 0 44px;width:44px;min-width:44px;height:48px;min-height:48px;padding:0;border:1px solid #c3d0c8;border-radius:7px;background:#fff;color:#18583e;font-size:0;line-height:0;cursor:pointer;margin:0}
 .competitor-context{display:flex;justify-content:flex-end;flex-wrap:wrap;align-items:center;gap:12px;margin:0 0 20px}
 .competitor-context p{flex:1;min-width:200px;margin:0;color:#354f42;font-size:16px;line-height:1.55}
 .competitor-tabpanel{min-height:70vh;scroll-margin-top:95px}
 .competitor-tabpanel>.next-step{margin-top:0}
-@media(max-width:700px){:is(.competitors-module .competitor-nav,#section-navigation){top:4px;margin-bottom:14px;padding:4px;gap:2px}:is(.competitors-module .competitor-nav,#section-navigation) :is(.competitor-tabs,.section-tabs) button{padding:11px 12px;font-size:16px}:is(.competitors-module .competitor-nav,#section-navigation) .competitor-tab-arrow{flex-basis:26px}.competitor-context .button{min-height:44px}.competitor-context{gap:8px}.competitor-context p{flex-basis:100%}.competitor-tabpanel{scroll-margin-top:90px}}
+@media(max-width:700px){:is(.competitors-module .competitor-nav,#section-navigation){top:4px;margin-bottom:14px;padding:4px;gap:2px}:is(.competitors-module .competitor-nav,#section-navigation) :is(.competitor-tabs,.section-tabs) button{padding:11px 12px;font-size:16px}:is(.competitors-module .competitor-nav,#section-navigation) .competitor-tab-arrow{flex-basis:44px}.competitor-context .button{min-height:44px}.competitor-context{gap:8px}.competitor-context p{flex-basis:100%}.competitor-tabpanel{scroll-margin-top:90px}}
 @media print{#section-navigation{display:none}}
+
+:is(.competitors-module .competitor-tabs,#section-navigation .section-tabs)::-webkit-scrollbar{display:none}
+:is(.competitors-module .competitor-nav,#section-navigation) .competitor-tab-arrow svg{display:block;width:22px;height:22px;pointer-events:none}
+:is(.competitors-module .competitor-nav,#section-navigation) .competitor-tab-arrow:hover{background:#edf3ef;border-color:#789d88}

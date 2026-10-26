@@ -125,7 +125,7 @@ function dashboardWorkflowsView(){
 }
 function dashboardOpenWorkflows(){
   const flow=dashboardWorkflows();state.customer=null;openDrawer('ЧТО СДЕЛАТЬ ДАЛЬШЕ');
-  $('#drawer-content').innerHTML=`<div class="dash-detail dash-workflow-list"><h2>Что сделать дальше</h2><p>Выберите действие — откроется нужный список с подходящими фильтрами.</p>${flow.all.map(item=>`<section class="dash-workflow-item">${dashboardWorkflowButton(item)}<p>${esc(item.description)}</p></section>`).join('')||'<p>Сейчас нет задач, требующих проверки.</p>'}${flow.queued?'<div class="dash-workflow-queue"><strong>В очереди на проверку: '+num(flow.queued)+'</strong><p>Эти страницы обрабатываются автоматически. Повторно отправлять их не нужно.</p><button class="button" data-dash-action="workflow" data-key="price-queue">Посмотреть очередь →</button></div>':''}</div>`;
+  $('#drawer-content').innerHTML=`<div class="dash-detail dash-workflow-list"><h2>Что сделать дальше</h2><p>Выберите действие — откроется нужный список с подходящими фильтрами.</p>${flow.all.map(item=>`<section class="dash-workflow-item">${dashboardWorkflowButton(item)}<p>${esc(item.description)}</p></section>`).join('')||'<p>Сейчас нет задач, требующих проверки.</p>'}${flow.queued?'<div class="dash-workflow-queue"><strong>В очереди на проверку: '+num(flow.queued)+'</strong><p>Эти страницы обрабатываются автоматически. Повторно отправлять их не нужно.</p><button class="button" data-dash-action="workflow" data-key="price-queue">Посмотреть очередь →</button></div>':''}${businessDirectoryView()}</div>`;
 }
 async function dashboardRunWorkflow(key){
   const flow=dashboardWorkflows(),task=flow.all.find(item=>item.key===key);
