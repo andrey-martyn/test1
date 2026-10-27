@@ -36,7 +36,7 @@ class ReleaseTools(unittest.TestCase):
             'DB_DATABASE':'lavkasp_test','DB_PREFIX':'oc_','DB_PORT':'3306'
         }.items())
         self.write_configs()
-        self.probe = {'ok':True,'database':'lavkasp_test','settings':{'config_theme':'unishop2'},'liveprice_enabled':True,'relevant_template_overrides':0}
+        self.probe = {'ok':True,'database':'lavkasp_test','settings':{'config_theme':'unishop2'},'unishop_settings_found':True,'liveprice_enabled':True,'relevant_template_overrides':0}
         replacement = patch.object(ops.shutil,'which',return_value='/fake/php')
         replacement.start(); self.addCleanup(replacement.stop)
         self.real_run = ops.subprocess.run
@@ -80,6 +80,27 @@ class ReleaseTools(unittest.TestCase):
         self.write_configs()
         self.assertFalse(ops.preflight()['ok'])
         self.run.assert_not_called()
+
+    def test_missing_theme_settings_do_not_mean_disabled_or_allow_install(self):
+        self.probe.pop('unishop_settings_found')
+        self.probe.pop('liveprice_enabled')
+        self.probe['unishop_loader_refs'] = []  # PHP encodes an empty associative array as [].
+        self.run.return_value.stdout = json.dumps(self.probe)
+        report = ops.preflight()
+        self.assertTrue(report['isolation_ok'])
+        self.assertFalse(report['ok'])
+        self.assertTrue(any('source is unverified' in issue for issue in report['issues']))
+        self.assertFalse(any('is disabled' in issue for issue in report['issues']))
+
+    def test_runtime_source_diagnostics_emit_only_identifiers(self):
+        path = ops.SHOP/'catalog/model/extension/module/uni_settings.php'
+        path.parent.mkdir(parents=True)
+        path.write_text('''<?php $private = 'do-not-print'; $table = DB_PREFIX . "uni_setting"; $this->config->get('uni_settings');''')
+        self.probe['unishop_loader_refs'] = {'UniShop2 template': {'load_routes':['extension/module/uni_settings','../../elsewhere']}}
+        refs = ops.runtime_source_refs(self.probe)
+        self.assertEqual(refs[0]['table_names'], ['uni_setting'])
+        self.assertEqual(refs[0]['config_get_keys'], ['uni_settings'])
+        self.assertNotIn('do-not-print', json.dumps(refs))
 
     def test_probe_uses_python36_subprocess_api_and_captures_stderr(self):
         def python36_run(command, **options):

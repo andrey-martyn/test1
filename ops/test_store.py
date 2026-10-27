@@ -78,6 +78,19 @@ def config_values(path):
 PHP_PROBE = r'''
 $c = json_decode(stream_get_contents(STDIN), true);
 function fail_probe($code) { echo json_encode(array('ok'=>false,'code'=>$code)); exit(1); }
+function unishop_source_refs($source) {
+    $patterns = array(
+        'config_get_keys' => '~config->get\(\s*[\'"]((?:config_)?uni[a-zA-Z0-9_]*)[\'"]~',
+        'load_routes' => '~load->(?:model|controller)\(\s*[\'"]([a-zA-Z0-9_/]*uni[a-zA-Z0-9_/]*)[\'"]~',
+        'table_names' => '~DB_PREFIX\s*\.\s*[\'"]([a-zA-Z0-9_]*uni[a-zA-Z0-9_]*)~'
+    );
+    $out = array();
+    foreach ($patterns as $name => $pattern) {
+        preg_match_all($pattern, $source, $matches);
+        $out[$name] = array_slice(array_values(array_unique($matches[1])), 0, 32);
+    }
+    return $out;
+}
 if (!extension_loaded('mysqli')) fail_probe('MYSQLI_UNAVAILABLE');
 mysqli_report(MYSQLI_REPORT_OFF);
 $db = mysqli_init();
@@ -91,10 +104,13 @@ try {
     $r = $db->query("SELECT store_id, `key`, value FROM `".$p."setting` WHERE `key` IN ('config_theme','config_template','theme_default_directory','theme_unishop2_directory','config_url','config_ssl','config_unishop2')");
     if (!$r) fail_probe('SETTINGS_QUERY_FAILED');
     $out['settings'] = array();
-    $out['legacy_mobile_code'] = false;
+    $out['unishop_settings_found'] = false;
+    $out['liveprice_enabled'] = null;
+    $out['legacy_mobile_code'] = null;
     while ($row = $r->fetch_assoc()) {
         if ((int)$row['store_id'] !== 0) continue;
         if ($row['key'] === 'config_unishop2') {
+            $out['unishop_settings_found'] = true;
             $u = json_decode($row['value'], true);
             if (!is_array($u)) fail_probe('UNISHOP_SETTINGS_NOT_JSON');
             $out['unishop_version'] = isset($u['version']) ? $u['version'] : null;
@@ -105,10 +121,25 @@ try {
             $out['legacy_mobile_code'] = (bool)preg_match('/data-lavka-mobile|lavka-mobile-cards|lavka-option-select|lavka-card-buyline|uni-grid-test/', (isset($u['user_js']) ? $u['user_js'] : '').(isset($u['user_css']) ? $u['user_css'] : ''));
         } else { $out['settings'][$row['key']] = $row['value']; }
     }
-    $r = $db->query("SELECT code, name, version FROM `".$p."modification` WHERE status = 1");
+    $r = $db->query("SELECT code, name, version, IF(code LIKE '%unishop%', xml, '') AS unishop_xml FROM `".$p."modification` WHERE status = 1");
     if (!$r) fail_probe('MODIFICATIONS_QUERY_FAILED');
     $out['active_ocmod'] = array();
-    while ($row = $r->fetch_assoc()) $out['active_ocmod'][] = $row;
+    $out['unishop_loader_refs'] = array();
+    while ($row = $r->fetch_assoc()) {
+        if ($row['unishop_xml'] !== '') $out['unishop_loader_refs'][$row['code']] = unishop_source_refs($row['unishop_xml']);
+        unset($row['unishop_xml']);
+        $out['active_ocmod'][] = $row;
+    }
+    if (!$out['unishop_settings_found']) {
+        // Metadata only: never print setting values, raw XML, license keys or customer rows.
+        $r = $db->query("SELECT store_id, code, `key`, serialized FROM `".$p."setting` WHERE `key` LIKE '%unishop%' OR code LIKE '%unishop%' OR `key` LIKE 'uni%' OR code LIKE 'uni%' ORDER BY store_id, `key` LIMIT 100");
+        $out['unishop_setting_rows'] = array();
+        if ($r) while ($row = $r->fetch_assoc()) $out['unishop_setting_rows'][] = $row;
+        $names = array($p.'uni_setting', $p.'uni_settings', $p.'unishop2_setting', $p.'unishop2_settings');
+        $r = $db->query("SELECT TABLE_NAME AS table_name, COLUMN_NAME AS column_name FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('".implode("','", $names)."') ORDER BY TABLE_NAME, ORDINAL_POSITION");
+        $out['unishop_settings_tables'] = array();
+        if ($r) while ($row = $r->fetch_assoc()) $out['unishop_settings_tables'][$row['table_name']][] = $row['column_name'];
+    }
     $r = $db->query("SELECT COUNT(*) AS n FROM `".$p."theme` WHERE route LIKE '%product/category%' OR route LIKE '%common/header%' OR route LIKE '%uni_options%'");
     $out['relevant_template_overrides'] = $r ? (int)$r->fetch_assoc()['n'] : null;
     $db->close();
@@ -117,8 +148,36 @@ try {
 '''
 
 
+def runtime_source_refs(db):
+    """Read bounded source files named by OCMOD, emitting identifiers, never code/values."""
+    paths = [SHOP/'catalog/controller/startup/startup.php', STORAGE/'modification/catalog/controller/startup/startup.php', STORAGE/'modification/system/framework.php']
+    loaders = db.get('unishop_loader_refs') or {}
+    if not isinstance(loaders, dict):
+        loaders = {}
+    for refs in loaders.values():
+        for route in refs.get('load_routes', []):
+            if not isinstance(route, str) or not re.fullmatch(r'extension/module/uni[a-zA-Z0-9_]*(?:/[a-zA-Z0-9_]+)*', route):
+                continue
+            relative = '/'.join(route.split('/')[:3]) + '.php'
+            paths.extend([SHOP/'catalog/model'/relative, SHOP/'catalog/controller'/relative])
+    result = []
+    patterns = {
+        'config_get_keys': r'''config->get\(\s*['"]((?:config_)?uni[a-zA-Z0-9_]*)['"]''',
+        'table_names': r'''DB_PREFIX\s*\.\s*['"]([a-zA-Z0-9_]*uni[a-zA-Z0-9_]*)''',
+    }
+    for path in dict.fromkeys(paths):
+        if not path.is_file() or not (within(path.resolve(), SHOP) or within(path.resolve(), STORAGE)) or path.stat().st_size > 2 * 1024 * 1024:
+            continue
+        source = path.read_text(encoding='utf-8-sig', errors='replace')
+        refs = {key: sorted(set(re.findall(pattern, source)))[:32] for key, pattern in patterns.items()}
+        if any(refs.values()):
+            refs['file'] = str(path)
+            result.append(refs)
+    return result
+
+
 def preflight(compatibility=True):
-    report = {'target': HOSTNAME, 'shop': str(SHOP), 'storage': str(STORAGE), 'issues': [], 'warnings': []}
+    report = {'target': HOSTNAME, 'shop': str(SHOP), 'storage': str(STORAGE), 'issues': [], 'warnings': [], 'isolation_ok': False}
     issues = report['issues']
     for root in (SHOP, STORAGE):
         if not root.is_dir() or root.resolve() != root:
@@ -189,17 +248,23 @@ def preflight(compatibility=True):
                 report['db'] = db
                 if not db.get('ok') or db.get('database') != DATABASE:
                     issues.append('Read-only database probe did not confirm lavkasp_test.')
+                else:
+                    report['isolation_ok'] = True
                 if compatibility and db.get('legacy_mobile_code'):
                     issues.append('Legacy custom mobile code detected. Review/migrate it before installation.')
                 settings = db.get('settings', {})
                 theme = settings.get('config_theme')
                 if compatibility and theme != 'unishop2' and settings.get('theme_default_directory') != 'unishop2':
                     issues.append('Active UniShop2 theme was not confirmed.')
-                if compatibility and not db.get('liveprice_enabled'):
-                    issues.append('Native live-price calculation is disabled or unverified.')
+                if compatibility and not db.get('unishop_settings_found'):
+                    issues.append('UniShop2 runtime settings source is unverified; review loader/schema diagnostics.')
+                    report['runtime_source_refs'] = runtime_source_refs(db)
+                elif compatibility and not db.get('liveprice_enabled'):
+                    issues.append('Native live-price calculation is disabled in the confirmed settings.')
                 for key in ('config_url','config_ssl'):
                     if settings.get(key) and urlsplit(settings[key]).hostname != HOSTNAME:
                         issues.append('Non-test store URL in DB: ' + key)
+                        report['isolation_ok'] = False
                 if db.get('relevant_template_overrides') is None or db.get('relevant_template_overrides',0) > 0:
                     report['warnings'].append('Template editor overrides need inspection; do not reset them blindly.')
             except (ValueError, subprocess.TimeoutExpired):
