@@ -60,8 +60,11 @@ $(function() {
 					uniSelectView.init();
 					window.history.pushState('', '', url);
 
-    $('.option__group').each(function() {
-        $(this).find('input[type="radio"]:first').prop('checked', true).change();
+    // Mobile card initialization is scoped to inserted cards, preserving existing selections.
+    products.find('.option__group').each(function() {
+        if (!$(this).find('input[type="radio"]:checked').length) {
+            $(this).find('input[type="radio"]:not(:disabled):first').prop('checked', true).change();
+        }
     });
 
 				},
@@ -101,8 +104,11 @@ $(function() {
 				
 					window.history.pushState('', '', url);
 
-    $('.option__group').each(function() {
-        $(this).find('input[type="radio"]:first').prop('checked', true).change();
+    // Mobile card initialization is scoped to inserted cards, preserving existing selections.
+    products.find('.option__group').each(function() {
+        if (!$(this).find('input[type="radio"]:checked').length) {
+            $(this).find('input[type="radio"]:not(:disabled):first').prop('checked', true).change();
+        }
     });
 				}
 			});

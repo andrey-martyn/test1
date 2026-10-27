@@ -1,0 +1,532 @@
+diff --git a/catalog/controller/extension/module/uni_new_data.php b/catalog/controller/extension/module/uni_new_data.php
+index 572a93d..7dd842e 100644
+--- a/catalog/controller/extension/module/uni_new_data.php
++++ b/catalog/controller/extension/module/uni_new_data.php
+@@ -212,6 +212,10 @@ class ControllerExtensionModuleUniNewData extends Controller {
+ 			$this->document->addScript('catalog/view/theme/unishop2/js/user-request.js');
+ 		}
+ 			
++		// Source assets for mobile product lists; included in UniShop's normal merge.
++		$this->document->addStyle('catalog/view/theme/unishop2/stylesheet/lavka-mobile-cards.css?v=1');
++		$this->document->addScript('catalog/view/theme/unishop2/js/lavka-mobile-cards.js?v=1');
++
+ 		if(isset($uniset['liveprice'])) {
+ 			$this->document->addScript('catalog/view/theme/unishop2/js/live-price.js?v=3');
+ 		}
+diff --git a/catalog/view/theme/unishop2/js/common.js b/catalog/view/theme/unishop2/js/common.js
+index 11d588d..05b0e9b 100644
+--- a/catalog/view/theme/unishop2/js/common.js
++++ b/catalog/view/theme/unishop2/js/common.js
+@@ -750,6 +750,8 @@ function uniAddJs(url) {
+ 			base.$elem = $(el);
+ 			base.$elem2 = $(el).children();
+ 			base.options = $.extend({}, $.fn.uniModules.options, options);
++			// Owl clones share native radio names and can clear the selected pack.
++			if (base.$elem.find('.product-thumb .option input[type="radio"]').length) base.options.loop = false;
+ 			
+ 			base.load();
+         },
+@@ -1006,6 +1008,35 @@ function uniAddJs(url) {
+ })(jQuery);
+ 
+ var cart = {
++    '_pending': Object.create(null),
++    '_setPending': function(product_id, pending) {
++        $('.lavka-mobile-card .product-thumb__add-to-cart').filter(function() {
++            return String($(this).data('pid')) === String(product_id);
++        }).each(function() {
++            var button = $(this), card = button.closest('.product-thumb');
++            card.toggleClass('lavka-cart-pending', pending);
++            if (pending) {
++                card.removeClass('lavka-cart-added');
++                clearTimeout(card.data('lavkaConfirmTimer'));
++                if (typeof button.data('lavkaWasDisabled') === 'undefined') button.data('lavkaWasDisabled', this.disabled);
++                button.attr('aria-busy', 'true');
++                // Allow the first click to bubble to the existing analytics listeners.
++                setTimeout(function() { if (cart._pending[product_id]) button.prop('disabled', true); }, 0);
++            } else {
++                button.prop('disabled', !!button.data('lavkaWasDisabled')).removeData('lavkaWasDisabled').removeAttr('aria-busy');
++            }
++        });
++    },
++    '_message': function(product_id, text) {
++        $('.lavka-mobile-card .product-thumb__add-to-cart').filter(function() {
++            return String($(this).data('pid')) === String(product_id);
++        }).each(function() {
++            var card = $(this).closest('.product-thumb'), message = card.find('.lavka-cart-message');
++            if (!text) { message.remove(); return; }
++            if (!message.length) message = $('<div class="lavka-cart-message" role="status"></div>').appendTo(card);
++            message.text(text);
++        });
++    },
+ 	'add': function(product_id, elem) {
+ 
+ 		var $elem = $(elem).closest('.product-thumb, .product-thumb-related'),
+@@ -1013,16 +1044,35 @@ var cart = {
+ 			product_options = $elem.find('.option input[type=\'text\'], .option input[type=\'hidden\'], .option input:checked, .option select, .option textarea'),
+ 			data = 'product_id='+product_id+'&quantity='+(typeof(product_qty) != 'undefined' ? product_qty : 1);
+ 			
++        var guarded = $elem.hasClass('lavka-mobile-card') && window.matchMedia('(max-width: 519px)').matches;
++        if (guarded && cart._pending[product_id]) return;
++        if (guarded) {
++            cart._pending[product_id] = true;
++            cart._message(product_id, '');
++            cart._setPending(product_id, true);
++        }
++        var finish = function(success) {
++            if (!guarded) return;
++            setTimeout(function() {
++                delete cart._pending[product_id];
++                cart._setPending(product_id, false);
++            }, success ? 600 : 0);
++        };
+ 		if (product_options.length) {
+ 			data += '&'+product_options.serialize();
+ 		}
+ 		
+-		$.ajax({
++		return $.ajax({
+ 			url: $('base').attr('href')+'index.php?route=checkout/cart/add',
+ 			type: 'post',
+ 			data: data,
+ 			dataType: 'json',
+ 			success: function(json) {
++                finish(!!json['success']);
++                if (guarded && json['success']) {
++                    $elem.addClass('lavka-cart-added');
++                    $elem.data('lavkaConfirmTimer', setTimeout(function() { $elem.removeClass('lavka-cart-added'); }, 1600));
++                }
+ 				$('.text-danger').remove();
+ 				
+ 				if (json['redirect'] && (!$elem.find('.option').children().length || (items_on_mobile == 2 && $(window).width() < 520))) {
+@@ -1079,6 +1129,8 @@ var cart = {
+ 				}
+ 			},
+ 	        error: function(xhr, ajaxOptions, thrownError) {
++                finish(false);
++                if (guarded) cart._message(product_id, 'Не вдалося підтвердити додавання. Перевірте кошик перед повтором.');
+ 	            console.log(thrownError + "\r\n" + xhr.statusText + "\r\n" + xhr.responseText);
+ 	        }
+ 		});
+diff --git a/catalog/view/theme/unishop2/js/lavka-mobile-cards.js b/catalog/view/theme/unishop2/js/lavka-mobile-cards.js
+new file mode 100644
+index 0000000..264ff7c
+--- /dev/null
++++ b/catalog/view/theme/unishop2/js/lavka-mobile-cards.js
+@@ -0,0 +1,173 @@
++/* Mobile lists: keep the shop's original option fields, prices and cart handler. */
++(function ($) {
++    'use strict';
++    var sequence = 0;
++    var states = new WeakMap();
++    var mobile = window.matchMedia('(max-width: 519px)');
++    var packPattern = /^\s*(\d+(?:[.,]\d+)?)\s*(кг|kg|гр\.?|г|g|мл|ml|л|l|шт\.?|pcs?)\s*$/i;
++
++    function pack(text) {
++        var match = text.replace(/\s*\([^)]*\)\s*$/, '').match(packPattern);
++        return match ? {number: match[1], unit: match[2], text: match[1] + ' ' + match[2]} : null;
++    }
++
++    function selected(state) {
++        if (!state.group) return null;
++        var field = state.select ? state.select.options[state.select.selectedIndex] : state.group.querySelector('input[type="radio"]:checked');
++        return field ? state.values.get(field) : null;
++    }
++
++    function update(state) {
++        var choice = selected(state);
++        var quantity = Number($(state.card).find('.qty-switch__input').val()) || 1;
++        state.caption.textContent = choice ? 'за ' + (quantity > 1 ? quantity + ' × ' : '') + choice.text : '';
++        state.caption.hidden = !choice;
++        if (state.select) {
++            state.group.querySelectorAll('.lavka-select-weight').forEach(function (button) {
++                button.setAttribute('aria-pressed', String(button.dataset.value === state.select.value));
++            });
++        }
++    }
++
++    function setup(card) {
++        if (states.has(card) || card.closest('.modal, .product-block')) return;
++        var image = card.querySelector('.product-thumb__image');
++        var price = card.querySelector('.product-thumb__price');
++        var buy = card.querySelector('.product-thumb__add-to-cart');
++        if (!image || !price || !buy) return;
++        var groups = card.querySelectorAll('.option .option__group');
++        // Unknown or multiple options stay visible in the original, full-width card.
++        var state = {card: card, group: null, select: null, values: new Map(), form: null};
++        if (groups.length > 1) return fallback(card);
++        if (groups.length) {
++            state.group = groups[0];
++            state.select = state.group.querySelector('select');
++            var fields = state.select ? Array.from(state.select.options).filter(function (field) { return field.value !== ''; }) : Array.from(state.group.querySelectorAll('input[type="radio"]'));
++            if (!fields.length || state.group.querySelector('input[type="checkbox"], input[type="text"], textarea')) return fallback(card);
++            for (var field of fields) {
++                var label = state.select ? field : field.closest('label').querySelector('.option__name');
++                var value = label && pack(label.textContent);
++                if (!value) return fallback(card);
++                state.values.set(field, value);
++            }
++        }
++        var caption = card.querySelector('.lavka-pack-caption');
++        if (!caption) {
++            caption = document.createElement('small');
++            caption.className = 'lavka-pack-caption';
++            price.insertAdjacentElement('afterend', caption);
++        }
++        state.caption = caption;
++        states.set(card, state);
++        $(card).on('change.lavkaCard', '.qty-switch__input', function () { update(state); });
++        card.classList.add('lavka-mobile-card');
++        var layout = card.closest('.product-layout');
++        if (layout) layout.classList.add('lavka-card-layout');
++        if (state.group) {
++            state.group.classList.add('lavka-pack-group');
++            if (state.select) {
++                state.group.querySelectorAll('.lavka-select-weights').forEach(function (oldChoices) { oldChoices.remove(); });
++                state.select.classList.add('lavka-native-select');
++                var choices = document.createElement('div');
++                choices.className = 'lavka-select-weights';
++                choices.setAttribute('role', 'group');
++                choices.setAttribute('aria-label', state.group.querySelector('.option__group-name').textContent);
++                state.values.forEach(function (value, option) {
++                    var button = document.createElement('button');
++                    button.type = 'button';
++                    button.className = 'lavka-select-weight';
++                    button.dataset.value = option.value;
++                    button.dataset.lavkaNumber = value.number;
++                    button.dataset.lavkaUnit = value.unit;
++                    button.setAttribute('aria-label', value.text);
++                    button.disabled = option.disabled || state.select.disabled;
++                    button.addEventListener('click', function () {
++                        state.select.value = option.value;
++                        $(state.select).trigger('change');
++                    });
++                    choices.appendChild(button);
++                });
++                state.group.appendChild(choices);
++                if (!state.select.value) {
++                    var first = Array.from(state.values.keys()).find(function (option) { return !option.disabled; });
++                    if (first) state.select.value = first.value;
++                }
++            } else {
++                // A distinct form owner isolates repeated products without changing option[...] names.
++                var owner = document.createElement('form');
++                owner.id = 'lavka-option-owner-' + (++sequence);
++                owner.className = 'lavka-option-owner';
++                owner.hidden = true;
++                document.body.appendChild(owner);
++                state.form = owner;
++                state.values.forEach(function (value, input) {
++                    input.setAttribute('form', owner.id);
++                    input.setAttribute('aria-label', value.text);
++                    var label = input.closest('label').querySelector('.option__name');
++                    label.dataset.lavkaNumber = value.number;
++                    label.dataset.lavkaUnit = value.unit;
++                });
++                if (!state.group.querySelector('input:checked')) {
++                    var firstRadio = Array.from(state.values.keys()).find(function (input) { return !input.disabled; });
++                    if (firstRadio) firstRadio.checked = true;
++                }
++            }
++            $(state.group).on('change.lavkaCard', function () {
++                card.classList.remove('lavka-cart-added');
++                update(state);
++            });
++            // Every script's ready handler has run before initialization below.
++            var chosen = state.select || state.group.querySelector('input:checked');
++            if (chosen) $(chosen).trigger('change');
++        }
++        buy.setAttribute('aria-label', buy.title || 'Додати до кошика');
++        update(state);
++        if (window.cart && cart._pending && cart._pending[$(buy).data('pid')]) cart._setPending($(buy).data('pid'), true);
++    }
++
++    function fallback(card) {
++        var layout = card.closest('.product-layout');
++        if (layout) layout.setAttribute('data-lavka-fallback', 'true');
++    }
++
++    function scan(node) {
++        if (node.nodeType !== 1) return;
++        if (node.matches('.product-thumb')) setup(node);
++        node.querySelectorAll('.product-thumb').forEach(setup);
++    }
++
++    // Pending options remain enabled for native serialization, but cannot be changed by the user.
++    ['click', 'keydown', 'change'].forEach(function (eventName) {
++        document.addEventListener(eventName, function (event) {
++            if (!mobile.matches || !event.target.closest) return;
++            var card = event.target.closest('.lavka-mobile-card.lavka-cart-pending');
++            if (card && event.target.closest('.option')) {
++                event.preventDefault();
++                event.stopImmediatePropagation();
++            }
++        }, true);
++    });
++
++    $(function () {
++        setTimeout(function () {
++            scan(document.body);
++            // Observe structural card insertion only; price text animation never rescans the catalog.
++            var observer = new MutationObserver(function (records) {
++                records.forEach(function (record) {
++                    record.addedNodes.forEach(function (node) {
++                        if (node.nodeType === 1 && (node.matches('.product-thumb') || node.querySelector('.product-thumb'))) scan(node);
++                    });
++                    record.removedNodes.forEach(function (node) {
++                        if (node.nodeType !== 1 || node.isConnected) return;
++                        var cards = node.matches('.product-thumb') ? [node] : node.querySelectorAll('.product-thumb');
++                        cards.forEach(function (card) {
++                            var state = states.get(card);
++                            if (state && state.form) state.form.remove();
++                        });
++                    });
++                });
++            });
++            observer.observe(document.querySelector('main') || document.body, {childList: true, subtree: true});
++        }, 0);
++    });
++})(jQuery);
+diff --git a/catalog/view/theme/unishop2/js/live-price.js b/catalog/view/theme/unishop2/js/live-price.js
+index 01f9134..fa10160 100644
+--- a/catalog/view/theme/unishop2/js/live-price.js
++++ b/catalog/view/theme/unishop2/js/live-price.js
+@@ -36,9 +36,9 @@ function uniLivePrice() {
+ 			if(discounts && special <= 0) {
+ 				discounts = JSON.parse(discounts.replace(/'/g, '"'));
+ 	
+-				for (i in discounts) {
+-					d_quantity = parseFloat(discounts[i]['quantity']);
+-					d_price = parseFloat(discounts[i]['price']);
++				for (var i in discounts) {
++					var d_quantity = parseFloat(discounts[i]['quantity']);
++					var d_price = parseFloat(discounts[i]['price']);
+ 		
+ 					if((quantity >= d_quantity) && (d_price < price)) {
+ 						price = d_price;
+@@ -71,8 +71,8 @@ function uniLivePrice() {
+ 				}
+ 			});
+ 	
+-			new_price = (price + option_price) * quantity;
+-			new_special = (special + option_price) * quantity;
++			var new_price = (price + option_price) * quantity;
++			var new_special = (special + option_price) * quantity;
+ 
+ 			if(special) {
+ 				AnimatePrice(old_price, new_price, price_elem);
+@@ -84,7 +84,7 @@ function uniLivePrice() {
+ 			elem2.data('old-price', new_price);
+ 			elem2.data('old-special', new_special);
+ 
+-            new_eurprice = ((price + option_price) / eurcurr * quantity).toFixed(1);
++            var new_eurprice = ((price + option_price) / eurcurr * quantity).toFixed(1);
+ 
+             if(eurcurr) {
+ 				AnimatePriceEur(old_eurprice, new_eurprice, eurprice_elem);
+@@ -96,8 +96,16 @@ function uniLivePrice() {
+ 	}
+ 	
+ 	var AnimatePrice = function(old_price, new_price, elem){
++        var previous = elem.data('uniPriceAnimation');
++        if (previous) previous.stop(true, false);
++        if (elem.closest('.lavka-mobile-card').length && window.matchMedia('(max-width: 519px)').matches) {
++            if (isFinite(new_price)) elem.text(PriceFormat(new_price));
++            return;
++        }
+ 		if(new_price != old_price) {
+-			$({val:old_price}).animate({val:new_price}, {
++            var animation = $({val:old_price});
++            elem.data('uniPriceAnimation', animation);
++			animation.animate({val:new_price}, {
+ 				duration:300,
+ 				step: function(val) {
+ 					elem.text(PriceFormat(val));
+@@ -118,6 +126,7 @@ function uniLivePrice() {
+ 	}
+ 
+ 	var PriceFormat = function(n) {
++		var c, d, t, s_left, s_right, i, j;
+ 		c = uniJsVars.currency.decimal != 0 ? uniJsVars.currency.decimal : '';
+ 		d = uniJsVars.currency.decimal_p;
+ 		t = uniJsVars.currency.thousand_p;
+@@ -130,6 +139,7 @@ function uniLivePrice() {
+ 	}
+ 
+ 	var PriceFormatEur = function(n) {
++		var c, d, t, s_right, i, j;
+ 		c = 1;
+ 		d = uniJsVars.currency.decimal_p;
+ 		t = uniJsVars.currency.thousand_p;
+@@ -141,7 +151,7 @@ function uniLivePrice() {
+ 	}
+ 
+ 	
+-	$(document).on('change', '.qty-switch__input, .option input[type="checkbox"], .option input[type="radio"], .option select', function() { 
++	$(document).off('change.uniLivePrice').on('change.uniLivePrice', '.qty-switch__input, .option input[type="checkbox"], .option input[type="radio"], .option select', function() {
+ 		ChangePrice(this);
+ 	});
+ 		
+@@ -151,7 +161,7 @@ function uniLivePrice() {
+ 		}
+ 	});
+ 	
+-	$(document).ajaxStop(function() {
++	$(document).off('ajaxStop.uniLivePrice').on('ajaxStop.uniLivePrice', function() {
+ 		$('.qty-switch__input').each(function() {
+ 			if($(this).val() > 1) {
+ 				ChangePrice(this); 
+diff --git a/catalog/view/theme/unishop2/js/showmore-ajaxpagination.js b/catalog/view/theme/unishop2/js/showmore-ajaxpagination.js
+index b762530..b279e7e 100644
+--- a/catalog/view/theme/unishop2/js/showmore-ajaxpagination.js
++++ b/catalog/view/theme/unishop2/js/showmore-ajaxpagination.js
+@@ -60,8 +60,11 @@ $(function() {
+ 					uniSelectView.init();
+ 					window.history.pushState('', '', url);
+ 
+-    $('.option__group').each(function() {
+-        $(this).find('input[type="radio"]:first').prop('checked', true).change();
++    // Mobile card initialization is scoped to inserted cards, preserving existing selections.
++    products.find('.option__group').each(function() {
++        if (!$(this).find('input[type="radio"]:checked').length) {
++            $(this).find('input[type="radio"]:not(:disabled):first').prop('checked', true).change();
++        }
+     });
+ 
+ 				},
+@@ -101,8 +104,11 @@ $(function() {
+ 				
+ 					window.history.pushState('', '', url);
+ 
+-    $('.option__group').each(function() {
+-        $(this).find('input[type="radio"]:first').prop('checked', true).change();
++    // Mobile card initialization is scoped to inserted cards, preserving existing selections.
++    products.find('.option__group').each(function() {
++        if (!$(this).find('input[type="radio"]:checked').length) {
++            $(this).find('input[type="radio"]:not(:disabled):first').prop('checked', true).change();
++        }
+     });
+ 				}
+ 			});
+diff --git a/catalog/view/theme/unishop2/stylesheet/lavka-mobile-cards.css b/catalog/view/theme/unishop2/stylesheet/lavka-mobile-cards.css
+new file mode 100644
+index 0000000..1b8ad91
+--- /dev/null
++++ b/catalog/view/theme/unishop2/stylesheet/lavka-mobile-cards.css
+@@ -0,0 +1,116 @@
++/* Source stylesheet. No generated CSS or template editor overrides. */
++.lavka-pack-caption, .lavka-select-weights { display: none; }
++@media (max-width: 519px) {
++    #content > .products-block { display: flex; flex-wrap: wrap; align-items: flex-start; }
++    #content > .products-block > .product-layout {
++        width: 50% !important; padding: 0 5px !important; float: none !important; clear: none !important;
++    }
++    #content > .products-block > [data-lavka-fallback] { width: 100% !important; }
++    #content > .products-block > [data-lavka-fallback] .product-thumb__option.option {
++        display: block !important; height: auto !important;
++    }
++    #content .lavka-mobile-card, .uni-module .lavka-mobile-card {
++        display: grid; grid-template-columns: minmax(0, 1fr) 36px; grid-template-rows: auto auto auto auto;
++        position: relative; padding: 8px; margin: 0 0 10px; min-width: 0; height: auto !important;
++        border: 1px solid #dedede; border-radius: 12px; background: #fff; box-shadow: 0 2px 6px #00000005;
++    }
++    .lavka-mobile-card .product-thumb__caption,
++    .lavka-mobile-card .product-thumb__row,
++    .lavka-mobile-card .product-thumb__cart { display: contents !important; }
++    .lavka-mobile-card .product-thumb__image {
++        grid-area: 1 / 1 / 2 / 3; min-width: 0; width: 100%; aspect-ratio: 1; margin: 0; padding: 0;
++        overflow: hidden; border: 0; border-radius: 8px;
++    }
++    .lavka-mobile-card .product-thumb__image > a,
++    .lavka-mobile-card .product-thumb__image img { display: block; width: 100%; height: 100%; }
++    .lavka-mobile-card .product-thumb__image img { object-fit: contain; }
++    .lavka-mobile-card .product-thumb__name {
++        grid-area: 2 / 1 / 3 / 3; height: auto !important; min-height: 0 !important;
++        margin: 7px 0 6px; padding: 0; color: #252a2c; font-size: 14px; line-height: 18px; font-weight: 500;
++        white-space: normal; overflow-wrap: anywhere;
++    }
++    .lavka-mobile-card .product-thumb__option.option {
++        display: block !important; grid-area: 1 / 1 / 2 / 3; align-self: end; z-index: 9;
++        min-width: 0; min-height: 0; height: auto !important; width: auto;
++        padding: 5px; margin: 0; pointer-events: none; border: 0;
++    }
++    .lavka-mobile-card .lavka-pack-group,
++    .lavka-mobile-card .lavka-select-weights {
++        display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin: 0; padding: 0;
++    }
++    .lavka-mobile-card .lavka-pack-group > .option__group-name,
++    .lavka-mobile-card .lavka-native-select { display: none !important; }
++    .lavka-mobile-card .lavka-pack-group .option__item {
++        position: relative; width: 32px; height: 32px; margin: 0; pointer-events: auto;
++    }
++    .lavka-mobile-card .lavka-pack-group input[type="radio"] {
++        display: block !important; position: absolute; inset: 0; z-index: 1; width: 32px; height: 32px;
++        margin: 0; opacity: 0; cursor: pointer;
++    }
++    .lavka-mobile-card .lavka-pack-group .option__name,
++    .lavka-mobile-card .lavka-select-weight {
++        display: flex; flex-direction: column; align-items: center; justify-content: center;
++        flex: 0 0 32px; width: 32px; height: 32px; padding: 0; margin: 0; border: 1px solid #ffffff8c;
++        border-radius: 50%; background: rgba(255,255,255,.4); backdrop-filter: blur(4px);
++        box-shadow: 0 1px 4px #00000024; color: #253020; font-size: 0; line-height: 1.05;
++        text-shadow: 0 1px 0 #ffffffa6; pointer-events: auto; cursor: pointer;
++    }
++    .lavka-mobile-card [data-lavka-number]::before { content: attr(data-lavka-number); font-size: 11px; font-weight: 500; }
++    .lavka-mobile-card [data-lavka-unit]::after { content: attr(data-lavka-unit); font-size: 9px; margin-top: 1px; }
++    .lavka-mobile-card .lavka-pack-group input:checked + .option__name,
++    .lavka-mobile-card .lavka-select-weight[aria-pressed="true"] {
++        background: rgba(61,100,29,.82); color: #fff; border-color: #ffffffc7; text-shadow: none;
++        box-shadow: inset 0 2px 4px #203a1870, 0 0 0 1px #375920; transform: translateY(1px);
++    }
++    .lavka-mobile-card .lavka-pack-group input:disabled + .option__name,
++    .lavka-mobile-card .lavka-select-weight:disabled { opacity: .45; cursor: default; }
++    .lavka-mobile-card input:focus-visible + .option__name,
++    .lavka-mobile-card button:focus-visible { outline: 2px solid #244514; outline-offset: 2px; }
++    .lavka-mobile-card .product-thumb__price {
++        grid-area: 3 / 1 / 4 / 2; align-self: end; display: flex; flex-wrap: wrap; gap: 0 5px;
++        min-width: 0; margin: 0; padding: 0; color: #252a2c; font-size: 16px; line-height: 20px;
++        font-weight: 500; text-align: left;
++    }
++    .lavka-mobile-card .price-old { flex-basis: 100%; margin: 0; font-size: 11px; line-height: 14px; font-weight: 400; }
++    .lavka-mobile-card .price-new { color: #252a2c; font-size: inherit; }
++    .lavka-mobile-card .lavka-pack-caption { display: block; grid-area: 4 / 1 / 5 / 2; margin: 1px 0 0; color: #687164; font-size: 11px; line-height: 14px; }
++    .lavka-mobile-card .lavka-pack-caption[hidden] { display: none; }
++    .lavka-mobile-card .product-thumb__add-to-cart {
++        grid-area: 3 / 2 / 5 / 3; align-self: center; justify-self: end; position: relative;
++        display: block; width: 36px; min-width: 36px; height: 36px !important; margin: 0; padding: 0;
++        border: 0; border-radius: 8px; background: #4f7f28; color: #fff; box-shadow: none;
++    }
++    .lavka-mobile-card .product-thumb__add-to-cart > * { display: none !important; }
++    .lavka-mobile-card .product-thumb__add-to-cart::after {
++        content: ''; position: absolute; inset: 8px; width: 20px; height: 20px;
++        background: center / 20px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 3h2l2.2 11h11.5L21 6H6M8 17h11'/%3E%3Ccircle cx='9' cy='21' r='1'/%3E%3Ccircle cx='18' cy='21' r='1'/%3E%3C/svg%3E");
++    }
++    .lavka-mobile-card .product-thumb__add-to-cart:active { background: #375c1b; }
++    .lavka-mobile-card.lavka-cart-pending .product-thumb__add-to-cart { cursor: wait; }
++    .lavka-mobile-card.lavka-cart-pending .product-thumb__add-to-cart::after {
++        background: none; border: 2px solid #ffffff66; border-top-color: #fff; border-radius: 50%; animation: lavka-cart-spin .8s linear infinite;
++    }
++    .lavka-mobile-card.lavka-cart-added .product-thumb__add-to-cart::after {
++        border: 0; border-radius: 0; animation: none;
++        background: center / 20px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12 4 4L19 6'/%3E%3C/svg%3E");
++    }
++    .lavka-mobile-card .product-thumb__wishlist {
++        grid-area: 1 / 1 / 2 / 3; z-index: 10; position: relative; top: auto; right: auto;
++        align-self: start; justify-self: end; display: grid; place-items: center; width: 32px; height: 32px;
++        margin: 5px; padding: 0; border: 1px solid #ffffffab; border-radius: 50%;
++        background: rgba(255,255,255,.4); backdrop-filter: blur(5px); color: #63745e;
++    }
++    .lavka-mobile-card .product-thumb__wishlist i { font-size: 16px; }
++    .lavka-mobile-card .sticker { top: 6px; left: 0 !important; max-width: calc(100% - 40px); }
++    .lavka-mobile-card .sticker__item { float: none; margin: 0 0 3px; padding: 2px 9px 2px 5px; font-size: 9px; line-height: 12px; }
++    .lavka-mobile-card .sticker__item::before { display: none; }
++    .lavka-mobile-card .sticker__item::after { height: 16px; right: -3px; width: 6px; }
++    .lavka-mobile-card .product-thumb__description, .lavka-mobile-card .product-thumb__attribute,
++    .lavka-mobile-card .product-thumb__rating, .lavka-mobile-card .product-thumb__quick-order,
++    .lavka-mobile-card .product-thumb__compare, .lavka-mobile-card .qty-switch,
++    .lavka-mobile-card .qty-indicator, .lavka-mobile-card .uni-timer,
++    .lavka-mobile-card .price-tax, .lavka-mobile-card .eur-price { display: none !important; }
++    .lavka-cart-message { grid-column: 1 / -1; grid-row: 5; margin-top: 5px; font-size: 11px; line-height: 15px; color: #a1252f; }
++}
++@keyframes lavka-cart-spin { to { transform: rotate(360deg); } }
++@media (prefers-reduced-motion: reduce) { .lavka-cart-pending .product-thumb__add-to-cart::after { animation: none !important; } }

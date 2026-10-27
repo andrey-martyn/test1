@@ -212,6 +212,10 @@ class ControllerExtensionModuleUniNewData extends Controller {
 			$this->document->addScript('catalog/view/theme/unishop2/js/user-request.js');
 		}
 			
+		// Source assets for mobile product lists; included in UniShop's normal merge.
+		$this->document->addStyle('catalog/view/theme/unishop2/stylesheet/lavka-mobile-cards.css?v=1');
+		$this->document->addScript('catalog/view/theme/unishop2/js/lavka-mobile-cards.js?v=1');
+
 		if(isset($uniset['liveprice'])) {
 			$this->document->addScript('catalog/view/theme/unishop2/js/live-price.js?v=3');
 		}

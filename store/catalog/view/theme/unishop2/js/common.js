@@ -750,6 +750,8 @@ function uniAddJs(url) {
 			base.$elem = $(el);
 			base.$elem2 = $(el).children();
 			base.options = $.extend({}, $.fn.uniModules.options, options);
+			// Owl clones share native radio names and can clear the selected pack.
+			if (base.$elem.find('.product-thumb .option input[type="radio"]').length) base.options.loop = false;
 			
 			base.load();
         },
@@ -1006,6 +1008,35 @@ function uniAddJs(url) {
 })(jQuery);
 
 var cart = {
+    '_pending': Object.create(null),
+    '_setPending': function(product_id, pending) {
+        $('.lavka-mobile-card .product-thumb__add-to-cart').filter(function() {
+            return String($(this).data('pid')) === String(product_id);
+        }).each(function() {
+            var button = $(this), card = button.closest('.product-thumb');
+            card.toggleClass('lavka-cart-pending', pending);
+            if (pending) {
+                card.removeClass('lavka-cart-added');
+                clearTimeout(card.data('lavkaConfirmTimer'));
+                if (typeof button.data('lavkaWasDisabled') === 'undefined') button.data('lavkaWasDisabled', this.disabled);
+                button.attr('aria-busy', 'true');
+                // Allow the first click to bubble to the existing analytics listeners.
+                setTimeout(function() { if (cart._pending[product_id]) button.prop('disabled', true); }, 0);
+            } else {
+                button.prop('disabled', !!button.data('lavkaWasDisabled')).removeData('lavkaWasDisabled').removeAttr('aria-busy');
+            }
+        });
+    },
+    '_message': function(product_id, text) {
+        $('.lavka-mobile-card .product-thumb__add-to-cart').filter(function() {
+            return String($(this).data('pid')) === String(product_id);
+        }).each(function() {
+            var card = $(this).closest('.product-thumb'), message = card.find('.lavka-cart-message');
+            if (!text) { message.remove(); return; }
+            if (!message.length) message = $('<div class="lavka-cart-message" role="status"></div>').appendTo(card);
+            message.text(text);
+        });
+    },
 	'add': function(product_id, elem) {
 
 		var $elem = $(elem).closest('.product-thumb, .product-thumb-related'),
@@ -1013,16 +1044,35 @@ var cart = {
 			product_options = $elem.find('.option input[type=\'text\'], .option input[type=\'hidden\'], .option input:checked, .option select, .option textarea'),
 			data = 'product_id='+product_id+'&quantity='+(typeof(product_qty) != 'undefined' ? product_qty : 1);
 			
+        var guarded = $elem.hasClass('lavka-mobile-card') && window.matchMedia('(max-width: 519px)').matches;
+        if (guarded && cart._pending[product_id]) return;
+        if (guarded) {
+            cart._pending[product_id] = true;
+            cart._message(product_id, '');
+            cart._setPending(product_id, true);
+        }
+        var finish = function(success) {
+            if (!guarded) return;
+            setTimeout(function() {
+                delete cart._pending[product_id];
+                cart._setPending(product_id, false);
+            }, success ? 600 : 0);
+        };
 		if (product_options.length) {
 			data += '&'+product_options.serialize();
 		}
 		
-		$.ajax({
+		return $.ajax({
 			url: $('base').attr('href')+'index.php?route=checkout/cart/add',
 			type: 'post',
 			data: data,
 			dataType: 'json',
 			success: function(json) {
+                finish(!!json['success']);
+                if (guarded && json['success']) {
+                    $elem.addClass('lavka-cart-added');
+                    $elem.data('lavkaConfirmTimer', setTimeout(function() { $elem.removeClass('lavka-cart-added'); }, 1600));
+                }
 				$('.text-danger').remove();
 				
 				if (json['redirect'] && (!$elem.find('.option').children().length || (items_on_mobile == 2 && $(window).width() < 520))) {
@@ -1079,6 +1129,8 @@ var cart = {
 				}
 			},
 	        error: function(xhr, ajaxOptions, thrownError) {
+                finish(false);
+                if (guarded) cart._message(product_id, 'Не вдалося підтвердити додавання. Перевірте кошик перед повтором.');
 	            console.log(thrownError + "\r\n" + xhr.statusText + "\r\n" + xhr.responseText);
 	        }
 		});

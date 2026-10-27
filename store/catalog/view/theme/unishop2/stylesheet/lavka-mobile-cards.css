@@ -1,0 +1,116 @@
+/* Source stylesheet. No generated CSS or template editor overrides. */
+.lavka-pack-caption, .lavka-select-weights { display: none; }
+@media (max-width: 519px) {
+    #content > .products-block { display: flex; flex-wrap: wrap; align-items: flex-start; }
+    #content > .products-block > .product-layout {
+        width: 50% !important; padding: 0 5px !important; float: none !important; clear: none !important;
+    }
+    #content > .products-block > [data-lavka-fallback] { width: 100% !important; }
+    #content > .products-block > [data-lavka-fallback] .product-thumb__option.option {
+        display: block !important; height: auto !important;
+    }
+    #content .lavka-mobile-card, .uni-module .lavka-mobile-card {
+        display: grid; grid-template-columns: minmax(0, 1fr) 36px; grid-template-rows: auto auto auto auto;
+        position: relative; padding: 8px; margin: 0 0 10px; min-width: 0; height: auto !important;
+        border: 1px solid #dedede; border-radius: 12px; background: #fff; box-shadow: 0 2px 6px #00000005;
+    }
+    .lavka-mobile-card .product-thumb__caption,
+    .lavka-mobile-card .product-thumb__row,
+    .lavka-mobile-card .product-thumb__cart { display: contents !important; }
+    .lavka-mobile-card .product-thumb__image {
+        grid-area: 1 / 1 / 2 / 3; min-width: 0; width: 100%; aspect-ratio: 1; margin: 0; padding: 0;
+        overflow: hidden; border: 0; border-radius: 8px;
+    }
+    .lavka-mobile-card .product-thumb__image > a,
+    .lavka-mobile-card .product-thumb__image img { display: block; width: 100%; height: 100%; }
+    .lavka-mobile-card .product-thumb__image img { object-fit: contain; }
+    .lavka-mobile-card .product-thumb__name {
+        grid-area: 2 / 1 / 3 / 3; height: auto !important; min-height: 0 !important;
+        margin: 7px 0 6px; padding: 0; color: #252a2c; font-size: 14px; line-height: 18px; font-weight: 500;
+        white-space: normal; overflow-wrap: anywhere;
+    }
+    .lavka-mobile-card .product-thumb__option.option {
+        display: block !important; grid-area: 1 / 1 / 2 / 3; align-self: end; z-index: 9;
+        min-width: 0; min-height: 0; height: auto !important; width: auto;
+        padding: 5px; margin: 0; pointer-events: none; border: 0;
+    }
+    .lavka-mobile-card .lavka-pack-group,
+    .lavka-mobile-card .lavka-select-weights {
+        display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin: 0; padding: 0;
+    }
+    .lavka-mobile-card .lavka-pack-group > .option__group-name,
+    .lavka-mobile-card .lavka-native-select { display: none !important; }
+    .lavka-mobile-card .lavka-pack-group .option__item {
+        position: relative; width: 32px; height: 32px; margin: 0; pointer-events: auto;
+    }
+    .lavka-mobile-card .lavka-pack-group input[type="radio"] {
+        display: block !important; position: absolute; inset: 0; z-index: 1; width: 32px; height: 32px;
+        margin: 0; opacity: 0; cursor: pointer;
+    }
+    .lavka-mobile-card .lavka-pack-group .option__name,
+    .lavka-mobile-card .lavka-select-weight {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        flex: 0 0 32px; width: 32px; height: 32px; padding: 0; margin: 0; border: 1px solid #ffffff8c;
+        border-radius: 50%; background: rgba(255,255,255,.4); backdrop-filter: blur(4px);
+        box-shadow: 0 1px 4px #00000024; color: #253020; font-size: 0; line-height: 1.05;
+        text-shadow: 0 1px 0 #ffffffa6; pointer-events: auto; cursor: pointer;
+    }
+    .lavka-mobile-card [data-lavka-number]::before { content: attr(data-lavka-number); font-size: 11px; font-weight: 500; }
+    .lavka-mobile-card [data-lavka-unit]::after { content: attr(data-lavka-unit); font-size: 9px; margin-top: 1px; }
+    .lavka-mobile-card .lavka-pack-group input:checked + .option__name,
+    .lavka-mobile-card .lavka-select-weight[aria-pressed="true"] {
+        background: rgba(61,100,29,.82); color: #fff; border-color: #ffffffc7; text-shadow: none;
+        box-shadow: inset 0 2px 4px #203a1870, 0 0 0 1px #375920; transform: translateY(1px);
+    }
+    .lavka-mobile-card .lavka-pack-group input:disabled + .option__name,
+    .lavka-mobile-card .lavka-select-weight:disabled { opacity: .45; cursor: default; }
+    .lavka-mobile-card input:focus-visible + .option__name,
+    .lavka-mobile-card button:focus-visible { outline: 2px solid #244514; outline-offset: 2px; }
+    .lavka-mobile-card .product-thumb__price {
+        grid-area: 3 / 1 / 4 / 2; align-self: end; display: flex; flex-wrap: wrap; gap: 0 5px;
+        min-width: 0; margin: 0; padding: 0; color: #252a2c; font-size: 16px; line-height: 20px;
+        font-weight: 500; text-align: left;
+    }
+    .lavka-mobile-card .price-old { flex-basis: 100%; margin: 0; font-size: 11px; line-height: 14px; font-weight: 400; }
+    .lavka-mobile-card .price-new { color: #252a2c; font-size: inherit; }
+    .lavka-mobile-card .lavka-pack-caption { display: block; grid-area: 4 / 1 / 5 / 2; margin: 1px 0 0; color: #687164; font-size: 11px; line-height: 14px; }
+    .lavka-mobile-card .lavka-pack-caption[hidden] { display: none; }
+    .lavka-mobile-card .product-thumb__add-to-cart {
+        grid-area: 3 / 2 / 5 / 3; align-self: center; justify-self: end; position: relative;
+        display: block; width: 36px; min-width: 36px; height: 36px !important; margin: 0; padding: 0;
+        border: 0; border-radius: 8px; background: #4f7f28; color: #fff; box-shadow: none;
+    }
+    .lavka-mobile-card .product-thumb__add-to-cart > * { display: none !important; }
+    .lavka-mobile-card .product-thumb__add-to-cart::after {
+        content: ''; position: absolute; inset: 8px; width: 20px; height: 20px;
+        background: center / 20px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 3h2l2.2 11h11.5L21 6H6M8 17h11'/%3E%3Ccircle cx='9' cy='21' r='1'/%3E%3Ccircle cx='18' cy='21' r='1'/%3E%3C/svg%3E");
+    }
+    .lavka-mobile-card .product-thumb__add-to-cart:active { background: #375c1b; }
+    .lavka-mobile-card.lavka-cart-pending .product-thumb__add-to-cart { cursor: wait; }
+    .lavka-mobile-card.lavka-cart-pending .product-thumb__add-to-cart::after {
+        background: none; border: 2px solid #ffffff66; border-top-color: #fff; border-radius: 50%; animation: lavka-cart-spin .8s linear infinite;
+    }
+    .lavka-mobile-card.lavka-cart-added .product-thumb__add-to-cart::after {
+        border: 0; border-radius: 0; animation: none;
+        background: center / 20px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12 4 4L19 6'/%3E%3C/svg%3E");
+    }
+    .lavka-mobile-card .product-thumb__wishlist {
+        grid-area: 1 / 1 / 2 / 3; z-index: 10; position: relative; top: auto; right: auto;
+        align-self: start; justify-self: end; display: grid; place-items: center; width: 32px; height: 32px;
+        margin: 5px; padding: 0; border: 1px solid #ffffffab; border-radius: 50%;
+        background: rgba(255,255,255,.4); backdrop-filter: blur(5px); color: #63745e;
+    }
+    .lavka-mobile-card .product-thumb__wishlist i { font-size: 16px; }
+    .lavka-mobile-card .sticker { top: 6px; left: 0 !important; max-width: calc(100% - 40px); }
+    .lavka-mobile-card .sticker__item { float: none; margin: 0 0 3px; padding: 2px 9px 2px 5px; font-size: 9px; line-height: 12px; }
+    .lavka-mobile-card .sticker__item::before { display: none; }
+    .lavka-mobile-card .sticker__item::after { height: 16px; right: -3px; width: 6px; }
+    .lavka-mobile-card .product-thumb__description, .lavka-mobile-card .product-thumb__attribute,
+    .lavka-mobile-card .product-thumb__rating, .lavka-mobile-card .product-thumb__quick-order,
+    .lavka-mobile-card .product-thumb__compare, .lavka-mobile-card .qty-switch,
+    .lavka-mobile-card .qty-indicator, .lavka-mobile-card .uni-timer,
+    .lavka-mobile-card .price-tax, .lavka-mobile-card .eur-price { display: none !important; }
+    .lavka-cart-message { grid-column: 1 / -1; grid-row: 5; margin-top: 5px; font-size: 11px; line-height: 15px; color: #a1252f; }
+}
+@keyframes lavka-cart-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .lavka-cart-pending .product-thumb__add-to-cart::after { animation: none !important; } }

@@ -36,9 +36,9 @@ function uniLivePrice() {
 			if(discounts && special <= 0) {
 				discounts = JSON.parse(discounts.replace(/'/g, '"'));
 	
-				for (i in discounts) {
-					d_quantity = parseFloat(discounts[i]['quantity']);
-					d_price = parseFloat(discounts[i]['price']);
+				for (var i in discounts) {
+					var d_quantity = parseFloat(discounts[i]['quantity']);
+					var d_price = parseFloat(discounts[i]['price']);
 		
 					if((quantity >= d_quantity) && (d_price < price)) {
 						price = d_price;
@@ -71,8 +71,8 @@ function uniLivePrice() {
 				}
 			});
 	
-			new_price = (price + option_price) * quantity;
-			new_special = (special + option_price) * quantity;
+			var new_price = (price + option_price) * quantity;
+			var new_special = (special + option_price) * quantity;
 
 			if(special) {
 				AnimatePrice(old_price, new_price, price_elem);
@@ -84,7 +84,7 @@ function uniLivePrice() {
 			elem2.data('old-price', new_price);
 			elem2.data('old-special', new_special);
 
-            new_eurprice = ((price + option_price) / eurcurr * quantity).toFixed(1);
+            var new_eurprice = ((price + option_price) / eurcurr * quantity).toFixed(1);
 
             if(eurcurr) {
 				AnimatePriceEur(old_eurprice, new_eurprice, eurprice_elem);
@@ -96,8 +96,16 @@ function uniLivePrice() {
 	}
 	
 	var AnimatePrice = function(old_price, new_price, elem){
+        var previous = elem.data('uniPriceAnimation');
+        if (previous) previous.stop(true, false);
+        if (elem.closest('.lavka-mobile-card').length && window.matchMedia('(max-width: 519px)').matches) {
+            if (isFinite(new_price)) elem.text(PriceFormat(new_price));
+            return;
+        }
 		if(new_price != old_price) {
-			$({val:old_price}).animate({val:new_price}, {
+            var animation = $({val:old_price});
+            elem.data('uniPriceAnimation', animation);
+			animation.animate({val:new_price}, {
 				duration:300,
 				step: function(val) {
 					elem.text(PriceFormat(val));
@@ -118,6 +126,7 @@ function uniLivePrice() {
 	}
 
 	var PriceFormat = function(n) {
+		var c, d, t, s_left, s_right, i, j;
 		c = uniJsVars.currency.decimal != 0 ? uniJsVars.currency.decimal : '';
 		d = uniJsVars.currency.decimal_p;
 		t = uniJsVars.currency.thousand_p;
@@ -130,6 +139,7 @@ function uniLivePrice() {
 	}
 
 	var PriceFormatEur = function(n) {
+		var c, d, t, s_right, i, j;
 		c = 1;
 		d = uniJsVars.currency.decimal_p;
 		t = uniJsVars.currency.thousand_p;
@@ -141,7 +151,7 @@ function uniLivePrice() {
 	}
 
 	
-	$(document).on('change', '.qty-switch__input, .option input[type="checkbox"], .option input[type="radio"], .option select', function() { 
+	$(document).off('change.uniLivePrice').on('change.uniLivePrice', '.qty-switch__input, .option input[type="checkbox"], .option input[type="radio"], .option select', function() {
 		ChangePrice(this);
 	});
 		
@@ -151,7 +161,7 @@ function uniLivePrice() {
 		}
 	});
 	
-	$(document).ajaxStop(function() {
+	$(document).off('ajaxStop.uniLivePrice').on('ajaxStop.uniLivePrice', function() {
 		$('.qty-switch__input').each(function() {
 			if($(this).val() > 1) {
 				ChangePrice(this); 

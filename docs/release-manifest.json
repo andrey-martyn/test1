@@ -1,0 +1,40 @@
+{
+  "target": "test.lavka-speciy.com",
+  "database": "lavkasp_test",
+  "source_commit": "883aa9163403e5fba7059bb6680ab99b5d2cf4bd",
+  "source_archive_sha256": "03bba828cd763c8a9970ae3eb6f142a8abe99be602a4ae8a439ad5ff9ba6aa25",
+  "files": [
+    {
+      "path": "catalog/controller/extension/module/uni_new_data.php",
+      "before_sha256": "720a8eb15013dd8fe5c00e9da43277803383cfd643eb416bbc855586131c8d99",
+      "after_sha256": "d1ef60fd57dc268b0b2ec22687694eefbe4ccfc3b89c5ac9a40e7b653aaa754e"
+    },
+    {
+      "path": "catalog/view/theme/unishop2/js/common.js",
+      "before_sha256": "dc46fd186862488dd7f9e79d36f43594a22b5344c7c3cec934e3f76cba21679b",
+      "after_sha256": "fd8120b0052850e62e44482531b8f4abef1097d0cf0e7348ea2396e413a81092"
+    },
+    {
+      "path": "catalog/view/theme/unishop2/js/live-price.js",
+      "before_sha256": "c2c7817c6c71d3c38a342ca4087c059f872178dc5c392e65f388916a65db5f4d",
+      "after_sha256": "e54a6cfaa22253e279d5c8c11ec0a5db4b529ee3d10944f27cf091344f06b47f"
+    },
+    {
+      "path": "catalog/view/theme/unishop2/js/showmore-ajaxpagination.js",
+      "before_sha256": "fa02611f4a42675dbd5a6040fc2669b2e8475bc767ab11d22d91a5ceef4ef3a4",
+      "after_sha256": "be4c19991c8d60abc006c3db32cc7918304cbdc165fe4e2f8a74123d3c0a66d2"
+    },
+    {
+      "path": "catalog/view/theme/unishop2/js/lavka-mobile-cards.js",
+      "before_sha256": null,
+      "after_sha256": "f8c46f1be5bc25a5ab27a57fbfee1279c22883d5be2199eaccc945762a529a25"
+    },
+    {
+      "path": "catalog/view/theme/unishop2/stylesheet/lavka-mobile-cards.css",
+      "before_sha256": null,
+      "after_sha256": "a2ab2ce2620f88c0c23d3d65dba5449512f91168284b71b7f3b73fbabd7be491"
+    }
+  ],
+  "deleted_files": [],
+  "database_changes": []
+}
