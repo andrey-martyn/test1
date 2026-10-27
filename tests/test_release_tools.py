@@ -102,6 +102,19 @@ class ReleaseTools(unittest.TestCase):
         self.assertEqual(refs[0]['config_get_keys'], ['uni_settings'])
         self.assertNotIn('do-not-print', json.dumps(refs))
 
+    def test_native_settings_source_is_accepted_without_standard_setting_row(self):
+        self.probe['unishop_settings_source'] = {'table':'oc_uni_setting','column':'data','store_id':0,'format':'json'}
+        self.probe['unishop_setting_rows'] = []
+        self.run.return_value.stdout = json.dumps(self.probe)
+        report = ops.preflight()
+        self.assertTrue(report['ok'], report)
+        self.assertEqual(report['db']['unishop_settings_source']['table'], 'oc_uni_setting')
+        self.probe['liveprice_enabled'] = False
+        self.run.return_value.stdout = json.dumps(self.probe)
+        report = ops.preflight()
+        self.assertFalse(report['ok'])
+        self.assertTrue(any('is disabled in the confirmed settings' in issue for issue in report['issues']))
+
     def test_probe_uses_python36_subprocess_api_and_captures_stderr(self):
         def python36_run(command, **options):
             self.assertNotIn('text', options)
@@ -132,9 +145,26 @@ class ReleaseTools(unittest.TestCase):
     def test_source_hash_mismatch_leaves_files_untouched(self):
         manifest = self.release()
         target = ops.SHOP/manifest['files'][0]['path']; target.write_text('other change')
-        with self.assertRaises(ValueError): ops.checked_manifest()
+        with self.assertRaises(ops.ReleaseCheckError) as error: ops.checked_manifest()
+        diagnostic = json.loads(str(error.exception))
+        self.assertEqual(diagnostic['error'], 'SOURCE_HASH_MISMATCH')
+        self.assertEqual(diagnostic['path'], manifest['files'][0]['path'])
+        self.assertEqual(diagnostic['actual_sha256'], ops.sha(target))
         self.assertEqual(target.read_text(),'other change')
         self.assertEqual(list(ops.BACKUPS.iterdir()),[])
+
+    def test_check_returns_failure_and_safe_hash_diagnostics_without_installing(self):
+        manifest = self.release()
+        target = ops.SHOP/manifest['files'][0]['path']
+        target.write_text('existing edit')
+        with patch.object(sys, 'argv', ['test_store.py','--check']):
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as output:
+                result = ops.main()
+        self.assertEqual(result, 2)
+        self.assertEqual(json.loads(output.getvalue())['error'], 'SOURCE_HASH_MISMATCH')
+        self.assertNotIn('fixture-secret', output.getvalue())
+        self.assertEqual(target.read_text(), 'existing edit')
+        self.assertEqual(list(ops.BACKUPS.iterdir()), [])
 
     def test_new_file_conflict_is_rejected(self):
         manifest = self.release()

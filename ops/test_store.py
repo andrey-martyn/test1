@@ -24,6 +24,10 @@ DATABASE = 'lavkasp_test'
 HOSTNAME = 'test.lavka-speciy.com'
 
 
+class ReleaseCheckError(ValueError):
+    """Safe release diagnostics containing file paths/hashes, never configuration values."""
+
+
 def within(path, root):
     return os.path.commonpath([str(path), str(root)]) == str(root)
 
@@ -91,6 +95,25 @@ function unishop_source_refs($source) {
     }
     return $out;
 }
+function unishop_settings_summary($data, $source, &$out) {
+    $u = json_decode($data, true);
+    if (!is_array($u) || !is_object(json_decode($data)) || (!isset($u['version']) && !isset($u['catalog']))) {
+        $out['unishop_settings_error'] = 'SETTINGS_JSON_FORMAT_UNSUPPORTED';
+        return false;
+    }
+    $out['unishop_settings_found'] = true;
+    unset($out['unishop_settings_error']);
+    $out['unishop_settings_source'] = $source;
+    $out['unishop_version'] = isset($u['version']) && is_string($u['version']) && preg_match('/^[0-9.]{1,32}$/', $u['version']) ? $u['version'] : null;
+    $items = isset($u['catalog']['items_on_mobile']) ? $u['catalog']['items_on_mobile'] : null;
+    $out['items_on_mobile'] = in_array($items, array(1, 2, '1', '2'), true) ? (int)$items : null;
+    // Match the theme's actual isset() checks, including presence-valued switches.
+    $out['liveprice_enabled'] = isset($u['liveprice']);
+    $out['merge_css'] = isset($u['merge_css']);
+    $out['merge_js'] = isset($u['merge_js']);
+    $out['legacy_mobile_code'] = (bool)preg_match('/data-lavka-mobile|lavka-mobile-cards|lavka-option-select|lavka-card-buyline|uni-grid-test/', (isset($u['user_js']) && is_string($u['user_js']) ? $u['user_js'] : '').(isset($u['user_css']) && is_string($u['user_css']) ? $u['user_css'] : ''));
+    return true;
+}
 if (!extension_loaded('mysqli')) fail_probe('MYSQLI_UNAVAILABLE');
 mysqli_report(MYSQLI_REPORT_OFF);
 $db = mysqli_init();
@@ -101,24 +124,23 @@ try {
     if (!$r) fail_probe('DATABASE_QUERY_FAILED');
     $out = array('ok'=>true, 'database'=>$r->fetch_assoc()['selected_database'], 'php_cli_version'=>PHP_VERSION);
     $p = $c['DB_PREFIX'];
-    $r = $db->query("SELECT store_id, `key`, value FROM `".$p."setting` WHERE `key` IN ('config_theme','config_template','theme_default_directory','theme_unishop2_directory','config_url','config_ssl','config_unishop2')");
+    $urls = array_unique(array($c['HTTP_SERVER'], $c['HTTPS_SERVER']));
+    $escaped_urls = array();
+    foreach ($urls as $url) $escaped_urls[] = $db->real_escape_string($url);
+    $url_list = "'".implode("','", $escaped_urls)."'";
+    $r = $db->query("SELECT store_id FROM `".$p."store` WHERE url IN (".$url_list.") OR ssl IN (".$url_list.") LIMIT 2");
+    if (!$r || $r->num_rows > 1) fail_probe('STORE_MAPPING_UNVERIFIED');
+    $store_id = $r->num_rows === 1 ? (int)$r->fetch_assoc()['store_id'] : 0;
+    $out['runtime_store_id'] = $store_id;
+    $r = $db->query("SELECT store_id, `key`, value FROM `".$p."setting` WHERE store_id IN (0,".$store_id.") AND `key` IN ('config_theme','config_template','theme_default_directory','theme_unishop2_directory','config_url','config_ssl','config_unishop2') ORDER BY store_id");
     if (!$r) fail_probe('SETTINGS_QUERY_FAILED');
     $out['settings'] = array();
     $out['unishop_settings_found'] = false;
     $out['liveprice_enabled'] = null;
     $out['legacy_mobile_code'] = null;
     while ($row = $r->fetch_assoc()) {
-        if ((int)$row['store_id'] !== 0) continue;
         if ($row['key'] === 'config_unishop2') {
-            $out['unishop_settings_found'] = true;
-            $u = json_decode($row['value'], true);
-            if (!is_array($u)) fail_probe('UNISHOP_SETTINGS_NOT_JSON');
-            $out['unishop_version'] = isset($u['version']) ? $u['version'] : null;
-            $out['items_on_mobile'] = isset($u['catalog']['items_on_mobile']) ? $u['catalog']['items_on_mobile'] : null;
-            $out['liveprice_enabled'] = isset($u['liveprice']);
-            $out['merge_css'] = isset($u['merge_css']);
-            $out['merge_js'] = isset($u['merge_js']);
-            $out['legacy_mobile_code'] = (bool)preg_match('/data-lavka-mobile|lavka-mobile-cards|lavka-option-select|lavka-card-buyline|uni-grid-test/', (isset($u['user_js']) ? $u['user_js'] : '').(isset($u['user_css']) ? $u['user_css'] : ''));
+            unishop_settings_summary($row['value'], array('table'=>$p.'setting','key'=>'config_unishop2','store_id'=>(int)$row['store_id']), $out);
         } else { $out['settings'][$row['key']] = $row['value']; }
     }
     $r = $db->query("SELECT code, name, version, IF(code LIKE '%unishop%', xml, '') AS unishop_xml FROM `".$p."modification` WHERE status = 1");
@@ -130,7 +152,11 @@ try {
         unset($row['unishop_xml']);
         $out['active_ocmod'][] = $row;
     }
-    if (!$out['unishop_settings_found']) {
+    $native_loader = false;
+    foreach ($out['unishop_loader_refs'] as $refs) {
+        if (in_array('extension/module/uni_settings', $refs['load_routes'], true)) $native_loader = true;
+    }
+    if ($native_loader || !$out['unishop_settings_found']) {
         // Metadata only: never print setting values, raw XML, license keys or customer rows.
         $r = $db->query("SELECT store_id, code, `key`, serialized FROM `".$p."setting` WHERE `key` LIKE '%unishop%' OR code LIKE '%unishop%' OR `key` LIKE 'uni%' OR code LIKE 'uni%' ORDER BY store_id, `key` LIMIT 100");
         $out['unishop_setting_rows'] = array();
@@ -139,6 +165,20 @@ try {
         $r = $db->query("SELECT TABLE_NAME AS table_name, COLUMN_NAME AS column_name FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('".implode("','", $names)."') ORDER BY TABLE_NAME, ORDINAL_POSITION");
         $out['unishop_settings_tables'] = array();
         if ($r) while ($row = $r->fetch_assoc()) $out['unishop_settings_tables'][$row['table_name']][] = $row['column_name'];
+        if ($native_loader) {
+            // The active loader overrides runtime config_unishop2 from uni_setting.data.
+            $out['unishop_settings_found'] = false;
+            $out['liveprice_enabled'] = null;
+            $out['legacy_mobile_code'] = null;
+            unset($out['unishop_settings_source'], $out['unishop_version'], $out['items_on_mobile'], $out['merge_css'], $out['merge_js']);
+            $columns = isset($out['unishop_settings_tables'][$p.'uni_setting']) ? $out['unishop_settings_tables'][$p.'uni_setting'] : array();
+            if (in_array('store_id', $columns, true) && in_array('data', $columns, true)) {
+                $r = $db->query("SELECT data FROM `".$p."uni_setting` WHERE store_id = ".$store_id." LIMIT 2");
+                if ($r && $r->num_rows === 1) {
+                    unishop_settings_summary($r->fetch_assoc()['data'], array('table'=>$p.'uni_setting','column'=>'data','store_id'=>$store_id,'format'=>'json'), $out);
+                } else { $out['unishop_settings_error'] = 'UNIQUE_SETTINGS_ROW_NOT_FOUND'; }
+            } else { $out['unishop_settings_error'] = 'NATIVE_SETTINGS_SCHEMA_UNVERIFIED'; }
+        }
     }
     $r = $db->query("SELECT COUNT(*) AS n FROM `".$p."theme` WHERE route LIKE '%product/category%' OR route LIKE '%common/header%' OR route LIKE '%uni_options%'");
     $out['relevant_template_overrides'] = $r ? (int)$r->fetch_assoc()['n'] : null;
@@ -297,7 +337,8 @@ def checked_manifest():
             raise ValueError('Target path redirected: ' + str(relative))
         actual = sha(target) if target.is_file() else None
         if actual != entry['before_sha256']:
-            raise ValueError('Source differs; manual merge required: ' + str(relative))
+            normalized = hashlib.sha256(target.read_bytes().replace(b'\r\n', b'\n')).hexdigest() if target.is_file() else None
+            raise ReleaseCheckError(json.dumps({'error':'SOURCE_HASH_MISMATCH','path':str(relative),'expected_sha256':entry['before_sha256'],'actual_sha256':actual,'actual_lf_sha256':normalized}, sort_keys=True))
     return manifest
 
 
@@ -384,6 +425,9 @@ def main():
             result = install(manifest) if args.apply else {'check':'passed','files':[entry['path'] for entry in manifest['files']]}
         print(json.dumps(result, ensure_ascii=True, indent=2))
         return 0
+    except ReleaseCheckError as error:
+        print(str(error), file=sys.stderr)
+        return 2
     except (OSError, ValueError, KeyError):
         # Config parsing, subprocess stderr or DB messages must never leak secrets.
         print('Stopped. Files/configs differ or a prerequisite failed. No raw credential diagnostics are displayed.', file=sys.stderr)
