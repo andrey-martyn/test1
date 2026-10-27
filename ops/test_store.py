@@ -372,6 +372,12 @@ def checked_manifest():
         if target.is_symlink() or not within(target.resolve(), SHOP) or not within(target.parent.resolve(), SHOP):
             raise ValueError('Target path redirected: ' + str(relative))
         actual = sha(target) if target.is_file() else None
+        if entry['before_sha256'] is not None and actual != entry['before_sha256'] and actual == entry.get('before_lf_sha256'):
+            # Only the recorded, byte-exact LF variant is accepted, not an arbitrary mismatch.
+            # Rollback must restore the real hosting bytes, not the archive's CRLF hash.
+            entry['archive_before_sha256'] = entry['before_sha256']
+            entry['before_sha256'] = actual
+            entry['source_line_endings'] = 'LF'
         if actual != entry['before_sha256']:
             normalized = hashlib.sha256(target.read_bytes().replace(b'\r\n', b'\n')).hexdigest() if target.is_file() else None
             raise ReleaseCheckError(json.dumps({'error':'SOURCE_HASH_MISMATCH','path':str(relative),'expected_sha256':entry['before_sha256'],'actual_sha256':actual,'actual_lf_sha256':normalized}, sort_keys=True))
@@ -386,6 +392,8 @@ def install(manifest):
     backup.mkdir(parents=True, mode=0o700)
     for entry in manifest['files']:
         target = SHOP/entry['path']
+        if (sha(target) if target.is_file() else None) != entry['before_sha256']:
+            raise ValueError('Source changed after verification')
         if target.exists():
             saved = backup/entry['path']; saved.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(target, saved)

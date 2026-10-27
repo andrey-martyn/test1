@@ -69,6 +69,40 @@ class ProbeSql(unittest.TestCase):
         self.assertIn('1064',log)
         self.assertIn('ssl IN',log)
 
+    def test_real_migration_prepared_sql_preserves_data_and_rejects_case_sensitive_race(self):
+        before = '{ "version":"1.9.0.0", "empty":{}, "large":123456789012345678901234567890, "user_js":"keep", "user_css":"old" }'
+        after = before.replace('"old"','"new"')
+        config = {'DB_HOSTNAME':'fixture','DB_USERNAME':'fixture','DB_PASSWORD':'fixture-secret',
+                  'DB_DATABASE':'lavkasp_test','DB_PORT':'3306','DB_PREFIX':'oc_','store_id':0,
+                  'action':'replace','before':before,'after':after,'fixture_raw_settings':before}
+        fixture = (ROOT/'tests/fixtures/probe_database.php').read_text().split('<?php',1)[1]
+        code = (ROOT/'ops/migrations/user-css.php').read_text().split('<?php',1)[1]
+        marker = "echo json_encode(array('ok'=>true,'updated'=>true));"
+        self.assertEqual(code.count(marker),1)
+        code = code.replace(marker,"echo json_encode(array('ok'=>true,'fixture_queries'=>FixtureDatabase::$queries));")
+        result = subprocess.run([PHP,'-n','-r',fixture+'\n'+code],input=json.dumps(config),universal_newlines=True,
+                                stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=10)
+        self.assertEqual(result.returncode,0,result.stderr)
+        statement = json.loads(result.stdout)['fixture_queries'][-1]
+        self.assertTrue(statement.startswith('UPDATE `oc_uni_setting` '))
+        def value(text):
+            return 'CONVERT(0x'+text.encode('utf-8').hex()+' USING utf8mb4)'
+        for race in (False,True):
+            with self.subTest(concurrent_change=race):
+                actual = before.replace('"old"','"OLD"') if race else before
+                expected = actual if race else after
+                queries = [
+                    'INSERT INTO `oc_uni_setting` (`store_id`,`data`) VALUES (0,'+value(actual)+')',
+                    "PREPARE css_update FROM '"+statement+"'",
+                    'SET @css_after='+value(after), 'SET @css_store_id=0', 'SET @css_before='+value(before),
+                    'EXECUTE css_update USING @css_after,@css_store_id,@css_before', 'DEALLOCATE PREPARE css_update',
+                    'CREATE TABLE assert_css_update (ok INT CHECK (ok=1)) ENGINE=MEMORY',
+                    'INSERT INTO assert_css_update SELECT IF(BINARY `data`=BINARY '+value(expected)+',1,0) FROM `oc_uni_setting` WHERE `store_id`=0',
+                    'INSERT INTO assert_css_update VALUES (IF((SELECT COUNT(*) FROM `oc_uni_setting`)=1,1,0))',
+                ]
+                status,log = self.execute(queries,True)
+                self.assertEqual(status,0,log)
+
 
 if __name__ == '__main__':
     unittest.main()

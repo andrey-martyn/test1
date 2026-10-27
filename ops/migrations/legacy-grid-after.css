@@ -1,0 +1,17 @@
+@media (max-width: 767px) {
+.article_description img {
+max-width: 100%;
+height: auto !important;
+}
+}
+
+.uni-slideshow__image {    
+    display: contents;
+}
+.uni-slideshow__img {
+    height: 100%;
+    object-fit: cover;
+}
+
+.product-page__eur-price { color: #7C8E7B; font-size: .95em;}
+

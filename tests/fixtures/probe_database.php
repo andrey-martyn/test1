@@ -31,6 +31,7 @@ class FixtureDatabase {
     public function set_charset($charset) { return $charset === 'utf8mb4'; }
     public function real_escape_string($value) { return str_replace("'", "\\'", $value); }
     public function close() {}
+    public function prepare($sql) { self::$queries[] = $sql; return new FixtureStatement($sql,$this->config); }
     private function error($number) { $this->errno = $number; return false; }
     public function query($sql) {
         self::$queries[] = $sql;
@@ -70,7 +71,7 @@ class FixtureDatabase {
             if (!preg_match('/store_id = ([0-9]+)/', $sql, $match) || (int)$match[1] !== $expected) return $this->error(9001);
             $settings = array('version'=>'1.9.0.0','catalog'=>array('items_on_mobile'=>2),'liveprice'=>1,'merge_css'=>1,'license'=>'fixture-secret','user_js'=>'var internal = "fixture-secret";');
             if (isset($this->config['fixture_settings'])) $settings = $this->config['fixture_settings'];
-            $data = !empty($this->config['fixture_bad_json']) ? 'not-json' : json_encode($settings);
+            $data = isset($this->config['fixture_raw_settings']) ? $this->config['fixture_raw_settings'] : (!empty($this->config['fixture_bad_json']) ? 'not-json' : json_encode($settings));
             $rows = array(array('data'=>$data));
             if (!empty($this->config['fixture_duplicate_settings'])) $rows[] = array('data'=>$data);
             return new FixtureResult($rows);
@@ -78,4 +79,21 @@ class FixtureDatabase {
         if (strpos($sql, 'SELECT COUNT(*) AS n FROM `oc_theme`') === 0) return new FixtureResult(array(array('n'=>0)));
         return $this->error(9003);
     }
+}
+
+class FixtureStatement {
+    public $affected_rows = 0;
+    private $sql;
+    private $config;
+    public function __construct($sql,$config) { $this->sql=$sql; $this->config=$config; }
+    public function bind_param($types,&$after,&$store_id,&$before) {
+        if ($types !== 'sis' || $store_id !== 0 || !is_string($after) || !is_string($before)) throw new \Exception('Invalid fixture parameters');
+    }
+    public function execute() {
+        if ($this->sql !== 'UPDATE `oc_uni_setting` SET `data` = ? WHERE `store_id` = ? AND BINARY `data` = BINARY ? LIMIT 1') return false;
+        if (!empty($this->config['fixture_update_error'])) return false;
+        $this->affected_rows = empty($this->config['fixture_race']) ? 1 : 0;
+        return true;
+    }
+    public function close() {}
 }

@@ -1,0 +1,34 @@
+--- UniShop2/user_css.before.css
++++ UniShop2/user_css.after.css
+@@ -15,31 +15,3 @@
+ 
+ .product-page__eur-price { color: #7C8E7B; font-size: .95em;}
+ 
+-/* Две карточки в категориях по штатной настройке UniShop2 */
+-@media (max-width: 519.98px) {
+-  #content[data-lavka-mobile-grid="2"] > .products-block {
+-    display: flex;
+-    flex-wrap: wrap;
+-    align-items: stretch;
+-  }
+-
+-  #content[data-lavka-mobile-grid="2"] > .products-block::before,
+-  #content[data-lavka-mobile-grid="2"] > .products-block::after {
+-    display: none;
+-  }
+-
+-  #content[data-lavka-mobile-grid="2"] > .products-block > .product-layout.product-grid {
+-    float: none;
+-    clear: none;
+-    box-sizing: border-box;
+-    width: 50%;
+-    max-width: 50%;
+-    flex: 0 0 50%;
+-  }
+-
+-  #content[data-lavka-mobile-grid="2"] > .products-block .product-thumb__name,
+-  #content[data-lavka-mobile-grid="2"] > .products-block .product-thumb__description,
+-  #content[data-lavka-mobile-grid="2"] > .products-block .product-thumb__option {
+-    height: auto !important;
+-  }
+-}

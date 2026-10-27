@@ -1,0 +1,19 @@
+{
+  "id": "remove-reviewed-legacy-category-grid",
+  "target": "test.lavka-speciy.com",
+  "database": "lavkasp_test",
+  "source": {
+    "table": "oc_uni_setting",
+    "column": "data",
+    "store_id": 0,
+    "format": "json"
+  },
+  "field": "user_css",
+  "expected_css_stored_sha256": "ad3345d771ad9aa5ce0cabd540307ed806f2009488bd0f57a1f670a2487d0637",
+  "expected_js_stored_sha256": "7296828d81de16e9fd27320e28bd9f5fedd13ef8ca2cb94b8456a97a77ac8708",
+  "before_file": "legacy-grid-before.css",
+  "before_decoded_sha256": "5d1952d8fdac62fd631323e12c199bf2656c4731da11f0917e3cdd3e6e959ca4",
+  "after_file": "legacy-grid-after.css",
+  "after_stored_sha256": "33ea9740e62b991e728550ce79efe30ec8b6334efee3e9417d0adb20d93933cd",
+  "settings_loader_sha256": "fa6d526f43e9ce2a8fbbd62d6088125ba2b29761eb6bb97dfdf28cec0da5a5f0"
+}

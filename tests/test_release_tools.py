@@ -1,5 +1,6 @@
 """Preflight and deployment tests use an isolated temporary filesystem and fake DB response."""
 import contextlib
+import hashlib
 import importlib.util
 import io
 import json
@@ -173,6 +174,36 @@ class ReleaseTools(unittest.TestCase):
         self.assertEqual(diagnostic['actual_sha256'], ops.sha(target))
         self.assertEqual(target.read_text(),'other change')
         self.assertEqual(list(ops.BACKUPS.iterdir()),[])
+
+    def test_known_lf_variant_is_verified_and_rollback_restores_hosting_bytes(self):
+        manifest = self.release()
+        target = ops.SHOP/manifest['files'][0]['path']
+        original = b'first\nsecond\n'
+        target.write_bytes(original)
+        manifest['files'][0]['before_sha256'] = hashlib.sha256(original.replace(b'\n',b'\r\n')).hexdigest()
+        manifest['files'][0]['before_lf_sha256'] = hashlib.sha256(original).hexdigest()
+        (ops.REPO/'docs/release-manifest.json').write_text(json.dumps(manifest))
+        checked = ops.checked_manifest()
+        self.assertEqual(checked['files'][0]['before_sha256'],hashlib.sha256(original).hexdigest())
+        self.assertEqual(checked['files'][0]['archive_before_sha256'],manifest['files'][0]['before_sha256'])
+        result = ops.install(checked)
+        ops.rollback(result['rollback_id'])
+        self.assertEqual(target.read_bytes(),original)
+
+    def test_lf_hash_does_not_allow_real_code_changes(self):
+        manifest = self.release()
+        target = ops.SHOP/manifest['files'][0]['path']
+        manifest['files'][0]['before_lf_sha256'] = ops.sha(target)
+        (ops.REPO/'docs/release-manifest.json').write_text(json.dumps(manifest))
+        target.write_text('original with a code change')
+        with self.assertRaises(ops.ReleaseCheckError): ops.checked_manifest()
+
+    def test_install_rechecks_before_hash_after_check(self):
+        manifest = self.release()
+        target = ops.SHOP/manifest['files'][0]['path']
+        target.write_text('changed after check')
+        with self.assertRaises(ValueError): ops.install(manifest)
+        self.assertEqual(target.read_text(),'changed after check')
 
     def test_check_returns_failure_and_safe_hash_diagnostics_without_installing(self):
         manifest = self.release()

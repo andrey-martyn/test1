@@ -16,14 +16,16 @@ FILES = [
 ]
 baseline = json.loads((ROOT/'docs/source-baseline.json').read_text())
 before = {entry['path']: entry['sha256'] for entry in baseline['files']}
+source_commit = subprocess.check_output(['git','rev-parse','883aa91^{commit}'],cwd=ROOT,universal_newlines=True).strip()
+before_lf = {name: hashlib.sha256(subprocess.check_output(['git','show',source_commit+':store/'+name],cwd=ROOT).replace(b'\r\n',b'\n')).hexdigest() for name in FILES if name in before}
 manifest = {
     'target': 'test.lavka-speciy.com',
     'database': 'lavkasp_test',
-    'source_commit': subprocess.check_output(['git','rev-parse','883aa91^{commit}'],cwd=ROOT,universal_newlines=True).strip(),
+    'source_commit': source_commit,
     'source_archive_sha256': baseline['archive_sha256'],
-    'files': [{'path':name, 'before_sha256':before.get(name), 'after_sha256':hashlib.sha256((ROOT/'store'/name).read_bytes()).hexdigest()} for name in FILES],
+    'files': [{'path':name, 'before_sha256':before.get(name), 'before_lf_sha256':before_lf.get(name), 'after_sha256':hashlib.sha256((ROOT/'store'/name).read_bytes()).hexdigest()} for name in FILES],
     'deleted_files': [],
-    'database_changes': [],
+    'database_changes': [{'id':'remove-reviewed-legacy-category-grid','plan':'ops/migrations/legacy-grid.json','scope':'Only user_css in the confirmed test-store UniShop2 JSON; preserves all other bytes and user_js.'}],
 }
 (ROOT/'docs/release-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 patch = subprocess.check_output(['git','diff','--no-ext-diff','--relative=store','--binary',manifest['source_commit'],'--','store'],cwd=ROOT)
