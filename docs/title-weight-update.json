@@ -1,0 +1,21 @@
+{
+  "target": "test.lavka-speciy.com",
+  "database": "lavkasp_test",
+  "source_commit": "f006edbe52622f260e77acb22974bc1d4ad8af0a",
+  "files": [
+    {
+      "path": "catalog/controller/extension/module/uni_new_data.php",
+      "before_sha256": "d1ef60fd57dc268b0b2ec22687694eefbe4ccfc3b89c5ac9a40e7b653aaa754e",
+      "before_lf_sha256": "ab0fee0eeeae14f0589d6a19720fe9f2830318883257e5502d9a3c99f7bf0d66",
+      "after_sha256": "1eee34b7e2069869419e63af017d090a6b755002e6ef308779b077ebc16cff74"
+    },
+    {
+      "path": "catalog/view/theme/unishop2/stylesheet/lavka-mobile-cards.css",
+      "before_sha256": "a2ab2ce2620f88c0c23d3d65dba5449512f91168284b71b7f3b73fbabd7be491",
+      "before_lf_sha256": "a2ab2ce2620f88c0c23d3d65dba5449512f91168284b71b7f3b73fbabd7be491",
+      "after_sha256": "f0dc13bf79226dcd0859bfe5d3901fd2db23baaf564e259ce83e4d4dd1c6a08b"
+    }
+  ],
+  "deleted_files": [],
+  "database_changes": []
+}

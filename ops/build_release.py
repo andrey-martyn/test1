@@ -31,3 +31,19 @@ manifest = {
 patch = subprocess.check_output(['git','diff','--no-ext-diff','--relative=store','--binary',manifest['source_commit'],'--','store'],cwd=ROOT)
 (ROOT/'docs/mobile-category.patch').write_bytes(patch)
 print('Updated manifest and patch for',len(FILES),'files.')
+
+# Small update for the exact mobile-card version already installed on the test host.
+update_source = subprocess.check_output(['git','rev-parse','f006edb^{commit}'],cwd=ROOT,universal_newlines=True).strip()
+update_files = [FILES[0],FILES[-1]]
+entries = []
+for name in update_files:
+    original = subprocess.check_output(['git','show',update_source+':store/'+name],cwd=ROOT)
+    entries.append({'path':name,'before_sha256':hashlib.sha256(original).hexdigest(),
+                    'before_lf_sha256':hashlib.sha256(original.replace(b'\r\n',b'\n')).hexdigest(),
+                    'after_sha256':hashlib.sha256((ROOT/'store'/name).read_bytes()).hexdigest()})
+update = {'target':'test.lavka-speciy.com','database':'lavkasp_test','source_commit':update_source,
+          'files':entries,'deleted_files':[],'database_changes':[]}
+(ROOT/'docs/title-weight-update.json').write_text(json.dumps(update,indent=2)+'\n')
+update_patch = subprocess.check_output(['git','diff','--no-ext-diff','--relative=store',update_source,'--']+['store/'+name for name in update_files],cwd=ROOT)
+(ROOT/'docs/title-weight-update.patch').write_bytes(update_patch)
+print('Updated two-file title-weight update manifest and patch.')

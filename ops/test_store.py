@@ -356,8 +356,12 @@ def preflight(compatibility=True):
     return report
 
 
-def checked_manifest():
-    manifest = json.loads((REPO/'docs/release-manifest.json').read_text())
+def checked_manifest(manifest_path=None):
+    relative_manifest = Path(manifest_path or 'docs/release-manifest.json')
+    location = REPO/relative_manifest
+    if relative_manifest.is_absolute() or '..' in relative_manifest.parts or relative_manifest.suffix != '.json' or not within(location.resolve(),REPO/'docs'):
+        raise ValueError('Unsafe release manifest path')
+    manifest = json.loads(location.read_text())
     if manifest['target'] != HOSTNAME:
         raise ValueError('Unexpected release target')
     for entry in manifest['files']:
@@ -455,7 +459,10 @@ def main():
     action.add_argument('--check', action='store_true')
     action.add_argument('--apply', action='store_true')
     action.add_argument('--rollback', metavar='BACKUP_ID')
+    parser.add_argument('--manifest',metavar='RELATIVE_JSON',help='Release manifest under docs/ for an incremental update')
     args = parser.parse_args()
+    if args.manifest and not (args.check or args.apply):
+        parser.error('--manifest requires --check or --apply')
     try:
         report = preflight(compatibility=not bool(args.rollback))
         # Python 3.6 hosting accounts may use an ASCII terminal locale.
@@ -465,7 +472,7 @@ def main():
         if args.rollback:
             result = rollback(args.rollback)
         else:
-            manifest = checked_manifest()
+            manifest = checked_manifest(args.manifest)
             result = install(manifest) if args.apply else {'check':'passed','files':[entry['path'] for entry in manifest['files']]}
         print(json.dumps(result, ensure_ascii=True, indent=2))
         return 0

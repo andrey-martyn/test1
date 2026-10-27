@@ -205,6 +205,33 @@ class ReleaseTools(unittest.TestCase):
         with self.assertRaises(ValueError): ops.install(manifest)
         self.assertEqual(target.read_text(),'changed after check')
 
+    def test_incremental_manifest_checks_only_selected_installed_files_and_rolls_back(self):
+        manifest = self.release()
+        # The previously new CSS already exists on the hosting baseline.
+        css = manifest['files'][1]
+        target = ops.SHOP/css['path']; target.write_text('installed old CSS')
+        css['before_sha256'] = ops.sha(target)
+        manifest['files'] = [css]
+        (ops.REPO/'docs/title-weight-update.json').write_text(json.dumps(manifest))
+        with patch.object(sys,'argv',['test_store.py','--check','--manifest','docs/title-weight-update.json']):
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(ops.main(),0)
+        self.assertIn('passed',output.getvalue())
+        self.assertEqual(target.read_text(),'installed old CSS')
+        result = ops.install(ops.checked_manifest('docs/title-weight-update.json'))
+        self.assertEqual(target.read_text(),'new')
+        ops.rollback(result['rollback_id'])
+        self.assertEqual(target.read_text(),'installed old CSS')
+        self.assertEqual((ops.SHOP/'catalog/view/theme/unishop2/js/common.js').read_text(),'original')
+
+    def test_manifest_must_stay_in_repo_docs(self):
+        self.release()
+        outside = Path(self.temp.name)/'outside.json'; outside.write_text('{}')
+        (ops.REPO/'docs/redirect.json').symlink_to(outside)
+        for relative in (str(outside),'../outside.json','docs/redirect.json'):
+            with self.subTest(path=relative):
+                with self.assertRaises(ValueError): ops.checked_manifest(relative)
+
     def test_check_returns_failure_and_safe_hash_diagnostics_without_installing(self):
         manifest = self.release()
         target = ops.SHOP/manifest['files'][0]['path']

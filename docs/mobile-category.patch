@@ -1,5 +1,5 @@
 diff --git a/catalog/controller/extension/module/uni_new_data.php b/catalog/controller/extension/module/uni_new_data.php
-index 572a93d..7dd842e 100644
+index 572a93d..c3761ce 100644
 --- a/catalog/controller/extension/module/uni_new_data.php
 +++ b/catalog/controller/extension/module/uni_new_data.php
 @@ -212,6 +212,10 @@ class ControllerExtensionModuleUniNewData extends Controller {
@@ -7,7 +7,7 @@ index 572a93d..7dd842e 100644
  		}
  			
 +		// Source assets for mobile product lists; included in UniShop's normal merge.
-+		$this->document->addStyle('catalog/view/theme/unishop2/stylesheet/lavka-mobile-cards.css?v=1');
++		$this->document->addStyle('catalog/view/theme/unishop2/stylesheet/lavka-mobile-cards.css?v=2');
 +		$this->document->addScript('catalog/view/theme/unishop2/js/lavka-mobile-cards.js?v=1');
 +
  		if(isset($uniset['liveprice'])) {
@@ -410,7 +410,7 @@ index b762530..b279e7e 100644
  			});
 diff --git a/catalog/view/theme/unishop2/stylesheet/lavka-mobile-cards.css b/catalog/view/theme/unishop2/stylesheet/lavka-mobile-cards.css
 new file mode 100644
-index 0000000..1b8ad91
+index 0000000..42be6ff
 --- /dev/null
 +++ b/catalog/view/theme/unishop2/stylesheet/lavka-mobile-cards.css
 @@ -0,0 +1,116 @@
@@ -442,7 +442,7 @@ index 0000000..1b8ad91
 +    .lavka-mobile-card .product-thumb__image img { object-fit: contain; }
 +    .lavka-mobile-card .product-thumb__name {
 +        grid-area: 2 / 1 / 3 / 3; height: auto !important; min-height: 0 !important;
-+        margin: 7px 0 6px; padding: 0; color: #252a2c; font-size: 14px; line-height: 18px; font-weight: 500;
++        margin: 7px 0 6px; padding: 0; color: #252a2c; font-size: 14px; line-height: 18px; font-weight: 100;
 +        white-space: normal; overflow-wrap: anywhere;
 +    }
 +    .lavka-mobile-card .product-thumb__option.option {
