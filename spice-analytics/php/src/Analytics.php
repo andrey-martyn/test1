@@ -12,6 +12,7 @@ require_once __DIR__ . '/Marketing.php';
 require_once __DIR__ . '/GA4.php';
 require_once __DIR__ . '/Sync.php';
 require_once __DIR__ . '/History.php';
+require_once __DIR__ . '/IdentityReview.php';
 require_once __DIR__ . '/CRM.php';
 require_once __DIR__ . '/Gender.php';
 final class Analytics
@@ -258,7 +259,7 @@ final class Analytics
             }
             $suppression = ($action['stage'] ?? '') === 'do_not_contact' ? 'Не контактировать' : (($action['stage'] ?? '') === 'declined' ? 'Отказ' : ($snoozed ? 'Отложено' : ($cooling ? 'Недавний контакт' : (count($orders) < $this->settings['followup_min_orders'] ? 'Мало покупок' : ''))));
             $contactFields=identity_contact_fields($identityContactOrders[$cid]??$orders);
-            $customers[] = $contactFields + ['id' => (string) $cid, 'name' => trim($latest['firstname'] . ' ' . $latest['lastname']) ?: 'Гость', 'email' => $latest['email'], 'phone' => $latest['telephone'], 'emails' => $emails, 'phones' => $phones, 'city' => $latest['shipping_city'] ?: $latest['payment_city'], 'country' => $latest['shipping_country'] ?: $latest['payment_country'], 'order_count' => count($selected), 'lifetime_count' => count($orders), 'amount' => money(sum_orders($selected)), 'lifetime_amount' => money(sum_orders($orders)), 'average' => $selected ? money(bcdiv(sum_orders($selected), (string) count($selected), 12)) : 0, 'last_order' => end($dates), 'days_since' => $since, 'interval_days' => $interval, 'personal_interval' => $personal, 'due_on' => add_days(end($dates), $interval), 'overdue_days' => max(0, $overdue), 'reminder' => $reminder, 'followup_eligible' => $eligible, 'action' => $action ?: new \stdClass(), 'suppression' => $suppression, 'account_count' => count($accounts), 'manual' => $manual, 'activity' => (object) $customerActivity, 'weeks' => (object) $weeks, 'order_ids' => $ids];
+            $customers[] = $contactFields + ['id' => (string) $cid, 'current_surname'=>identity_order_surname($latest), 'name' => trim($latest['firstname'] . ' ' . $latest['lastname']) ?: 'Гость', 'email' => $latest['email'], 'phone' => $latest['telephone'], 'emails' => $emails, 'phones' => $phones, 'city' => $latest['shipping_city'] ?: $latest['payment_city'], 'country' => $latest['shipping_country'] ?: $latest['payment_country'], 'order_count' => count($selected), 'lifetime_count' => count($orders), 'amount' => money(sum_orders($selected)), 'lifetime_amount' => money(sum_orders($orders)), 'average' => $selected ? money(bcdiv(sum_orders($selected), (string) count($selected), 12)) : 0, 'last_order' => end($dates), 'days_since' => $since, 'interval_days' => $interval, 'personal_interval' => $personal, 'due_on' => add_days(end($dates), $interval), 'overdue_days' => max(0, $overdue), 'reminder' => $reminder, 'followup_eligible' => $eligible, 'action' => $action ?: new \stdClass(), 'suppression' => $suppression, 'account_count' => count($accounts), 'manual' => $manual, 'activity' => (object) $customerActivity, 'weeks' => (object) $weeks, 'order_ids' => $ids];
         }
         unset($orders);
         foreach ($customers as &$customer){$detail=$genderDetails[$customer['id']]??['gender'=>'unknown','reason'=>'missing','examples'=>[]];$customer['gender_estimate']=$detail['gender'];$customer['gender_reason']=$detail['reason'];$customer['gender_examples']=$detail['examples'];}
@@ -352,13 +353,16 @@ final class Analytics
         $annual = history_summary($this, $valid, $groups, $dsu, $historyYears);
         $historyTotals = ['amount' => money(sum_orders($valid)), 'order_count' => count($valid), 'customer_count' => count($groups), 'quantity' => array_sum(array_column($annual, 'quantity')), 'kilograms' => even_round(array_sum(array_column($annual, 'kilograms')), 3)];
         $total = sum_orders($period);
-        $crm = crm_build($this, $customers, $groups, $dsu, $asof, $currency);
+        $pairs=identity_pairs($customers);
+        $review=identity_review_projection($customers,$dsu,identity_review_read($this->directory),$pairs);
+        $pairs=array_values(array_filter($pairs,function($p)use($review){return !isset($review['blocked'][$p['id']]);}));
+        $crm = crm_build($this, $customers, $groups, $dsu, $asof, $currency,$review['blocked']);
         $regional=null;
         if($includeRegional){
             $coverageStart='';foreach($before as $order)if($order['currency_code']===$currency){$date=substr($order['date_added'],0,10);if($coverageStart===''||$date<$coverageStart)$coverageStart=$date;}
             $regional=regional_report($this,$valid,$groups,$dsu,$asof,$coverageStart);
         }
-        return ['loyalty' => $includeRegional?['gender'=>$genderLoyalty,'regional'=>loyalty_report($this->geo,$groups,$asof,$year)]:null, 'regional' => $regional, 'gender_filter' => $gender, 'gender_breakdown' => $genderBreakdown, 'gender_diagnostics'=>$genderDiagnostics, 'year' => $year, 'as_of' => $asof, 'currency' => $currency, 'week_count' => $year ? week($year . '-12-28') : 0, 'scope' => $year ? 'year' : 'all', 'crm' => $crm, 'annual' => $annual, 'history_totals' => $historyTotals, 'calendar' => $columns, 'activity' => (object) $activity, 'duplicate_pairs' => identity_pairs($customers), 'customers' => $customers, 'products' => $productRows, 'locations' => $locations['mixed'], 'location_modes' => $locations, 'geoip' => $this->geo->metadata(), 'marketing' => $marketing, 'ga4' => $gender === 'all' ? ga4_report($this->db, $year, $asof, $currency, $period) : null, 'geo_quality' => geo_quality($this->geo, $period), 'monthly_purchases' => array_values($monthly), 'weekly' => (object) $weekly, 'metrics' => ['amount' => money($total), 'order_count' => count($period), 'customer_count' => count($periodCustomers), 'average' => $period ? money(bcdiv($total, (string) count($period), 12)) : 0, 'overdue' => $overdue, 'repeat_customers' => $repeat, 'quantity' => array_sum(array_column($productRows, 'quantity')), 'kilograms' => even_round(array_sum(array_column($productRows, 'grams')) / 1000, 3)], 'duplicates' => $this->duplicates($customers)];
+        return ['loyalty' => $includeRegional?['gender'=>$genderLoyalty,'regional'=>loyalty_report($this->geo,$groups,$asof,$year)]:null, 'regional' => $regional, 'gender_filter' => $gender, 'gender_breakdown' => $genderBreakdown, 'gender_diagnostics'=>$genderDiagnostics, 'year' => $year, 'as_of' => $asof, 'currency' => $currency, 'week_count' => $year ? week($year . '-12-28') : 0, 'scope' => $year ? 'year' : 'all', 'crm' => $crm, 'annual' => $annual, 'history_totals' => $historyTotals, 'calendar' => $columns, 'activity' => (object) $activity, 'duplicate_pairs' => $pairs, 'dismissed_duplicate_pairs'=>$review['dismissed'], 'customers' => $customers, 'products' => $productRows, 'locations' => $locations['mixed'], 'location_modes' => $locations, 'geoip' => $this->geo->metadata(), 'marketing' => $marketing, 'ga4' => $gender === 'all' ? ga4_report($this->db, $year, $asof, $currency, $period) : null, 'geo_quality' => geo_quality($this->geo, $period), 'monthly_purchases' => array_values($monthly), 'weekly' => (object) $weekly, 'metrics' => ['amount' => money($total), 'order_count' => count($period), 'customer_count' => count($periodCustomers), 'average' => $period ? money(bcdiv($total, (string) count($period), 12)) : 0, 'overdue' => $overdue, 'repeat_customers' => $repeat, 'quantity' => array_sum(array_column($productRows, 'quantity')), 'kilograms' => even_round(array_sum(array_column($productRows, 'grams')) / 1000, 3)], 'duplicates' => $this->duplicates($customers,$review['blocked'])];
     }
     public function geography(array $orders, DSU $dsu, string $mode): array
     {
@@ -412,51 +416,14 @@ final class Analytics
         });
         return $rows;
     }
-    public function duplicates(array $customers): array
+    public function duplicates(array $customers,array $dismissed=[]): array
     {
-        $keys = [];
-        $byid = [];
-        foreach ($customers as $c) {
-            $byid[$c['id']] = $c;
-            foreach ($c['emails'] as $email) {
-                if ($k = email_key($email)) {
-                    $keys['email'][$k][$c['id']] = true;
-                }
-            }
-            foreach ($c['phones'] as $phone) {
-                if ($k = phone_key($phone)) {
-                    $keys['phone'][$k][$c['id']] = true;
-                }
-            }
-            $name = normalize($c['name']);
-            if (count(explode(' ', $name)) >= 2) {
-                $keys['name'][$name][$c['id']] = true;
-            }
+        $result=[];
+        foreach(identity_pairs($customers,$dismissed) as $pair){
+            $match=$pair['matches'][0];
+            $result[]=['reason'=>'Совпадает '.mb_strtolower($match['label']),'value'=>$match['value'],'members'=>[$pair['left'],$pair['right']]];
         }
-        $seen = [];
-        $candidates = [];
-        foreach (['email' => 'Совпадает email', 'phone' => 'Совпадает телефон', 'name' => 'Совпадает имя — нужна проверка'] as $kind => $reason) {
-            $values = $keys[$kind] ?? [];
-            ksort($values, SORT_STRING);
-            foreach ($values as $value => $ids) {
-                if (count($ids) < 2 || count($ids) > 20) {
-                    continue;
-                }
-                $ids = array_keys($ids);
-                sort($ids, SORT_NUMERIC);
-                $pair = encode($ids);
-                if (isset($seen[$pair])) {
-                    continue;
-                }
-                $seen[$pair] = true;
-                $members = [];
-                foreach ($ids as $cid) {
-                    $members[] = array_intersect_key($byid[$cid], array_flip(['id', 'name', 'email', 'phone', 'lifetime_count', 'city']));
-                }
-                $candidates[] = ['reason' => $reason, 'value' => (string) $value, 'members' => $members];
-            }
-        }
-        return $candidates;
+        return $result;
     }
     public function order(string $id): array
     {

@@ -76,7 +76,7 @@ function cached_report(\PDO $db, string $directory, int $year, string $asof, str
 {
     $cache = $directory . '/cache';
     private_dir($cache);
-    $key = hash('sha256', revision($db) . ':php-v11-monthly-purchases:' . $year . ':' . $asof . ':' . $currency . ':' . $gender);
+    $key = hash('sha256', identity_report_revision($db,$directory) . ':php-v12-identity-review:' . $year . ':' . $asof . ':' . $currency . ':' . $gender);
     $file = $cache . '/report-' . $key . '.json';
     if (is_file($file)) {
         return decode(file_get_contents($file));
@@ -338,7 +338,7 @@ function run_app(string $directory, string $publicUrl, string $assets, string $l
         $db = database($directory . '/analytics.sqlite3');
         init_schema($db);
         if ($path === '/api/meta' && $method === 'GET') {
-            respond(array_merge(fast_metadata($db, $directory), ['today' => date('Y-m-d'), 'production' => (bool) $publicUrl, 'names_visible' => (bool) $publicUrl, 'sync' => sync_state($db), 'runtime' => 'PHP ' . PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION]));
+            respond(array_merge(fast_metadata($db, $directory), ['today' => date('Y-m-d'), 'production' => (bool) $publicUrl, 'names_visible' => (bool) $publicUrl, 'sync' => sync_state($db), 'identity_review_revision'=>identity_review_revision($directory), 'runtime' => 'PHP ' . PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION]));
         }
         if ($path === '/api/report' && $method === 'GET') {
             [$year, $asof, $currency] = report_params();
@@ -474,6 +474,18 @@ function run_app(string $directory, string $publicUrl, string $assets, string $l
             $b = request_json();
             $content = valid_string($b['content'] ?? null, 2000000);
             respond(ga4_import($db, $content, valid_string($b['kind'] ?? null, 20), valid_string($b['currency'] ?? null, 3)));
+        }
+        if ($path === '/api/identity/review') {
+            if($method!=='POST')fail(405,'Метод не поддерживается');
+            $b=request_json();
+            if(!is_array($b['pairs']??null))fail(422,'Нужен список пар');
+            respond(identity_review_pairs($db,$directory,$b['pairs'],valid_string($b['as_of']??null,10),valid_string($b['currency']??null,3)));
+        }
+        if ($path === '/api/identity/review/restore') {
+            if($method!=='POST')fail(405,'Метод не поддерживается');
+            $b=request_json();
+            if(!is_array($b['ids']??null))fail(422,'Нужен список отметок');
+            respond(identity_review_restore($directory,$b['ids']));
         }
         if ($path === '/api/identity/merge-pairs' && $method === 'POST') {
             $b = request_json();

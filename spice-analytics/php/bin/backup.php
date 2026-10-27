@@ -65,7 +65,7 @@ try {
             $original->close();
         }
     }
-    foreach (['access-php.json', 'source.json', 'deployment-php.json', 'sandbox.json', 'own-catalog.json', 'own-catalog-status.json'] as $name) {
+    foreach (['identity-reviews.json', 'access-php.json', 'source.json', 'deployment-php.json', 'sandbox.json', 'own-catalog.json', 'own-catalog-status.json'] as $name) {
         if (is_file($data . '/' . $name)) {
             if (is_link($data . '/' . $name) || !copy($data . '/' . $name, $copyDir . '/' . $name)
                 || !chmod($copyDir . '/' . $name, 0600)) throw new RuntimeException('Не удалось скопировать закрытые настройки');

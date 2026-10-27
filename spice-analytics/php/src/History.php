@@ -109,8 +109,8 @@ function identity_contact_fields(array $orders): array
         $name=trim(($o['firstname']??'').' '.($o['lastname']??''));
         if($name!=='')$names[normalize($name)]=$name;
         if($surname=identity_order_surname($o))$surnames[identity_surname_key($surname)]=$surname;
-        $contact=['name'=>$name?:'Гость','email'=>$o['email']??'','phone'=>$o['telephone']??'','city'=>($o['shipping_city']??'')?:($o['payment_city']??'')];
-        $key=encode([normalize($name),normalize($contact['email']),normalize($contact['phone']),normalize($contact['city'])]);$contacts[$key]=$contact;
+        $contact=['name'=>$name?:'Гость','surname'=>identity_order_surname($o),'email'=>$o['email']??'','phone'=>$o['telephone']??'','city'=>($o['shipping_city']??'')?:($o['payment_city']??''),'order_id'=>(string)($o['order_id']??''),'date'=>substr($o['date_added']??'',0,10)];
+        $key=encode([normalize($name),normalize($contact['email']),normalize($contact['phone']),normalize($contact['city'])]);if(!isset($contacts[$key])||strcmp($contact['date'],$contacts[$key]['date'])>=0)$contacts[$key]=$contact;
     }
     return ['names'=>array_values($names),'surnames'=>array_values($surnames),'contacts'=>array_values($contacts),'emails'=>array_values(array_unique(array_filter(array_column($orders,'email')))),'phones'=>array_values(array_unique(array_filter(array_column($orders,'telephone'))))];
 }
@@ -119,20 +119,58 @@ function identity_contact_fields(array $orders): array
 function identity_contact_keys(array $c): array
 {
     $keys=[];
-    foreach($c['emails']??[] as $v)if($k=email_key($v))$keys['email'][$k]=true;
+    foreach($c['emails']??[] as $v)if($k=identity_suggestion_email($v))$keys['email'][$k]=true;
     foreach($c['phones']??[] as $v)if($k=phone_key($v))$keys['phone'][$k]=true;
-    foreach($c['names']??[$c['name']] as $v){$k=normalize($v);if(count(explode(' ',$k))>=2)$keys['name'][$k]=true;}
+    foreach($c['names']??[$c['name']] as $v)if($k=identity_suggestion_name($v))$keys['name'][$k]=true;
     foreach($c['surnames']??[] as $v)if($k=identity_surname_key($v))$keys['surname'][$k]=true;
     return $keys;
 }
 
+/** Suggestion filters only. Never change the identity edges of existing orders. */
+function identity_suggestion_email(string $value): string
+{
+    $key=email_key($value);
+    if($key && preg_match('/^(?:info|support|sales|admin|office|manager|zakaz|orders?|contact|noreply|no-reply)@/u',$key))return '';
+    return $key;
+}
+function identity_suggestion_name(string $value): string
+{
+    $key=normalize($value);$parts=explode(' ',$key);
+    if(count($parts)<2 || !preg_match("/^[\\pL]+(?:[ '\\-][\\pL]+)*$/uD",$key))return '';
+    foreach($parts as $part)if(in_array($part,['гость','гість','guest','клиент','клієнт','покупатель','покупець','customer','неизвестный','невідомий','нет','немає','null','undefined','ооо','тов','фоп'],true))return '';
+    return $key;
+}
+function identity_pair_member(array $c): array
+{
+    return array_intersect_key($c,array_flip(['id','name','names','surnames','current_surname','email','phone','emails','phones','lifetime_count','lifetime_amount','city']));
+}
+function identity_evidence_key(string $kind,array $contact): string
+{
+    if($kind==='email')return identity_suggestion_email($contact['email']??'');
+    if($kind==='phone')return phone_key($contact['phone']??'');
+    if($kind==='surname')return identity_surname_key($contact['surname']??$contact['current_surname']??'');
+    return identity_suggestion_name($contact['name']??'');
+}
+function identity_match_evidence(string $kind,string $label,string $value,array $left,array $right): array
+{
+    $match=['kind'=>$kind,'label'=>$label,'value'=>$value];
+    foreach(['left'=>$left,'right'=>$right] as $side=>$c){
+        $match[$side.'_current']=identity_evidence_key($kind,$c)===$value;
+        $sources=[];
+        foreach($c['contacts']??[] as $contact)if(identity_evidence_key($kind,$contact)===$value)$sources[]=array_intersect_key($contact,array_flip(['name','email','phone','date','order_id']));
+        usort($sources,function($a,$b){return strcmp($b['date']??'',$a['date']??'');});
+        $match[$side.'_sources']=array_slice($sources,0,1);
+    }
+    return $match;
+}
+
 /** Each unordered pair appears once, with every matching contact field. */
-function identity_pairs(array $customers): array
+function identity_pairs(array $customers,array $dismissed=[]): array
 {
     $keys = [];
     $members = [];
     foreach ($customers as $c) {
-        $members[$c['id']] = array_intersect_key($c, array_flip(['id', 'name', 'names', 'surnames', 'email', 'phone', 'emails', 'phones', 'lifetime_count', 'lifetime_amount', 'city']));
+        $members[$c['id']] = $c;
         foreach(identity_contact_keys($c) as $kind=>$values)foreach($values as $key=>$_)$keys[$kind][$key][$c['id']]=true;
     }
     $pairs = [];
@@ -146,12 +184,19 @@ function identity_pairs(array $customers): array
             $limited=$kind==='surname' && count($ids)>20;
             for ($i = 0; $i < count($ids); ++$i) for ($j = $i + 1; $j < ($limited?min(count($ids),$i+2):count($ids)); ++$j) {
                 $key = $ids[$i] . ':' . $ids[$j];
-                if (!isset($pairs[$key])) $pairs[$key] = ['id' => $key, 'ids' => [$ids[$i], $ids[$j]], 'left' => $members[$ids[$i]], 'right' => $members[$ids[$j]], 'matches' => [], 'kinds' => []];
+                if(isset($dismissed[$key]))continue;
+                if (!isset($pairs[$key])) $pairs[$key] = ['id' => $key, 'ids' => [$ids[$i], $ids[$j]], 'left' => identity_pair_member($members[$ids[$i]]), 'right' => identity_pair_member($members[$ids[$j]]), 'matches' => [], 'kinds' => []];
                 if($limited)$pairs[$key]['surname_limited']=true;
-                $pairs[$key]['matches'][] = ['kind' => $kind, 'label' => $label, 'value' => (string) $value];
+                $pairs[$key]['matches'][] = identity_match_evidence($kind,$label,(string)$value,$members[$ids[$i]],$members[$ids[$j]]);
                 if (!in_array($kind, $pairs[$key]['kinds'], true)) $pairs[$key]['kinds'][] = $kind;
             }
         }
     }
+    foreach($pairs as &$pair){
+        $contact=in_array('email',$pair['kinds'],true)||in_array('phone',$pair['kinds'],true);
+        $pair['strength']=$contact?'contact':(in_array('name',$pair['kinds'],true)?'name':'surname');
+        $pair['priority']=$contact?(in_array('email',$pair['kinds'],true)&&in_array('phone',$pair['kinds'],true)?100:80):($pair['strength']==='name'?50:10);
+        $pair['historical']=count(array_filter($pair['matches'],function($m){return !$m['left_current']||!$m['right_current'];}))>0;
+    }unset($pair);
     return array_values($pairs);
 }

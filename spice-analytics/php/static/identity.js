@@ -25,7 +25,7 @@ function identityPickerView(){
  const s=identityPicker,asof=document.getElementById('as-of').value;
  if(s.scope!==asof){s.scope=asof;s.rows=[];s.selected.clear();s.loaded=false;s.loading=false;s.sequence++;}
  if(s.open&&!s.loaded&&!s.loading)requestAnimationFrame(()=>{if(s.open&&!s.loaded&&!s.loading)identityPickerLoad();});
- return `<details class="panel identity-picker" id="identity-picker" ${s.open?'open':''} ${state.mergeBusy?'inert aria-busy="true"':''}><summary>Объединить любые карточки <span>Даже без совпадений контактов</span></summary><div class="identity-picker-body"><p>Поиск по всем годам и валютам до ${fmtDate(asof)}. Учитываются статусы из настроек. Год, пол и фильтры списка покупателей этот поиск не ограничивают.</p><form id="identity-picker-search"><label>Имя, фамилия, email, телефон или номер профиля<input id="identity-search" type="search" maxlength="200" autocomplete="off" value="${esc(s.search)}" ${s.busy?'disabled':''}></label><button type="submit" class="button" ${s.busy?'disabled':''}>Найти</button></form><div id="identity-picker-selection">${identityPickerSelection()}</div><div id="identity-picker-results">${identityPickerResults()}</div></div></details>`;
+ return `<details class="panel identity-picker" id="identity-picker" ${s.open?'open':''} ${state.mergeBusy||state.identityReviewBusy?'inert aria-busy="true"':''}><summary>Объединить любые карточки <span>Даже без совпадений контактов</span></summary><div class="identity-picker-body"><p>Поиск по всем годам и валютам до ${fmtDate(asof)}. Учитываются статусы из настроек. Год, пол и фильтры списка покупателей этот поиск не ограничивают.</p><form id="identity-picker-search"><label>Имя, фамилия, email, телефон или номер профиля<input id="identity-search" type="search" maxlength="200" autocomplete="off" value="${esc(s.search)}" ${s.busy?'disabled':''}></label><button type="submit" class="button" ${s.busy?'disabled':''}>Найти</button></form><div id="identity-picker-selection">${identityPickerSelection()}</div><div id="identity-picker-results">${identityPickerResults()}</div></div></details>`;
 }
 function identityPickerRender(){
  const selected=document.getElementById('identity-picker-selection'),results=document.getElementById('identity-picker-results');
@@ -48,7 +48,7 @@ async function identityPickerOpen(id=null){
  render();await identityPickerLoad();requestAnimationFrame(()=>{document.getElementById('identity-picker')?.scrollIntoView({block:'start',behavior:'instant'});document.getElementById('identity-search')?.focus({preventScroll:true});});
 }
 async function identityPickerMerge(){
- const s=identityPicker;if(s.busy||state.mergeBusy||s.selected.size<2)return;const ids=[...s.selected.keys()],entry=uiNavigation.current;
+ const s=identityPicker;if(s.busy||state.mergeBusy||state.identityReviewBusy||s.selected.size<2)return;const ids=[...s.selected.keys()],entry=uiNavigation.current;
  s.busy=true;s.error='';identityPickerRender();
  try{
   const result=await api('/api/identity/merge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids,as_of:document.getElementById('as-of').value})});

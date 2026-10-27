@@ -9,8 +9,8 @@ def php_runtime_files():
     allowed=[]
     for folder in ('src','bin','public','static','vendor'):
         allowed.extend(p for p in (PHP/folder).rglob('*') if p.is_file())
-    allowed.extend(PHP/name for name in ('README.md','COMPATIBILITY.md','COMPETITORS.md','COMPETITOR_REPORT.md','COMPETITOR_CATALOG.md','SANDBOX.md','PRICING_RULES.md','COMPETITOR_STRATEGY.md','DASHBOARD.md','BUSINESS_UI.md','GEOGRAPHY.md','ACTIONABLE_ANALYTICS.md','LOYALTY_MATCHING.md','DIAGNOSTICS.md','DIAGNOSTIC_REVIEW_2026-10-25.md','DIAGNOSTIC_REVIEW_2026-10-26.md','composer.json','.gitignore'))
-    forbidden={'source.json','access.json','access-php.json','.env'}
+    allowed.extend(PHP/name for name in ('README.md','COMPATIBILITY.md','COMPETITORS.md','COMPETITOR_REPORT.md','COMPETITOR_CATALOG.md','SANDBOX.md','PRICING_RULES.md','COMPETITOR_STRATEGY.md','DASHBOARD.md','BUSINESS_UI.md','CUSTOMER_MATCHING.md','GEOGRAPHY.md','ACTIONABLE_ANALYTICS.md','LOYALTY_MATCHING.md','DIAGNOSTICS.md','DIAGNOSTIC_REVIEW_2026-10-25.md','DIAGNOSTIC_REVIEW_2026-10-26.md','composer.json','.gitignore'))
+    forbidden={'source.json','access.json','access-php.json','.env','identity-reviews.json','identity-reviews.lock'}
     assert not any(p.name in forbidden or p.suffix in ('.sql','.sqlite3','.mmdb') or 'data' in p.relative_to(PHP).parts for p in allowed)
     return sorted(allowed)
 

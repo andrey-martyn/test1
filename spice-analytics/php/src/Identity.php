@@ -57,7 +57,7 @@ function identity_customer_cards(Analytics $store,string $asof): array
         $latest=$orders[count($orders)-1];$fields=identity_contact_fields($orders);$amounts=[];
         foreach($orders as $o){$cc=$o['currency_code'];$amounts[$cc]=plus($amounts[$cc]??'0',order_value($o));}
         foreach($amounts as &$amount)$amount=money($amount);unset($amount);ksort($amounts);
-        $cards[]=$fields+['id'=>(string)$id,'name'=>trim($latest['firstname'].' '.$latest['lastname'])?:'Гость','email'=>$latest['email'],'phone'=>$latest['telephone'],
+        $cards[]=$fields+['id'=>(string)$id,'order_ids'=>array_map('strval',array_column($orders,'order_id')),'name'=>trim($latest['firstname'].' '.$latest['lastname'])?:'Гость','email'=>$latest['email'],'phone'=>$latest['telephone'],
             'emails'=>array_values(array_unique(array_filter(array_column($orders,'email')))),'phones'=>array_values(array_unique(array_filter(array_column($orders,'telephone')))),
             'city'=>$latest['shipping_city']?:$latest['payment_city'],'lifetime_count'=>count($orders),'last_order'=>substr($latest['date_added'],0,10),'amounts'=>$amounts];
     }

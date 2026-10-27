@@ -4,3 +4,6 @@ source.json
 access-php.json
 .env
 test-results/
+
+identity-reviews.json
+identity-reviews.lock

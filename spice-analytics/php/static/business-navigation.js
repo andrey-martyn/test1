@@ -70,7 +70,7 @@ async function businessOpenTarget(target){
  const [view,tab]=target.split(':');if(!businessViewTitles[view]||tab&&!((view==='competitors'&&businessCompetitorTabs.some(item=>item[0]===tab))||(view==='manual'&&manualTabs.some(item=>item[0]===tab))))return;
  navigate(view);
  if(view==='actions'){state.crmScope='todo';state.crmTier='all';state.crmDuplicates='all';state.actionMin=state.meta?.settings.followup_min_orders||0;}
- if(view==='duplicates'){state.duplicateKind='all';state.duplicateSort='match';state.duplicateDir=1;state.duplicateSelected.clear();state.duplicateCustomer=null;}
+ if(view==='duplicates'){state.duplicateKind='all';state.duplicateReview='pending';state.duplicateSort='match';state.duplicateDir=1;state.duplicateSelected.clear();state.duplicateCustomer=null;}
  if(view==='manual'){state.manualTab=tab||'start';state.manualSearch='';}
  if(view==='competitors'){competitorState.tab=tab||'products';competitorState.search='';competitorState.source='all';competitorState.archived=false;competitorState.matrixPage=1;}
  render();if(view==='competitors')competitorRememberLocation();navigationRemember();window.scrollTo(0,0);

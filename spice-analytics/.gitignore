@@ -8,3 +8,6 @@ test-results/
 source.json
 access.json
 .env
+
+identity-reviews.json
+identity-reviews.lock

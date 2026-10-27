@@ -8,7 +8,7 @@ const CRM_OUTCOMES = ['unknown' => 'Ещё не выяснили', 'no_answer' =
 const CRM_KINDS = ['start' => 'Начать попытку и записать контакт', 'contact' => 'Повторный контакт', 'reply' => 'Ответ покупателя', 'offer' => 'Предложение / купон', 'note' => 'Заметка', 'analysis' => 'Ответ ChatGPT', 'close' => 'Завершить попытку'];
 
 /** Includes large shared-contact groups; a name match is a weaker warning. */
-function crm_duplicate_index(array $customers): array
+function crm_duplicate_index(array $customers,array $dismissed=[]): array
 {
     $index = []; $result = [];
     foreach ($customers as $c) {
@@ -17,12 +17,17 @@ function crm_duplicate_index(array $customers): array
     }
     foreach ($index as $kind => $groups) foreach ($groups as $ids) {
         if (count($ids) < 2) continue;
-        $sample = count($ids) > 50 ? array_slice($ids, 0, 21, true) : $ids;
         foreach ($ids as $id => $_) {
+            $others=[];$count=0;
+            foreach($ids as $other=>$_){
+                if($other===$id||isset($dismissed[identity_pair_key([(string)$id,(string)$other])]))continue;
+                ++$count;if(count($others)<21)$others[]=(string)$other;
+            }
+            if(!$count)continue;
             $result[$id]['kinds'][$kind] = true;
             if (in_array($kind,['email','phone'],true)) $result[$id]['strong'] = true;
-            if (count($ids) > 50) { $result[$id]['at_least'] = true; $result[$id]['count'] = max($result[$id]['count'], count($ids) - 1); }
-            foreach ($sample as $other => $_) if ($other !== $id) $result[$id]['_ids'][(string) $other] = true;
+            if (count($ids) > 50) { $result[$id]['at_least'] = true; $result[$id]['count'] = max($result[$id]['count'], $count); }
+            foreach ($others as $other) $result[$id]['_ids'][$other] = true;
         }
     }
     foreach ($result as &$r) {
@@ -71,9 +76,9 @@ function crm_attempts(array $events, array $orders, string $asof): array
     }
     return $result;
 }
-function crm_build(Analytics $s, array $customers, array $groups, DSU $dsu, string $asof, string $currency): array
+function crm_build(Analytics $s, array $customers, array $groups, DSU $dsu, string $asof, string $currency,array $dismissed=[]): array
 {
-    $duplicates = crm_duplicate_index($customers); $events = crm_events($s, $dsu, $asof, $currency, $customers);
+    $duplicates = crm_duplicate_index($customers,$dismissed); $events = crm_events($s, $dsu, $asof, $currency, $customers);
     $spends = array_column($customers, 'lifetime_amount'); sort($spends, SORT_NUMERIC);
     $p50 = $spends ? $spends[min(count($spends) - 1, (int) floor(count($spends) * .5))] : 0;
     $p80 = $spends ? $spends[min(count($spends) - 1, (int) floor(count($spends) * .8))] : 0;

@@ -12,7 +12,7 @@ const num=(n,d=0)=>Number(n||0).toLocaleString('ru-RU',{maximumFractionDigits:0}
 const fmtDate=d=>d?new Date(d.slice(0,10)+'T12:00:00').toLocaleDateString('ru-RU'):'—';
 const state={detailsOpen:{},regionalCitiesOpen:false,regionalPickerOpen:false,regionalTableOpen:false,regionalNotesOpen:false,regionalYears:null,regionalRegions:null,regionalWindow:'same',regionalMeasure:'count',regionalChannel:'all',regionalExpanded:false,idsLabel:'',gender:'all',view:'overview',privacy:true,page:1,search:'',reminder:'all',periodOnly:true,sort:'amount',productMode:'variants',productSort:'amount',mapMode:'ukraine',geoMetric:'count',meta:null,report:null,customer:null};
 const PAGE=35;
-Object.assign(state,{ordersMin:0,ordersMax:'',ordersBasis:'lifetime_count',segment:'all',ids:null,eligibleOnly:false,actionMin:2,geoSource:'mixed',cohortCount:18,historyOpen:null,seasonMetric:'count',seasonYears:false,duplicateKind:'all',duplicateSort:'match',duplicateDir:1,duplicateSelected:new Set(),mergeBusy:false,crmScope:'todo',crmTier:'all',crmSort:'value',crmDuplicates:'all',duplicateCustomer:null,manualTab:'start',manualSegment:'all',manualSearch:''});
+Object.assign(state,{ordersMin:0,ordersMax:'',ordersBasis:'lifetime_count',segment:'all',ids:null,eligibleOnly:false,actionMin:2,geoSource:'mixed',cohortCount:18,historyOpen:null,seasonMetric:'count',seasonYears:false,duplicateKind:'all',duplicateReview:'pending',identityReviewBusy:false,duplicateSort:'match',duplicateDir:1,duplicateSelected:new Set(),mergeBusy:false,crmScope:'todo',crmTier:'all',crmSort:'value',crmDuplicates:'all',duplicateCustomer:null,manualTab:'start',manualSegment:'all',manualSearch:''});
 const restoredCompetitorTab=competitorLocationTab();if(restoredCompetitorTab){state.view='competitors';competitorState.tab=restoredCompetitorTab;}
 const titles=businessViewTitles;
 const cash=v=>num(v,2)+' '+esc(state.report?.currency||(state.view==='overview'?dashboardState.data?.currency:null)||'UAH');
@@ -51,12 +51,12 @@ function updateSourceStamp(m){
   if(m.production){$('.local-pill').textContent='Закрытый кабинет';$('.sidebar-bottom p').textContent=s.configured?'Продажи обновляются автоматически':'Загруженная копия заказов';}
 }
 async function refreshSource(force=false){
-  if(state.view==='competitors'||!state.meta||(!force&&(state.duplicateSelected.size||state.view==='duplicates'&&(identityPicker.open||identityPicker.busy)))||(!force&&!state.meta.sync?.configured)||$('#drawer').open||document.hidden)return;
+  if(state.view==='competitors'||!state.meta||(!force&&(state.identityReviewBusy||state.mergeBusy||state.duplicateSelected.size||state.view==='duplicates'&&(identityPicker.open||identityPicker.busy)))||(!force&&!state.meta.sync?.configured)||$('#drawer').open||document.hidden)return;
   try{
     const m=await api('/api/meta'),previous=state.meta;state.meta=m;updateSourceStamp(m);
     if($('#as-of').value===previous.today)$('#as-of').value=m.today;
     if(state.view==='overview'){await dashboardLoad();return;}
-    if(force||m.imported_at!==previous.imported_at||m.today!==previous.today){
+    if(force||m.imported_at!==previous.imported_at||m.today!==previous.today||m.identity_review_revision!==previous.identity_review_revision){
       const year=$('#year').value;$('#year').innerHTML=yearOptions(m.years,year);
       const currency=$('#currency').value;$('#currency').innerHTML=m.currencies.map(c=>`<option>${esc(c)}</option>`).join('');if(m.currencies.includes(currency))$('#currency').value=currency;
       $('#footer-range').textContent=fmtDate(m.date_min)+' — '+fmtDate(m.date_max);await load();

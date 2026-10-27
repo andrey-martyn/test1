@@ -77,14 +77,14 @@ function dashboard_projection(array $report, iterable $orders, string $today): a
 function cached_dashboard(\PDO $db, string $directory, string $today, string $currency): array
 {
     $cache = $directory . '/cache'; private_dir($cache);
-    $sourceRevision = revision($db);
-    $key = hash('sha256', $sourceRevision . ':dashboard-v3-workflows:' . $today . ':' . $currency);
+    $sourceRevision = identity_report_revision($db,$directory);
+    $key = hash('sha256', $sourceRevision . ':dashboard-v4-identity-review:' . $today . ':' . $currency);
     $path = $cache . '/dashboard-' . $key . '.json';
     if (is_file($path)) return decode(file_get_contents($path));
     $report = cached_report($db, $directory, 0, $today, $currency);
     $db->beginTransaction();
     try {
-        if (revision($db) !== $sourceRevision) throw new \RuntimeException('Dashboard source changed; retry');
+        if (identity_report_revision($db,$directory) !== $sourceRevision) throw new \RuntimeException('Dashboard source changed; retry');
         $query = $db->query("SELECT payload FROM raw_records WHERE table_name='oc_order'");
         $orders = function () use ($query) { while ($row = $query->fetch()) yield decode($row['payload']); };
         $result = dashboard_projection($report, $orders(), $today);

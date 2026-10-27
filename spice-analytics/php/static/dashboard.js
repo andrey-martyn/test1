@@ -134,7 +134,7 @@ async function dashboardRunWorkflow(key){
   if(key==='sales-sync'){state.customer=null;openDrawer('ОБНОВЛЕНИЕ ПРОДАЖ');$('#drawer-content').innerHTML='<div class="dash-detail">'+(dashboardState.error?'<p>'+esc(dashboardState.error)+'</p>':'')+sourceSettings(state.meta)+'<button class="button" data-dash-action="reload">Обновить сводку →</button></div>';return;}
   if(key==='contact-matches'){
     const d=dashboardState.data;$('#year').value='0';$('#as-of').value=d.today;$('#currency').value=d.currency;
-    state.duplicateKind='all';state.duplicateSort='match';state.duplicateDir=1;state.duplicateSelected.clear();state.duplicateCustomer=null;
+    state.duplicateKind='all';state.duplicateReview='pending';state.duplicateSort='match';state.duplicateDir=1;state.duplicateSelected.clear();state.duplicateCustomer=null;
     navigate('duplicates');return;
   }
   const c=competitorState;c.tab=key==='price-errors'?'errors':key==='price-runner'?'coverage':['confirm-products','find-products'].includes(key)?'matching':'products';
