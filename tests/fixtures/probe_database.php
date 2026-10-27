@@ -28,6 +28,7 @@ class FixtureDatabase {
     }
     public function options($key, $value) {}
     public function real_connect($host, $user, $password, $database, $port) { return true; }
+    public function set_charset($charset) { return $charset === 'utf8mb4'; }
     public function real_escape_string($value) { return str_replace("'", "\\'", $value); }
     public function close() {}
     private function error($number) { $this->errno = $number; return false; }

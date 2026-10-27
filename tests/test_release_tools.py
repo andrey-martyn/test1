@@ -92,6 +92,17 @@ class ReleaseTools(unittest.TestCase):
         self.assertTrue(any('source is unverified' in issue for issue in report['issues']))
         self.assertFalse(any('is disabled' in issue for issue in report['issues']))
 
+    def test_legacy_code_still_blocks_apply_before_any_file_write(self):
+        self.probe['legacy_mobile_code'] = True
+        self.run.return_value.stdout = json.dumps(self.probe)
+        with patch.object(sys,'argv',['test_store.py','--apply']), \
+             patch.object(ops,'install') as install:
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(ops.main(),2)
+            install.assert_not_called()
+        self.assertIn(ops.LEGACY_ISSUE,output.getvalue())
+        self.assertEqual(list(ops.BACKUPS.iterdir()),[])
+
     def test_late_probe_error_preserves_identity_without_cascading_app_errors(self):
         self.run.return_value.stdout = json.dumps({'ok':False,'database':'lavkasp_test','database_verified':True,'code':'STORE_MAPPING_QUERY_FAILED','failed_stage':'store_mapping','diagnostics':{'sql_errno':1054}})
         report = ops.preflight()

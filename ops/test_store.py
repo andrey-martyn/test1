@@ -22,6 +22,7 @@ STORAGE = Path('/home/lavkasp/lavka-speciy.com/test_storage')
 BACKUPS = Path('/home/lavkasp/lavka-speciy.com/test_frontend_backups')
 DATABASE = 'lavkasp_test'
 HOSTNAME = 'test.lavka-speciy.com'
+LEGACY_ISSUE = 'Legacy custom mobile code detected. Review/migrate it before installation.'
 
 
 class ReleaseCheckError(ValueError):
@@ -327,7 +328,7 @@ def preflight(compatibility=True):
                     issues.append('Read-only database probe did not confirm lavkasp_test.')
                 else:
                     if compatibility and db.get('legacy_mobile_code'):
-                        issues.append('Legacy custom mobile code detected. Review/migrate it before installation.')
+                        issues.append(LEGACY_ISSUE)
                     theme = settings.get('config_theme')
                     if compatibility and theme != 'unishop2' and settings.get('theme_default_directory') != 'unishop2':
                         issues.append('Active UniShop2 theme was not confirmed.')
