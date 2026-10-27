@@ -156,7 +156,7 @@ def validate(folder, entries):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--output',default='/workspace/artifacts',help='Output directory, outside the shop')
+    parser.add_argument('--output',default=str(ROOT/'handover/releases'),help='Output directory, outside the shop; defaults to versioned GitHub handoff artifacts')
     args = parser.parse_args()
     output = Path(args.output).resolve(); output.mkdir(parents=True,exist_ok=True)
     source = git('rev-parse',SOURCE+'^{commit}').decode().strip()

@@ -17,6 +17,7 @@
 *.pem
 *.key
 *.zip
+!handover/releases/lavka-mobile-cards-1.0.0-rc1.zip
 *.tar.gz
 __pycache__/
 artifacts/
