@@ -212,5 +212,7 @@ with tempfile.TemporaryDirectory() as temporary:
             browser.close()
             print(json.dumps({'shared_sticky_navigation':'passed','settings_body_insets':'passed','all_section_widths':'passed','widths':[1470,390,320],'keyboard_and_arrows':'passed','sidebar_svg_alignment_and_internal_focus':'passed','centered_fixed_arrow_controls':'passed','contextual_task_routes_and_section_directory':'passed','browser_errors':errors}))
     finally:
-        subprocess.run(['docker','stop',name],check=False,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-        server.wait(timeout=20)
+        subprocess.run(['docker','rm','-f',name],check=False,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        try:server.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            server.kill();server.wait(timeout=10)

@@ -78,7 +78,7 @@ function cached_dashboard(\PDO $db, string $directory, string $today, string $cu
 {
     $cache = $directory . '/cache'; private_dir($cache);
     $sourceRevision = identity_report_revision($db,$directory);
-    $key = hash('sha256', $sourceRevision . ':dashboard-v4-identity-review:' . $today . ':' . $currency);
+    $key = hash('sha256', $sourceRevision . ':dashboard-v5-name-roles:' . $today . ':' . $currency);
     $path = $cache . '/dashboard-' . $key . '.json';
     if (is_file($path)) return decode(file_get_contents($path));
     $report = cached_report($db, $directory, 0, $today, $currency);

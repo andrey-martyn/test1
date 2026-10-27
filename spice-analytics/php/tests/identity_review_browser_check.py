@@ -66,7 +66,12 @@ with tempfile.TemporaryDirectory() as temporary:
             page.click('#privacy')
             row=page.locator('.duplicate-table tbody tr').filter(has=page.locator('[data-pair="1:2"]'))
             text=row.inner_text()
-            assert all(s in text for s in ['Анна Северная','Олена Соколова','заказ №8','01.01.2024']),text
+            assert all(s in text for s in ['Анна Северная','Олена Соколова']),text
+            row.locator('.identity-chain-trigger').hover()
+            page.wait_for_selector('#identity-chain-popup .identity-chain-node')
+            assert 'Заказ №8' in page.locator('#identity-chain-popup').inner_text()
+            assert '01.01.2024' in page.locator('#identity-chain-popup').inner_text()
+            page.keyboard.press('Escape')
             assert row.locator('.match-item').count()==3
             assert 'Слабое основание' in page.locator('.duplicate-table tbody tr').filter(has=page.locator('[data-pair="5:6"]')).inner_text()
             page.screenshot(path=str(OUT/'historical-evidence-desktop.png'),full_page=True)
@@ -125,5 +130,7 @@ with tempfile.TemporaryDirectory() as temporary:
             browser.close()
             print(json.dumps({'historical_evidence':'passed','reject_one_and_batch':'passed','reload_and_dashboard_cache':'passed','restore_and_weak_filter':'passed','existing_database_bytes':'unchanged','existing_manual_links':'preserved','privacy_auth_and_origin':'passed','widths':[1470,390,320]}))
     finally:
-        subprocess.run(['docker','stop',name],check=False,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-        server.wait(timeout=20)
+        subprocess.run(['docker','rm','-f',name],check=False,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        try:server.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            server.kill();server.wait(timeout=10)

@@ -215,3 +215,8 @@
 Проверки `identity_review_check.php` и `identity_review_browser_check.py` подтверждают
 сохранность исходных таблиц, CRM, старых объединений и байтов основной базы.
 См. [CUSTOMER_MATCHING.md](CUSTOMER_MATCHING.md).
+
+Имена в поле фамилии больше не создают фамильных совпадений. Новый
+`identity_name_trace_check.php` проверяет восстановление реальной цепочки
+связей, а `identity_chain_browser_check.py` — всплывающее окно, скрытие имён
+и сохранность существующих объединений и отметок проверки.

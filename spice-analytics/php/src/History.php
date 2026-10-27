@@ -76,29 +76,49 @@ function history_summary(Analytics $s, array $valid, array $groups, DSU $dsu, ar
     return array_values($rows);
 }
 
-/** Last-name suggestions are weak evidence and never automatic identity edges. */
+/** Parsing affects suggestions only; saved identity edges are never rewritten. */
+function identity_given_name(string $value): bool
+{
+    $parts=explode('-',name_gender_key($value));$names=name_gender_dictionary();
+    if(!$parts)return false;
+    foreach($parts as $part)if($part===''||!isset($names[$part]))return false;
+    return true;
+}
+function identity_patronymic(string $value): bool
+{
+    return (bool)preg_match('/(?:ович|евич|йович|івна|ївна|овна|евна|ична)$/iu',$value);
+}
+function identity_name_parts(string $value): array
+{
+    return preg_split('/\s+/u',normalize(str_replace(["’","‘","`","ʼ","‐","‑","–","—"],["'","'","'","'","-","-","-","-"],$value)),-1,PREG_SPLIT_NO_EMPTY);
+}
+/** A known given name must never become surname-only evidence. */
 function identity_surname_key(string $value): string
 {
-    $value=normalize(str_replace(["’","‘","`","ʼ","‐","‑","–","—"],["'","'","'","'","-","-","-","-"],$value));
+    $parts=identity_name_parts($value);$value=implode(' ',$parts);
     if(!preg_match("/^[\pL]+(?:[ '\-][\pL]+)*$/uD",$value) || mb_strlen(preg_replace('/[^\pL]/u','',$value))<2)return '';
-    if(in_array($value,['тест','test','проверка','клієнт','клиент','покупатель','покупець','гость','гість','guest','customer','нет','немає','null','undefined','не указано','не вказано','фоп','тов','ооо','компания','магазин'],true))return '';
+    if(in_array($value,['тест','test','проверка','клієнт','клиент','покупатель','покупець','гость','гість','guest','customer','нет','немає','null','undefined','не указано','не вказано','фоп','тов','ооо','компания','магазин','фамилия','прізвище','surname','lastname'],true))return '';
+    foreach($parts as $part)if(identity_given_name($part))return '';
     return $value;
 }
-
-/** Some checkouts put a complete name in firstname and leave lastname empty. */
+/** Handle dedicated, swapped, repeated and combined checkout fields conservatively. */
 function identity_order_surname(array $o): string
 {
-    $last=trim((string)($o['lastname']??''));
+    $last=trim((string)($o['lastname']??''));$first=trim((string)($o['firstname']??''));
     if(identity_surname_key($last)!=='')return $last;
-    if($last!=='')return '';
-    $parts=preg_split('/\s+/u',trim((string)($o['firstname']??'')));
-    if(count($parts)<2||count($parts)>3)return '';
-    $isFirst=function($v){$d=name_gender_details($v);return $d['gender']!=='unknown'||$d['reason']==='ambiguous';};
-    $first=$parts[0];$tail=$parts[count($parts)-1];$candidate='';
-    if($isFirst($first)&&!$isFirst($tail))$candidate=$tail;
-    elseif(!$isFirst($first)&&$isFirst($parts[1]))$candidate=$first;
-    if(preg_match('/(?:ович|евич|йович|івна|ївна|овна|евна|ична)$/iu',$candidate))return '';
-    return identity_surname_key($candidate)!==''?$candidate:'';
+    // A malformed non-name in lastname is not permission to guess another field.
+    $lastParts=identity_name_parts($last);$firstParts=identity_name_parts($first);
+    foreach(array_merge($lastParts,$firstParts) as $part)if(!preg_match("/^[\pL]+(?:['\-][\pL]+)*$/uD",$part))return '';
+    $hasGiven=false;$candidates=[];
+    foreach(array_merge($firstParts,$lastParts) as $part){
+        if(identity_given_name($part)){$hasGiven=true;continue;}
+        if(identity_patronymic($part))continue;
+        if($key=identity_surname_key($part))$candidates[$key]=$part;
+    }
+    if(!$hasGiven||count($candidates)!==1)return '';
+    $chosen=(string)key($candidates);
+    foreach(preg_split('/\s+/u',trim($first.' '.$last),-1,PREG_SPLIT_NO_EMPTY) as $original)if(identity_surname_key($original)===$chosen)return $original;
+    return (string)reset($candidates);
 }
 
 /** Preserve historical names and contact people when records share a history. */
@@ -135,9 +155,18 @@ function identity_suggestion_email(string $value): string
 }
 function identity_suggestion_name(string $value): string
 {
-    $key=normalize($value);$parts=explode(' ',$key);
+    $parts=identity_name_parts($value);$key=implode(' ',$parts);
     if(count($parts)<2 || !preg_match("/^[\\pL]+(?:[ '\\-][\\pL]+)*$/uD",$key))return '';
     foreach($parts as $part)if(in_array($part,['гость','гість','guest','клиент','клієнт','покупатель','покупець','customer','неизвестный','невідомий','нет','немає','null','undefined','ооо','тов','фоп'],true))return '';
+    $given=[];$family=[];$patronymics=[];
+    foreach($parts as $part){
+        if(identity_given_name($part))$given[$part]=true;
+        elseif(identity_patronymic($part))$patronymics[$part]=true;
+        else $family[$part]=true;
+    }
+    if(!$family)return '';
+    // Canonicalize only unambiguous given-name/surname order, retaining patronymics.
+    if(count($given)===1&&count($family)===1)return implode(' ',array_merge(array_keys($given),array_keys($family),array_keys($patronymics)));
     return $key;
 }
 function identity_pair_member(array $c): array

@@ -7,6 +7,7 @@ require_once __DIR__ . '/Analytics.php';
 require_once __DIR__ . '/Auth.php';
 require_once __DIR__ . '/Assets.php';
 require_once __DIR__ . '/Identity.php';
+require_once __DIR__ . '/IdentityTrace.php';
 require_once __DIR__ . '/Competitors.php';
 require_once __DIR__ . '/SandboxRuntime.php';
 final class HttpError extends \RuntimeException
@@ -76,7 +77,7 @@ function cached_report(\PDO $db, string $directory, int $year, string $asof, str
 {
     $cache = $directory . '/cache';
     private_dir($cache);
-    $key = hash('sha256', identity_report_revision($db,$directory) . ':php-v12-identity-review:' . $year . ':' . $asof . ':' . $currency . ':' . $gender);
+    $key = hash('sha256', identity_report_revision($db,$directory) . ':php-v13-name-roles-and-traces:' . $year . ':' . $asof . ':' . $currency . ':' . $gender);
     $file = $cache . '/report-' . $key . '.json';
     if (is_file($file)) {
         return decode(file_get_contents($file));
@@ -474,6 +475,10 @@ function run_app(string $directory, string $publicUrl, string $assets, string $l
             $b = request_json();
             $content = valid_string($b['content'] ?? null, 2000000);
             respond(ga4_import($db, $content, valid_string($b['kind'] ?? null, 20), valid_string($b['currency'] ?? null, 3)));
+        }
+        if ($path === '/api/identity/trace') {
+            if($method!=='GET')fail(405,'Метод не поддерживается');
+            respond(identity_trace($db,$directory,valid_string($_GET['left']??null,30),valid_string($_GET['right']??null,30),valid_string($_GET['as_of']??null,10),valid_string($_GET['currency']??null,3),valid_string($_GET['revision']??null,150)));
         }
         if ($path === '/api/identity/review') {
             if($method!=='POST')fail(405,'Метод не поддерживается');
