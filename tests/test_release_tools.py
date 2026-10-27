@@ -92,6 +92,16 @@ class ReleaseTools(unittest.TestCase):
         self.assertTrue(any('source is unverified' in issue for issue in report['issues']))
         self.assertFalse(any('is disabled' in issue for issue in report['issues']))
 
+    def test_late_probe_error_preserves_identity_without_cascading_app_errors(self):
+        self.run.return_value.stdout = json.dumps({'ok':False,'database':'lavkasp_test','database_verified':True,'code':'STORE_MAPPING_QUERY_FAILED','failed_stage':'store_mapping','diagnostics':{'sql_errno':1054}})
+        report = ops.preflight()
+        self.assertFalse(report['ok'])
+        self.assertTrue(report['isolation_ok'])
+        self.assertEqual(len(report['issues']), 1)
+        self.assertIn('SQL errno=1054', report['issues'][0])
+        self.assertEqual(report['warnings'], [])
+        self.assertNotIn('runtime_source_refs', report)
+
     def test_runtime_source_diagnostics_emit_only_identifiers(self):
         path = ops.SHOP/'catalog/model/extension/module/uni_settings.php'
         path.parent.mkdir(parents=True)

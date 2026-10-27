@@ -1,0 +1,78 @@
+<?php
+// Test-only mysqli substitute: never connects to a database or runs store code.
+namespace LavkaProbeFixture;
+
+if (!defined('MYSQLI_REPORT_OFF')) define('MYSQLI_REPORT_OFF', 0);
+if (!defined('MYSQLI_OPT_CONNECT_TIMEOUT')) define('MYSQLI_OPT_CONNECT_TIMEOUT', 0);
+
+function extension_loaded($name) { return $name === 'mysqli'; }
+function mysqli_report($flags) {}
+function mysqli_init() { global $c; return new FixtureDatabase($c); }
+
+class FixtureResult {
+    public $num_rows;
+    private $rows;
+    private $offset = 0;
+    public function __construct($rows) { $this->rows = $rows; $this->num_rows = count($rows); }
+    public function fetch_assoc() { return $this->offset < $this->num_rows ? $this->rows[$this->offset++] : null; }
+}
+
+class FixtureDatabase {
+    public $errno = 0;
+    private $config;
+    private $columns;
+    public function __construct($config) {
+        $this->config = $config;
+        $this->columns = isset($config['fixture_columns']) ? $config['fixture_columns'] : array('store_id','name','url');
+    }
+    public function options($key, $value) {}
+    public function real_connect($host, $user, $password, $database, $port) { return true; }
+    public function real_escape_string($value) { return str_replace("'", "\\'", $value); }
+    public function close() {}
+    private function error($number) { $this->errno = $number; return false; }
+    public function query($sql) {
+        $this->errno = 0;
+        if (stripos(ltrim($sql), 'SELECT ') !== 0) return $this->error(9002);
+        if (strpos($sql, 'SELECT DATABASE()') === 0) {
+            return new FixtureResult(array(array('selected_database'=>isset($this->config['fixture_database']) ? $this->config['fixture_database'] : 'lavkasp_test')));
+        }
+        if (strpos($sql, 'information_schema.COLUMNS') !== false && strpos($sql, "TABLE_NAME = 'oc_store'") !== false) {
+            if (!empty($this->config['fixture_schema_error'])) return $this->error(1142);
+            $rows = array();
+            foreach ($this->columns as $name) $rows[] = array('column_name'=>$name);
+            return new FixtureResult($rows);
+        }
+        if (strpos($sql, 'SELECT store_id FROM `oc_store`') === 0) {
+            if (preg_match('/\bssl\b/i', $sql) && !in_array('ssl', $this->columns, true)) return $this->error(1054);
+            if (!empty($this->config['fixture_mapping_error'])) return $this->error(2013);
+            $rows = array();
+            $ids = isset($this->config['fixture_stores']) ? $this->config['fixture_stores'] : array();
+            foreach ($ids as $id) $rows[] = array('store_id'=>$id);
+            return new FixtureResult($rows);
+        }
+        if (strpos($sql, 'SELECT store_id, `key`, value FROM `oc_setting`') === 0) {
+            return new FixtureResult(array(array('store_id'=>0,'key'=>'config_theme','value'=>'unishop2')));
+        }
+        if (strpos($sql, 'SELECT code, name, version, IF(') === 0) {
+            $xml = '<modification><file><add><![CDATA[$this->load->model("extension/module/uni_settings");]]></add></file></modification>';
+            return new FixtureResult(empty($this->config['fixture_no_loader']) ? array(array('code'=>'UniShop2 template','name'=>'UniShop2','version'=>'1.9.0.0','unishop_xml'=>$xml)) : array());
+        }
+        if (strpos($sql, 'SELECT store_id, code, `key`, serialized') === 0) return new FixtureResult(array());
+        if (strpos($sql, 'information_schema.COLUMNS') !== false && strpos($sql, 'TABLE_NAME IN') !== false) {
+            return new FixtureResult(array(array('table_name'=>'oc_uni_setting','column_name'=>'store_id'),array('table_name'=>'oc_uni_setting','column_name'=>'data')));
+        }
+        if (strpos($sql, 'SELECT data FROM `oc_uni_setting`') === 0) {
+            $ids = isset($this->config['fixture_stores']) ? $this->config['fixture_stores'] : array();
+            $expected = $ids ? (int)$ids[0] : 0;
+            if (!preg_match('/store_id = ([0-9]+)/', $sql, $match) || (int)$match[1] !== $expected) return $this->error(9001);
+            $settings = array('version'=>'1.9.0.0','catalog'=>array('items_on_mobile'=>2),'liveprice'=>1,'merge_css'=>1,'license'=>'fixture-secret','user_js'=>'var internal = "fixture-secret";');
+            if (isset($this->config['fixture_settings'])) $settings = $this->config['fixture_settings'];
+            $data = !empty($this->config['fixture_bad_json']) ? 'not-json' : json_encode($settings);
+            $rows = array(array('data'=>$data));
+            if (!empty($this->config['fixture_duplicate_settings'])) $rows[] = array('data'=>$data);
+            return new FixtureResult($rows);
+        }
+        if (strpos($sql, 'SELECT COUNT(*) AS n FROM `oc_theme`') === 0) return new FixtureResult(array(array('n'=>0)));
+        return $this->error(9003);
+    }
+}

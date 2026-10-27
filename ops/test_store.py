@@ -81,7 +81,16 @@ def config_values(path):
 
 PHP_PROBE = r'''
 $c = json_decode(stream_get_contents(STDIN), true);
-function fail_probe($code) { echo json_encode(array('ok'=>false,'code'=>$code)); exit(1); }
+function fail_probe($code, $stage = null, $details = array()) {
+    global $out;
+    $result = isset($out) && is_array($out) ? $out : array();
+    $result['ok'] = false;
+    $result['code'] = $code;
+    if ($stage !== null) $result['failed_stage'] = $stage;
+    if ($details) $result['diagnostics'] = $details;
+    echo json_encode($result);
+    exit(1);
+}
 function unishop_source_refs($source) {
     $patterns = array(
         'config_get_keys' => '~config->get\(\s*[\'"]((?:config_)?uni[a-zA-Z0-9_]*)[\'"]~',
@@ -123,14 +132,32 @@ try {
     $r = $db->query('SELECT DATABASE() AS selected_database');
     if (!$r) fail_probe('DATABASE_QUERY_FAILED');
     $out = array('ok'=>true, 'database'=>$r->fetch_assoc()['selected_database'], 'php_cli_version'=>PHP_VERSION);
+    if ($out['database'] !== 'lavkasp_test') fail_probe('DATABASE_IDENTITY_MISMATCH', 'database_identity');
+    $out['database_verified'] = true;
     $p = $c['DB_PREFIX'];
+    $store_table = $db->real_escape_string($p.'store');
+    $r = $db->query("SELECT COLUMN_NAME AS column_name FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '".$store_table."' ORDER BY ORDINAL_POSITION");
+    if (!$r) fail_probe('STORE_SCHEMA_QUERY_FAILED', 'store_schema', array('sql_errno'=>(int)$db->errno));
+    $store_columns = array();
+    while ($row = $r->fetch_assoc()) $store_columns[] = strtolower($row['column_name']);
+    $out['store_mapping'] = array('status'=>'unverified', 'columns'=>$store_columns);
+    if (!in_array('store_id', $store_columns, true) || !in_array('url', $store_columns, true)) {
+        fail_probe('STORE_SCHEMA_UNSUPPORTED', 'store_schema');
+    }
     $urls = array_unique(array($c['HTTP_SERVER'], $c['HTTPS_SERVER']));
     $escaped_urls = array();
     foreach ($urls as $url) $escaped_urls[] = $db->real_escape_string($url);
     $url_list = "'".implode("','", $escaped_urls)."'";
-    $r = $db->query("SELECT store_id FROM `".$p."store` WHERE url IN (".$url_list.") OR ssl IN (".$url_list.") LIMIT 2");
-    if (!$r || $r->num_rows > 1) fail_probe('STORE_MAPPING_UNVERIFIED');
-    $store_id = $r->num_rows === 1 ? (int)$r->fetch_assoc()['store_id'] : 0;
+    $where = 'url IN ('.$url_list.')';
+    if (in_array('ssl', $store_columns, true)) $where .= ' OR ssl IN ('.$url_list.')';
+    $r = $db->query("SELECT store_id FROM `".$p."store` WHERE ".$where." LIMIT 2");
+    if (!$r) fail_probe('STORE_MAPPING_QUERY_FAILED', 'store_mapping', array('sql_errno'=>(int)$db->errno));
+    $matched_stores = array();
+    while ($row = $r->fetch_assoc()) $matched_stores[] = (int)$row['store_id'];
+    $out['store_mapping']['matched_store_ids'] = $matched_stores;
+    if (count($matched_stores) > 1) fail_probe('STORE_MAPPING_AMBIGUOUS', 'store_mapping');
+    $store_id = $matched_stores ? $matched_stores[0] : 0;
+    $out['store_mapping']['status'] = $matched_stores ? 'matched' : 'default_store';
     $out['runtime_store_id'] = $store_id;
     $r = $db->query("SELECT store_id, `key`, value FROM `".$p."setting` WHERE store_id IN (0,".$store_id.") AND `key` IN ('config_theme','config_template','theme_default_directory','theme_unishop2_directory','config_url','config_ssl','config_unishop2') ORDER BY store_id");
     if (!$r) fail_probe('SETTINGS_QUERY_FAILED');
@@ -286,27 +313,35 @@ def preflight(compatibility=True):
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15)
                 db = json.loads(result.stdout)
                 report['db'] = db
-                if not db.get('ok') or db.get('database') != DATABASE:
+                identity_ok = db.get('database') == DATABASE and (db.get('database_verified') is True or db.get('ok') is True)
+                report['isolation_ok'] = identity_ok
+                settings = db.get('settings') or {}
+                if not db.get('ok'):
+                    code = db.get('code', 'UNKNOWN_FAILURE')
+                    stage = db.get('failed_stage', 'unknown')
+                    errno = db.get('diagnostics', {}).get('sql_errno')
+                    message = 'Read-only probe stopped: {0} (stage={1}'.format(code, stage)
+                    if isinstance(errno, int): message += ', SQL errno={0}'.format(errno)
+                    issues.append(message + ').')
+                elif not identity_ok:
                     issues.append('Read-only database probe did not confirm lavkasp_test.')
                 else:
-                    report['isolation_ok'] = True
-                if compatibility and db.get('legacy_mobile_code'):
-                    issues.append('Legacy custom mobile code detected. Review/migrate it before installation.')
-                settings = db.get('settings', {})
-                theme = settings.get('config_theme')
-                if compatibility and theme != 'unishop2' and settings.get('theme_default_directory') != 'unishop2':
-                    issues.append('Active UniShop2 theme was not confirmed.')
-                if compatibility and not db.get('unishop_settings_found'):
-                    issues.append('UniShop2 runtime settings source is unverified; review loader/schema diagnostics.')
-                    report['runtime_source_refs'] = runtime_source_refs(db)
-                elif compatibility and not db.get('liveprice_enabled'):
-                    issues.append('Native live-price calculation is disabled in the confirmed settings.')
+                    if compatibility and db.get('legacy_mobile_code'):
+                        issues.append('Legacy custom mobile code detected. Review/migrate it before installation.')
+                    theme = settings.get('config_theme')
+                    if compatibility and theme != 'unishop2' and settings.get('theme_default_directory') != 'unishop2':
+                        issues.append('Active UniShop2 theme was not confirmed.')
+                    if compatibility and not db.get('unishop_settings_found'):
+                        issues.append('UniShop2 runtime settings source is unverified; review loader/schema diagnostics.')
+                        report['runtime_source_refs'] = runtime_source_refs(db)
+                    elif compatibility and not db.get('liveprice_enabled'):
+                        issues.append('Native live-price calculation is disabled in the confirmed settings.')
+                    if db.get('relevant_template_overrides') is None or db.get('relevant_template_overrides',0) > 0:
+                        report['warnings'].append('Template editor overrides need inspection; do not reset them blindly.')
                 for key in ('config_url','config_ssl'):
                     if settings.get(key) and urlsplit(settings[key]).hostname != HOSTNAME:
                         issues.append('Non-test store URL in DB: ' + key)
                         report['isolation_ok'] = False
-                if db.get('relevant_template_overrides') is None or db.get('relevant_template_overrides',0) > 0:
-                    report['warnings'].append('Template editor overrides need inspection; do not reset them blindly.')
             except (ValueError, subprocess.TimeoutExpired):
                 issues.append('Database probe failed or timed out; no raw diagnostics displayed.')
     if configs:
