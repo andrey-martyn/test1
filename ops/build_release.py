@@ -19,7 +19,7 @@ before = {entry['path']: entry['sha256'] for entry in baseline['files']}
 manifest = {
     'target': 'test.lavka-speciy.com',
     'database': 'lavkasp_test',
-    'source_commit': subprocess.check_output(['git','rev-parse','883aa91^{commit}'],cwd=ROOT,text=True).strip(),
+    'source_commit': subprocess.check_output(['git','rev-parse','883aa91^{commit}'],cwd=ROOT,universal_newlines=True).strip(),
     'source_archive_sha256': baseline['archive_sha256'],
     'files': [{'path':name, 'before_sha256':before.get(name), 'after_sha256':hashlib.sha256((ROOT/'store'/name).read_bytes()).hexdigest()} for name in FILES],
     'deleted_files': [],

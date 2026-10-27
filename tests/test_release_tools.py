@@ -3,6 +3,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import sys
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -38,6 +39,7 @@ class ReleaseTools(unittest.TestCase):
         self.probe = {'ok':True,'database':'lavkasp_test','settings':{'config_theme':'unishop2'},'liveprice_enabled':True,'relevant_template_overrides':0}
         replacement = patch.object(ops.shutil,'which',return_value='/fake/php')
         replacement.start(); self.addCleanup(replacement.stop)
+        self.real_run = ops.subprocess.run
         replacement = patch.object(ops.subprocess,'run',return_value=SimpleNamespace(stdout=json.dumps(self.probe),returncode=0))
         self.run = replacement.start(); self.addCleanup(replacement.stop)
 
@@ -78,6 +80,21 @@ class ReleaseTools(unittest.TestCase):
         self.write_configs()
         self.assertFalse(ops.preflight()['ok'])
         self.run.assert_not_called()
+
+    def test_probe_uses_python36_subprocess_api_and_captures_stderr(self):
+        def python36_run(command, **options):
+            self.assertNotIn('text', options)
+            self.assertNotIn('capture_output', options)
+            self.assertTrue(options.get('universal_newlines'))
+            self.assertEqual(options.get('stdout'), ops.subprocess.PIPE)
+            self.assertEqual(options.get('stderr'), ops.subprocess.PIPE)
+            script = 'import sys,json; json.load(sys.stdin); print(' + repr(json.dumps(self.probe)) + '); sys.stderr.write("fixture-secret")'
+            return self.real_run([sys.executable, '-c', script], **options)
+        with patch.object(ops.subprocess, 'run', side_effect=python36_run):
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                report = ops.preflight()
+        self.assertTrue(report['ok'], report)
+        self.assertNotIn('fixture-secret', json.dumps(report) + output.getvalue())
 
     def test_shared_cache_is_rejected(self):
         elsewhere = Path(self.temp.name)/'shared_cache'; elsewhere.mkdir()

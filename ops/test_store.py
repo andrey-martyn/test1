@@ -181,7 +181,10 @@ def preflight(compatibility=True):
             issues.append('PHP CLI missing; database identity is unverified.')
         else:
             try:
-                result = subprocess.run(['php','-d','display_errors=0','-d','log_errors=0','-r',PHP_PROBE], input=json.dumps(config), text=True, capture_output=True, timeout=15)
+                result = subprocess.run(
+                    ['php','-d','display_errors=0','-d','log_errors=0','-r',PHP_PROBE],
+                    input=json.dumps(config), universal_newlines=True,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15)
                 db = json.loads(result.stdout)
                 report['db'] = db
                 if not db.get('ok') or db.get('database') != DATABASE:
@@ -305,7 +308,8 @@ def main():
     args = parser.parse_args()
     try:
         report = preflight(compatibility=not bool(args.rollback))
-        print(json.dumps(report, ensure_ascii=False, indent=2))
+        # Python 3.6 hosting accounts may use an ASCII terminal locale.
+        print(json.dumps(report, ensure_ascii=True, indent=2))
         if not report['ok']: return 2
         if args.audit: return 0
         if args.rollback:
@@ -313,7 +317,7 @@ def main():
         else:
             manifest = checked_manifest()
             result = install(manifest) if args.apply else {'check':'passed','files':[entry['path'] for entry in manifest['files']]}
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        print(json.dumps(result, ensure_ascii=True, indent=2))
         return 0
     except (OSError, ValueError, KeyError):
         # Config parsing, subprocess stderr or DB messages must never leak secrets.
