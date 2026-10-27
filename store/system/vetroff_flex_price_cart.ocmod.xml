@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<modification>
+    <name>Добавляем обвязку для блока цены-корзины в модулях и карточках</name>
+    <code>vetroff_flexbox</code>
+    <version>1.0</version>
+    <author>Vetroff</author>
+    <link>https://opencartforum.com/profile/3205-vetroff/</link>
+    <file path="catalog/view/theme/unishop2/template/{product,extension/module}/{category,product,search,special,manufacturer_info,all_products_categories,featured,featured_product,latest,uni_auto_related,uni_five_in_one,uni_viewed}.twig">
+        <operation>
+            <search>
+                <![CDATA[{% if product.price %}]]>
+            </search>
+            <add position="before">
+                <![CDATA[
+        <div class="product-thumb__row">
+        ]]>
+            </add>
+        </operation>
+        <operation>
+            <search>
+                <![CDATA[<button type="button" class="product-thumb__add-to-cart add_to_cart btn {{ product.cart_btn_class }}" title="{{ product.cart_btn_text }}" data-pid="{{ product.product_id }}" onclick="cart.add({{ product.product_id }}, this)"><i class="{{ product.cart_btn_icon }}"></i><span class="hidden-sm hidden-md">{{ product.cart_btn_text }}</span></button>]]>
+            </search>
+            <add position="replace">
+                <![CDATA[
+        <button type="button" class="product-thumb__add-to-cart add_to_cart btn {{ product.cart_btn_class }}" title="{{ product.cart_btn_text }}" data-pid="{{ product.product_id }}" onclick="cart.add({{ product.product_id }}, this)"><span>{{ product.cart_btn_text }}</span><div class="if_compact"><i class="fa fa-shopping-cart"></i></div></button>
+        ]]>
+            </add>
+        </operation>
+        <operation>
+            <search>
+                <![CDATA[<button type="button" class="product-thumb__compare compare {{ compare_btn_disabled ? 'hidden' }}" title="{{ button_compare }}" onclick="compare.add('{{ product.product_id }}');"><i class="fas fa-align-right"></i></button>]]>
+            </search>
+            <add position="after">
+                <![CDATA[
+        </div>
+        ]]>
+            </add>
+        </operation>
+    </file>
+</modification>

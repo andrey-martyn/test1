@@ -1,0 +1,67 @@
+{
+  "source_archive": "111.zip",
+  "archive_sha256": "03bba828cd763c8a9970ae3eb6f142a8abe99be602a4ae8a439ad5ff9ba6aa25",
+  "theme_folder_mapping": "111/unishop2 -> catalog/view/theme/unishop2",
+  "files": [
+    {
+      "path": "index.php",
+      "sha256": "b41a098ed7bc338c75b46ea23967786470c926c528d68c75a6e871e4dd896a1d"
+    },
+    {
+      "path": "system/startup.php",
+      "sha256": "bd793133cfbd96621d3f92207d43edde3a7968fc0cdf6c6bdcd0c288a1c795f5"
+    },
+    {
+      "path": "catalog/controller/extension/module/uni_new_data.php",
+      "sha256": "720a8eb15013dd8fe5c00e9da43277803383cfd643eb416bbc855586131c8d99"
+    },
+    {
+      "path": "catalog/controller/extension/module/uni_tool.php",
+      "sha256": "ece1982e2142b1a74e6453bd78fcba40e18a5262e3fb12dcbc64e855c0573d9c"
+    },
+    {
+      "path": "catalog/view/theme/unishop2/js/common.js",
+      "sha256": "dc46fd186862488dd7f9e79d36f43594a22b5344c7c3cec934e3f76cba21679b"
+    },
+    {
+      "path": "catalog/view/theme/unishop2/js/live-price.js",
+      "sha256": "c2c7817c6c71d3c38a342ca4087c059f872178dc5c392e65f388916a65db5f4d"
+    },
+    {
+      "path": "catalog/view/theme/unishop2/js/showmore-ajaxpagination.js",
+      "sha256": "fa02611f4a42675dbd5a6040fc2669b2e8475bc767ab11d22d91a5ceef4ef3a4"
+    },
+    {
+      "path": "catalog/view/theme/unishop2/js/jquery-2.2.4.min.js",
+      "sha256": "b409c14a10b4caad6b54844aa63a5faf748b83eecc2dd0d4fb1d913f8de55365"
+    },
+    {
+      "path": "catalog/view/theme/unishop2/js/owl.carousel.min.js",
+      "sha256": "2d5ffb9db8d4b42f606998c5511779a8d9b47053a77bdd5a35633c37a89a2f4d"
+    },
+    {
+      "path": "catalog/view/theme/unishop2/template/product/category.twig",
+      "sha256": "624aa0b4cb80a78d9da9936058f036036f6b9cd4cf2e085b15c3427be4b52236"
+    },
+    {
+      "path": "catalog/view/theme/unishop2/template/extension/module/uni_options.twig",
+      "sha256": "c131b0eda72acc79a8127b1d89e557b910dda9cb680aadb4ad15c8023cc6d62d"
+    },
+    {
+      "path": "catalog/view/theme/unishop2/template/extension/module/uni_five_in_one.twig",
+      "sha256": "7c3e2fb13058416b8c09eaf6c25bc2184e2c92d6aa79b0f70ec368fac8ef5f33"
+    },
+    {
+      "path": "catalog/view/theme/unishop2/stylesheet/stylesheet.css",
+      "sha256": "ae86d7526d7b13a4987e79bfe96594603bdabe632a03b00d6fd1eceb098f1873"
+    },
+    {
+      "path": "catalog/view/theme/unishop2/stylesheet/bootstrap.min.css",
+      "sha256": "0e245022be27a8f353f6bca717f6872b680b6b7554354554722482d3a9a64a7a"
+    },
+    {
+      "path": "system/vetroff_flex_price_cart.ocmod.xml",
+      "sha256": "6953b45996a0904feee73ea1b7715aa7c4ef2f3a6a0528e2a88f7d494005d280"
+    }
+  ]
+}

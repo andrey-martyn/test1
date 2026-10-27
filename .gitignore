@@ -1,0 +1,23 @@
+# Credentials and application data never belong in this repository.
+.env
+.env.*
+**/config.php
+!store/system/library/config.php
+**/storage/
+**/test_storage/
+**/cache/
+**/logs/
+**/session/
+**/upload/
+**/download/
+**/image/cache/
+*.sql
+*.sql.gz
+*.log
+*.pem
+*.key
+*.zip
+*.tar.gz
+__pycache__/
+artifacts/
+reports/
