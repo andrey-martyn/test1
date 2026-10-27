@@ -18,6 +18,7 @@ class FixtureResult {
 }
 
 class FixtureDatabase {
+    public static $queries = array();
     public $errno = 0;
     private $config;
     private $columns;
@@ -31,6 +32,7 @@ class FixtureDatabase {
     public function close() {}
     private function error($number) { $this->errno = $number; return false; }
     public function query($sql) {
+        self::$queries[] = $sql;
         $this->errno = 0;
         if (stripos(ltrim($sql), 'SELECT ') !== 0) return $this->error(9002);
         if (strpos($sql, 'SELECT DATABASE()') === 0) {
@@ -42,7 +44,7 @@ class FixtureDatabase {
             foreach ($this->columns as $name) $rows[] = array('column_name'=>$name);
             return new FixtureResult($rows);
         }
-        if (strpos($sql, 'SELECT store_id FROM `oc_store`') === 0) {
+        if (strpos($sql, 'FROM `oc_store`') !== false) {
             if (preg_match('/\bssl\b/i', $sql) && !in_array('ssl', $this->columns, true)) return $this->error(1054);
             if (!empty($this->config['fixture_mapping_error'])) return $this->error(2013);
             $rows = array();

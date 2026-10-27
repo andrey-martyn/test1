@@ -148,9 +148,9 @@ try {
     $escaped_urls = array();
     foreach ($urls as $url) $escaped_urls[] = $db->real_escape_string($url);
     $url_list = "'".implode("','", $escaped_urls)."'";
-    $where = 'url IN ('.$url_list.')';
-    if (in_array('ssl', $store_columns, true)) $where .= ' OR ssl IN ('.$url_list.')';
-    $r = $db->query("SELECT store_id FROM `".$p."store` WHERE ".$where." LIMIT 2");
+    $where = '`url` IN ('.$url_list.')';
+    if (in_array('ssl', $store_columns, true)) $where .= ' OR `ssl` IN ('.$url_list.')';
+    $r = $db->query("SELECT `store_id` FROM `".$p."store` WHERE ".$where." LIMIT 2");
     if (!$r) fail_probe('STORE_MAPPING_QUERY_FAILED', 'store_mapping', array('sql_errno'=>(int)$db->errno));
     $matched_stores = array();
     while ($row = $r->fetch_assoc()) $matched_stores[] = (int)$row['store_id'];
