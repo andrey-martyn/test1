@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<modification>
+  <name>Лавочка — отдельный рейтинг покупателей</name>
+  <code>lavka_review_factory_customer_rating</code>
+  <version>1.0.0</version>
+  <author>Лавка Специй</author>
+  <link>https://lavka-speciy.com/</link>
+  <file path="catalog/model/catalog/product.php">
+    <operation error="abort">
+      <search><![CDATA[r1.product_id = p.product_id AND r1.status = '1']]></search>
+      <add position="replace"><![CDATA[r1.product_id = p.product_id AND r1.status = '1' AND NOT EXISTS (SELECT 1 FROM " . DB_PREFIX . "review_factory_meta rf WHERE rf.review_id = r1.review_id AND rf.origin = 'staff')]]></add>
+    </operation>
+    <operation error="abort">
+      <search><![CDATA[r2.product_id = p.product_id AND r2.status = '1']]></search>
+      <add position="replace"><![CDATA[r2.product_id = p.product_id AND r2.status = '1' AND NOT EXISTS (SELECT 1 FROM " . DB_PREFIX . "review_factory_meta rf WHERE rf.review_id = r2.review_id AND rf.origin = 'staff')]]></add>
+    </operation>
+  </file>
+</modification>

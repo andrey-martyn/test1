@@ -1,0 +1,4 @@
+php/data/
+*.sqlite3*
+instance.json
+*.log

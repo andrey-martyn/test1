@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Лавочка · Комбайн отзывов</title>
+    <link rel="stylesheet" href="?route=assets/style.css&amp;v=__ASSET_VERSION__" />
+    <script src="?route=assets/app.js&amp;v=__ASSET_VERSION__" defer></script>
+  </head>
+  <body>
+    <noscript
+      >Для работы мастерской включите JavaScript. Данные формы не отправляются через адресную
+      строку.</noscript
+    >
+    <header>
+      <a class="brand" href="?"
+        >Л<span class="leaf">✳</span><span>Лавочка<small>КОМБАЙН ОТЗЫВОВ</small></span></a
+      >
+      <div id="account"></div>
+    </header>
+    <main id="main">
+      <section class="login-card">
+        <div class="eyebrow">РАБОЧАЯ МАСТЕРСКАЯ</div>
+        <h1>Полезный опыт<br />для каждого товара.</h1>
+        <p>Авторские заметки команды «Лавки Специй». Личный вход, черновики и отправка на модерацию.</p>
+        <form id="login-form" method="post" action="?route=login">
+          <label>Логин<input name="login" autocomplete="username" required maxlength="64" /></label
+          ><label
+            >Пароль<input
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              required
+              maxlength="512" /></label
+          ><button class="primary" type="submit">Войти в мастерскую <span>→</span></button>
+        </form>
+      </section>
+    </main>
+    <div id="notice" role="status" aria-live="polite"></div>
+    <dialog id="preview">
+      <div id="preview-content"></div>
+      <form method="dialog"><button>Вернуться к тексту</button></form>
+    </dialog>
+  </body>
+</html>
