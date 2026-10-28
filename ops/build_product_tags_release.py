@@ -7,7 +7,8 @@ import subprocess
 
 ROOT=Path(__file__).resolve().parents[1]
 BASE='647cb88'
-PREVIOUS='38e56b3'
+PREVIOUS='acbb270'
+COMPATIBLE=['38e56b3',PREVIOUS]
 FILES=[
     'system/library/lavka_product_tags.php',
     'catalog/model/extension/module/lavka_product_tags.php',
@@ -37,10 +38,11 @@ for path in FILES:
     found=subprocess.run(['git','show',BASE+':store/'+path],cwd=ROOT,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     b=found.stdout if found.returncode==0 else None
     variants=[] if b is None else sorted({sha(b),sha(b.replace(b'\r\n',b'\n')),sha(b.replace(b'\r\n',b'\n').replace(b'\n',b'\r\n'))})
-    installed=subprocess.run(['git','show',PREVIOUS+':store/'+path],cwd=ROOT,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-    if installed.returncode==0:
-        old=installed.stdout
-        variants=sorted(set(variants+[sha(old),sha(old.replace(b'\r\n',b'\n')),sha(old.replace(b'\r\n',b'\n').replace(b'\n',b'\r\n'))]))
+    for source in COMPATIBLE:
+        installed=subprocess.run(['git','show',source+':store/'+path],cwd=ROOT,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        if installed.returncode==0:
+            old=installed.stdout
+            variants=sorted(set(variants+[sha(old),sha(old.replace(b'\r\n',b'\n')),sha(old.replace(b'\r\n',b'\n').replace(b'\n',b'\r\n'))]))
     if path in ('catalog/controller/extension/module/uni_new_data.php','catalog/view/theme/unishop2/stylesheet/lavka-mobile-cards.css'):
         previous=subprocess.check_output(['git','show','f006edb:store/'+path],cwd=ROOT)
         variants=sorted(set(variants+[sha(previous),sha(previous.replace(b'\r\n',b'\n'))]))

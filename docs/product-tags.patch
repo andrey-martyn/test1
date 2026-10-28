@@ -468,14 +468,14 @@ index 0000000..ae6454b
 +    }
 +}
 diff --git a/catalog/controller/extension/module/uni_new_data.php b/catalog/controller/extension/module/uni_new_data.php
-index c3761ce..1236571 100644
+index c3761ce..974863a 100644
 --- a/catalog/controller/extension/module/uni_new_data.php
 +++ b/catalog/controller/extension/module/uni_new_data.php
 @@ -215,6 +215,8 @@ class ControllerExtensionModuleUniNewData extends Controller {
  		// Source assets for mobile product lists; included in UniShop's normal merge.
  		$this->document->addStyle('catalog/view/theme/unishop2/stylesheet/lavka-mobile-cards.css?v=2');
  		$this->document->addScript('catalog/view/theme/unishop2/js/lavka-mobile-cards.js?v=1');
-+		$this->document->addStyle('catalog/view/theme/unishop2/stylesheet/lavka-product-tags.css?v=2');
++		$this->document->addStyle('catalog/view/theme/unishop2/stylesheet/lavka-product-tags.css?v=3');
 +		$this->document->addScript('catalog/view/theme/unishop2/js/lavka-product-tags.js?v=1');
  
  		if(isset($uniset['liveprice'])) {
@@ -660,16 +660,17 @@ index 0000000..d2168e1
 +})(jQuery);
 diff --git a/catalog/view/theme/unishop2/stylesheet/lavka-product-tags.css b/catalog/view/theme/unishop2/stylesheet/lavka-product-tags.css
 new file mode 100644
-index 0000000..b48ca0f
+index 0000000..b42f362
 --- /dev/null
 +++ b/catalog/view/theme/unishop2/stylesheet/lavka-product-tags.css
-@@ -0,0 +1,7 @@
+@@ -0,0 +1,8 @@
 +.sticker__item{opacity:1!important;background-color:var(--lavka-sticker-bg,initial)}
 +.sticker__item::before{border-top-color:var(--lavka-sticker-bg);border-right-color:var(--lavka-sticker-bg)}
-+.product-thumb__image>.sticker,.product-page__image-main>.sticker{display:flex;flex-direction:column;align-items:flex-start;gap:3px;max-width:calc(100% - 44px);pointer-events:none}
++.product-thumb__image,.product-page__image-main{position:relative}
++.product-thumb__image>.sticker,.product-page__image-main>.sticker{left:-6px!important;top:6px;display:flex;flex-direction:column;align-items:flex-start;gap:3px;max-width:calc(100% - 44px);pointer-events:none}
 +.product-thumb__image>.sticker[hidden],.product-page__image-main>.sticker[hidden]{display:none}
 +.product-thumb__image>.sticker>.sticker__item,.product-page__image-main>.sticker>.sticker__item{float:none;clear:none;max-width:100%;margin:0;overflow-wrap:anywhere}
-+@media(max-width:519px){.lavka-mobile-card .sticker{left:6px!important;top:6px;gap:2px}.lavka-mobile-card .sticker__item{font-size:9px;line-height:12px;padding:2px 12px 2px 5px;border-radius:0;clip-path:polygon(0 0,100% 0,calc(100% - 7px) 100%,0 100%)}.lavka-mobile-card .sticker__item::before,.lavka-mobile-card .sticker__item::after{display:none}}
++@media(max-width:519px){.lavka-mobile-card .product-thumb__image{overflow:visible}.lavka-mobile-card .product-thumb__image>a{overflow:hidden;border-radius:inherit}.lavka-mobile-card .sticker{top:6px;gap:2px}.lavka-mobile-card .sticker__item{font-size:9px;line-height:12px;padding:2px 12px 2px 5px;border-radius:0;clip-path:polygon(0 0,100% 0,calc(100% - 7px) 100%,0 100%)}.lavka-mobile-card .sticker__item::before,.lavka-mobile-card .sticker__item::after{display:none}}
 +@media(max-width:519px){.lavka-mobile-card .lavka-tags-expanded img{object-fit:cover}}
 diff --git a/catalog/view/theme/unishop2/template/extension/module/uni_stickers.twig b/catalog/view/theme/unishop2/template/extension/module/uni_stickers.twig
 index 9b20170..b5a51f3 100644

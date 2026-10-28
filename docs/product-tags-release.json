@@ -3,14 +3,16 @@
   "database": "lavkasp_test",
   "store_id": 0,
   "source_commit": "647cb88a41cd5a66e3524f576b28c8c897f7f2d1",
-  "upgrade_from_commit": "38e56b3db7ae49aff3741fdee71abfde71c56502",
+  "upgrade_from_commit": "acbb27095d687ae94d01ad584024959e07540a73",
   "files": [
     {
       "path": "system/library/lavka_product_tags.php",
       "before_sha256": null,
       "allowed_before_sha256": [
+        "1d37fd91995b229fbb53478f3e9795322fddca524d7720f564e957aeb161f88d",
         "5e7aca98b7c8ff955f3a4a37c9a7fa59826474e9fce209dbbfc465a7c0f80665",
-        "939e57bc26693bed893b50a0c429ae68bbb8c2fb4914ed5f7960186e1928d6c7"
+        "939e57bc26693bed893b50a0c429ae68bbb8c2fb4914ed5f7960186e1928d6c7",
+        "dc9d06586a7396793b3f6e997c76c5ffd158d360d40f82bdeffe61bac885e0a8"
       ],
       "after_sha256": "1d37fd91995b229fbb53478f3e9795322fddca524d7720f564e957aeb161f88d"
     },
@@ -45,8 +47,10 @@
       "path": "admin/view/template/extension/module/lavka_tag_controls.twig",
       "before_sha256": null,
       "allowed_before_sha256": [
+        "2a598cca563564dc01ec0621e5553167f8e74eafb65108ba82e0f0e02468f699",
         "73745fdefdf44bf48fcfcab66c5bb3d27432e46b273559a7c2c85995e33402ac",
-        "da52b69340115a126321085bb37750584c7b6266f1c030d42c3579dfa386c6b7"
+        "da52b69340115a126321085bb37750584c7b6266f1c030d42c3579dfa386c6b7",
+        "e5592e7fcdb022ed09537b198caaeca3c780e62966241f8a1830c9c990c11efb"
       ],
       "after_sha256": "e5592e7fcdb022ed09537b198caaeca3c780e62966241f8a1830c9c990c11efb"
     },
@@ -55,7 +59,9 @@
       "before_sha256": null,
       "allowed_before_sha256": [
         "8374aa3296c803e9d962424bef5a8e047a74838f6261c36da8121f9dbcd7181e",
-        "a5015edae41dc83a6b108584e1f8bf4d0188707b98bead9e9c94259e7d930f3c"
+        "a5015edae41dc83a6b108584e1f8bf4d0188707b98bead9e9c94259e7d930f3c",
+        "a5ccc1e266189de7e7dd5a22fbfb3dfe4896dbee2722c6a8a54a70df923ca5df",
+        "da0c4be2dfcd4acdfa0916b43b19add4b790c9ece1527830ed432b622e04b650"
       ],
       "after_sha256": "a5ccc1e266189de7e7dd5a22fbfb3dfe4896dbee2722c6a8a54a70df923ca5df"
     },
@@ -81,6 +87,8 @@
       "path": "admin/language/ru-ru/extension/module/lavka_product_tags.php",
       "before_sha256": null,
       "allowed_before_sha256": [
+        "0c7fa19fd66f0f2fbd33fb2653ef18903975c406040abd8d879ad7eea317082c",
+        "2780a391ac0864600e064e7fab3af5c245b12ce85a592719f56f09bbb33216f7",
         "2ef06030ee1419dadf7d87d27fa5580178830bf73c40a2c5c3cd7f34f52bc872",
         "e67b4df8489c33fbe02b64c8ad5c8c2cd4e6b0de2e2f01c3e1fc29cee4747618"
       ],
@@ -90,8 +98,10 @@
       "path": "admin/language/uk-ua/extension/module/lavka_product_tags.php",
       "before_sha256": null,
       "allowed_before_sha256": [
+        "4d4aee1fa1d7ce0054e37420c0894b7e66e5d9cbb21daf3e691618d481afd5f6",
         "c213b59f2f49f37d57614531f62e6291aaf4701c1d6a86b742a41d14a92b84f5",
-        "c705794036ff8e119b707343e789232c8079669853ff0b10ee1311edc1a2008f"
+        "c705794036ff8e119b707343e789232c8079669853ff0b10ee1311edc1a2008f",
+        "f2d8c34dd20e21b57affc311dd6d2cc3ec39b237447e3ba976fcbbc6879b7738"
       ],
       "after_sha256": "f2d8c34dd20e21b57affc311dd6d2cc3ec39b237447e3ba976fcbbc6879b7738"
     },
@@ -99,6 +109,8 @@
       "path": "admin/language/en-gb/extension/module/lavka_product_tags.php",
       "before_sha256": null,
       "allowed_before_sha256": [
+        "4afa594c685e35d276fb095e3ee41c6043f48516b7a8b27184d00e99320b9e90",
+        "51634f99dbabad33011aab85a109a4d6ee851f2aee8606c41291be4cb71ed837",
         "9bc748d8b1d24fdee8135caac092725fbc7afcc850e583680407b907f773ed8b",
         "a9c9c6adf334dfe66e6ed1a6126f08117ec5ef90a370ba395575d135ccdbf456"
       ],
@@ -118,9 +130,11 @@
       "before_sha256": null,
       "allowed_before_sha256": [
         "1db59b197ce8e1fb1654b67d8486badf2f6621a677d0a3da5796c20d54347eee",
-        "1ff0fd9e3eee93ae32e2f1e18151e9915a86e6c8c361ce3f324098a5f6cc9c5d"
+        "1ff0fd9e3eee93ae32e2f1e18151e9915a86e6c8c361ce3f324098a5f6cc9c5d",
+        "7d1d67fb8f784dcf57746da24f6673e1d9eeb3a64fab8d7160a40d8bd3f00785",
+        "f287c33a935d34410ff012dab252dbd80b1fc97b6f591453d0558678f68651fd"
       ],
-      "after_sha256": "f287c33a935d34410ff012dab252dbd80b1fc97b6f591453d0558678f68651fd"
+      "after_sha256": "4dddcf09ded820e3ccc6dfc4e743073c83fbf6ef7d3d941bd1c50098215dc4f3"
     },
     {
       "path": "catalog/view/theme/unishop2/stylesheet/lavka-mobile-cards.css",
@@ -149,8 +163,10 @@
       "allowed_before_sha256": [
         "150578a0ff789fd6d58e3f69b287c5a576e8bcd10878e521c2697803ba0f7daa",
         "175e8a0199ecf606cd60377bc6b6c776339bcf244a81bc10d2c7c2b8dd03feeb",
+        "204ccac05783be897e9e9edad52ba5c8a6ba14b5789a129b685944ad3df11b07",
         "4ac6476e359c5840d276084f0244c66f6be626ffa99c4d5bc31c6c63faa51e1c",
-        "4ee2fc596246aa48bce865f44d3d77d7502c88ffd3e8ae61850b0751e852756b"
+        "4ee2fc596246aa48bce865f44d3d77d7502c88ffd3e8ae61850b0751e852756b",
+        "e09a803d534c9ad9bb2dcae27357b49f0cda3d5c833a0947c2c9df14e5aa9d91"
       ],
       "after_sha256": "e09a803d534c9ad9bb2dcae27357b49f0cda3d5c833a0947c2c9df14e5aa9d91"
     },
@@ -169,7 +185,9 @@
       "path": "admin/view/template/catalog/product_list.twig",
       "before_sha256": "af91ecdb0f686c6cb9b9a9f7c9202db0c5ed853872bdc8c856081140e971bd05",
       "allowed_before_sha256": [
+        "0e0a1261134b8b094d5a8f64cf149e82d3fa032d4d56895c1451e25f0cb56227",
         "51cae3517da95f61d5b6e7e59fd83bf1bae61005785f3d6d83f4d32cbdbb7e13",
+        "83630ee7403feb6533d4f4afee642aaf507df1c7360e0377ee0b0002a19feca3",
         "af91ecdb0f686c6cb9b9a9f7c9202db0c5ed853872bdc8c856081140e971bd05",
         "c35b22a8a79d1e13aea851b4c7638ce2bc623e07f5ab774350c3487218331a71",
         "c42ab577f54d515871d76e16c36d32c84e1f808dd35a5c9b656079c2ebaa6dc5"
@@ -192,8 +210,10 @@
       "before_sha256": "5437d0d4e3e64537733c5b1a68648f3f82ff2d8f71b877ebcaa09c8dd40bab7d",
       "allowed_before_sha256": [
         "14b74c04a7a019105c62ed393767a376fb1fb1ed254054d2a8f0934a22dcc105",
+        "258b65761553c5bbbfb1de0114a6ed738abdfb276fcbe220019ebabb388f757b",
         "42125ba92a5140506219e6cd97ffc2cc59cfea436886c3c6700ae52604920c8e",
         "5437d0d4e3e64537733c5b1a68648f3f82ff2d8f71b877ebcaa09c8dd40bab7d",
+        "59ed8ff7dca218bd8b110d826c6e918da4696bb3c70711786832ce8b9517391f",
         "a9172f4275e439c006f9d1fddd685bc5f936d916fac96b4449b7c26c077ffd37"
       ],
       "after_sha256": "59ed8ff7dca218bd8b110d826c6e918da4696bb3c70711786832ce8b9517391f"
@@ -202,14 +222,16 @@
       "path": "catalog/controller/extension/module/uni_new_data.php",
       "before_sha256": "1eee34b7e2069869419e63af017d090a6b755002e6ef308779b077ebc16cff74",
       "allowed_before_sha256": [
+        "0d6df32e5949cc98cb8cbfa54fffaa2c255d32d624300a8b6edf1e84614004e0",
         "1eee34b7e2069869419e63af017d090a6b755002e6ef308779b077ebc16cff74",
         "2537633f60b45d1c6b49b01d5341836e1a4d49d32ff2f89d903c0c0ba0b2331c",
+        "550a8de443d88b3cea8d9f0ddbc83b22044456f7d1e2aec07cc0ba024f152cf7",
         "8e40d1c962981c81f9b0a111bf4795e7b5f02daf26ddac7e149eb116b224f3c8",
         "ab0fee0eeeae14f0589d6a19720fe9f2830318883257e5502d9a3c99f7bf0d66",
         "b7c4eb55c8142e6f4c9c78eb5d7dfb9ab21db3a72f275dccc47de56911249a78",
         "d1ef60fd57dc268b0b2ec22687694eefbe4ccfc3b89c5ac9a40e7b653aaa754e"
       ],
-      "after_sha256": "550a8de443d88b3cea8d9f0ddbc83b22044456f7d1e2aec07cc0ba024f152cf7"
+      "after_sha256": "18357a092fdef766f83903a78edfcf477a3c44d50110c8f13e5e79edd231a7eb"
     }
   ],
   "deleted_files": [],
