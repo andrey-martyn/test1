@@ -315,7 +315,11 @@ function run_app(string $directory, string $publicUrl, string $assets, string $l
                     respond(competitors_replace_target($competitors, (int)$m[1], request_json()), 201);
                 }
                 if (preg_match('~^/api/competitors/targets/([1-9][0-9]{0,9})$~D', $path, $m)) {
-                    if ($method === 'GET') respond(competitors_history($competitors, (int) $m[1]));
+                    if ($method === 'GET') {
+                        $changeId = $_GET['change_id'] ?? null;
+                        if ($changeId !== null && (!is_string($changeId) || !preg_match('/^[1-9][0-9]{0,9}$/D', $changeId))) fail(422, 'Неверный номер изменения');
+                        respond(competitors_history($competitors, (int) $m[1], $changeId === null ? null : (int)$changeId));
+                    }
                     if ($method === 'PUT') respond(competitors_save_target($competitors, request_json(), (int) $m[1], analytics_environment_summary($directory)['mode'] === 'sandbox'));
                     fail(405, 'Метод не поддерживается');
                 }

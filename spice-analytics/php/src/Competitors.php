@@ -319,9 +319,17 @@ function competitors_overview(\PDO $db, ?string $directory = null): array
     return $result;
 }
 
-function competitors_history(\PDO $db, int $id): array
+function competitors_history(\PDO $db, int $id, ?int $changeId = null): array
 {
     $target = competitors_target($db, $id);
+    $selected = null;
+    if ($changeId !== null) {
+        $stmt = $db->prepare('SELECT id,kind,message,occurred_at,before_payload,after_payload FROM competitor_changes WHERE id=? AND target_id=?');
+        $stmt->execute([$changeId, $id]); $row = $stmt->fetch();
+        if (!$row) throw new CompetitorNotFound('Изменение этой страницы не найдено');
+        $selected = ['id'=>(int)$row['id'], 'kind'=>$row['kind'], 'message'=>$row['message'], 'occurred_at'=>$row['occurred_at'],
+            'before'=>$row['before_payload']===null?null:decode($row['before_payload']), 'after'=>$row['after_payload']===null?null:decode($row['after_payload'])];
+    }
     $stmt = $db->prepare('SELECT checked_at,payload FROM competitor_observations WHERE target_id=? ORDER BY id DESC LIMIT 180'); $stmt->execute([$id]);
     $observations = []; foreach ($stmt as $r) $observations[] = ['checked_at' => $r['checked_at'], 'observation' => decode($r['payload'])];
     $stmt = $db->prepare('SELECT checked_at,state,error_code,http_status FROM competitor_attempts WHERE target_id=? ORDER BY id DESC LIMIT 100'); $stmt->execute([$id]);
@@ -334,7 +342,9 @@ function competitors_history(\PDO $db, int $id): array
         $other = competitors_target($db, (int)$row[$forward ? 'new_target_id' : 'old_target_id']);
         $relations[] = ['direction'=>$forward ? 'replacement' : 'replaces', 'target_id'=>$other['id'], 'label'=>$other['label'], 'url'=>$other['url'], 'replaced_at'=>$row['replaced_at']];
     }
-    return ['target' => $target, 'observations' => $observations, 'attempts' => $attempts, 'replacements'=>$relations];
+    $result = ['target' => $target, 'observations' => $observations, 'attempts' => $attempts, 'replacements'=>$relations];
+    if ($selected !== null) $result['selected_change'] = $selected;
+    return $result;
 }
 
 function competitors_catalog_target_ids(array $catalog): array

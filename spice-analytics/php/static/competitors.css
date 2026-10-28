@@ -114,3 +114,17 @@
 @media(max-width:720px){.competitor-readiness.competitor-next-actions{padding:15px 12px}.competitor-action-buttons{flex-direction:column}.competitor-action-buttons>.button{width:100%}.competitor-action-reasons>.competitor-task-shortcut{width:100%;justify-content:space-between}.competitor-task-shortcut{font-size:14px}.competitor-task-card-actions{flex-direction:column}.competitor-task-card-actions>.button{width:100%}.competitor-action-heading h3{font-size:18px}}
 
 .competitor-quality-note{display:block;margin-top:6px;color:#43564d;line-height:1.5}
+
+/* Saved-page differences: additions and removals remain readable without colour. */
+.competitor-selected-change{border:1px solid #abc5b4;border-radius:10px;background:#f8fbf9;padding:18px;margin:22px 0;min-width:0}
+.competitor-selected-change h3{margin:0 0 12px;font-size:18px;line-height:1.5}
+.competitor-diff-legend{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin:10px 0;color:#46554d;font-size:14px}
+.competitor-text-diff{font:15px/1.9 system-ui,sans-serif;white-space:pre-wrap;overflow-wrap:anywhere;color:#172d25;background:#fff;border:1px solid #d9e2dd;border-radius:7px;padding:14px}
+.competitor-text-diff ins,.competitor-diff-legend ins{background:#d9f0df;color:#12452a;text-decoration:none;border-bottom:2px solid #3e8b57;border-radius:3px;padding:1px 3px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.competitor-text-diff del,.competitor-diff-legend del{background:#fce0dd;color:#782d25;text-decoration:line-through;border-radius:3px;padding:1px 3px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.competitor-text-diff del+ins{margin-left:4px}.competitor-diff-gap{color:#607369;font-style:italic}
+.competitor-diff-note,.competitor-diff-unchanged{color:#46554d;font-size:14px;line-height:1.65;margin:10px 0}
+.competitor-snapshot-diff{margin:10px 0}.competitor-snapshot-diff>summary,.competitor-snapshot-original>summary{cursor:pointer;min-height:44px;display:list-item;padding:10px 0;box-sizing:border-box;line-height:1.6}
+.competitor-snapshot-diff>summary{font-weight:650;color:#205b46}.competitor-snapshot-original{margin-top:10px}
+.competitor-snapshot-original pre{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.8 system-ui,sans-serif;max-width:100%}
+@media(max-width:600px){.competitor-selected-change{padding:13px;margin:16px 0}.competitor-text-diff{padding:10px;font-size:15px}.competitor-diff-legend{gap:8px 10px}}
