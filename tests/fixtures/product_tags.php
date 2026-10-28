@@ -9,7 +9,7 @@ class TagFixtureRegistry {
     public function set($key,$value) { $this->data[$key]=$value; }
 }
 class TagFixtureConfig {
-    public $values=['config_store_id'=>0,'config_language'=>'ru-ru','config_complete_status'=>[5]];
+    public $values=['config_store_id'=>0,'config_language'=>'ru-ru','config_complete_status'=>[5],'config_review_status'=>1];
     public function get($key) { return isset($this->values[$key])?$this->values[$key]:null; }
 }
 class TagFixtureCache {
@@ -26,6 +26,7 @@ class TagFixtureDb {
         'sticker_isbn_background_color'=>'fff100','sticker_isbn_text_color'=>'000000',
         'sticker_mpn_background_color'=>'fff100','sticker_mpn_text_color'=>'000000'];
     public $definitions=[]; public $flags=[]; public $queries=[]; public $products=[]; public $salesRows=[['product_id'=>816,'total'=>11]]; public $affected=0; private $snapshot;
+    public $reviewRows=[['product_id'=>816,'total'=>12,'rating'=>4.8],['product_id'=>999,'total'=>7,'rating'=>5]];
     public function __construct() {
         $this->products[816]=['product_id'=>816,'date_available'=>date('Y-m-d',time()-86400),'date_modified'=>'2001-01-01','mpn'=>'Популярно','upc'=>'1111','ean'=>'2222','jan'=>'3333','isbn'=>'4444','price'=>'45.0000','quantity'=>767];
     }
@@ -47,6 +48,7 @@ class TagFixtureDb {
         elseif (strpos($sql,'SELECT * FROM `oc_lavka_tag_definition`')===0) $rows=array_values($this->definitions);
         elseif (strpos($sql,'SELECT `product_id`,`code`')===0) $rows=array_values($this->flags);
         elseif (strpos($sql,'SELECT op.product_id')===0) $rows=$this->salesRows;
+        elseif (strpos($sql,'SELECT r.product_id')===0) $rows=$this->reviewRows;
         elseif (strpos($sql,'SELECT p.*')===0) $rows=[$this->products[816]];
         elseif (strpos($sql,'SELECT * FROM `oc_product`')===0) {
             preg_match('/product_id=(\d+)/',$sql,$m); if (isset($this->products[(int)$m[1]])) $rows=[$this->products[(int)$m[1]]];

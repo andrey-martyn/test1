@@ -90,7 +90,7 @@ class TagRelease(unittest.TestCase):
 class RealTagPayload(unittest.TestCase):
     def test_manifest_and_patch_recreate_every_final_file(self):
         manifest=json.loads((ROOT/'docs/product-tags-release.json').read_text())
-        self.assertEqual(len(manifest['files']),21)
+        self.assertEqual(len(manifest['files']),23)
         with tempfile.TemporaryDirectory(prefix='lavka-tags-patch-') as directory:
             target=Path(directory)
             for entry in manifest['files']:

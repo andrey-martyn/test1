@@ -7,8 +7,8 @@ import subprocess
 
 ROOT=Path(__file__).resolve().parents[1]
 BASE='647cb88'
-PREVIOUS='acbb270'
-COMPATIBLE=['38e56b3',PREVIOUS]
+PREVIOUS='b2be391'
+COMPATIBLE=['38e56b3','acbb270',PREVIOUS]
 FILES=[
     'system/library/lavka_product_tags.php',
     'catalog/model/extension/module/lavka_product_tags.php',
@@ -23,6 +23,8 @@ FILES=[
     'admin/language/en-gb/extension/module/lavka_product_tags.php',
     'catalog/view/theme/unishop2/js/lavka-product-tags.js',
     'catalog/view/theme/unishop2/stylesheet/lavka-product-tags.css',
+    'catalog/view/theme/unishop2/js/lavka-card-reviews.js',
+    'catalog/view/theme/unishop2/stylesheet/lavka-card-reviews.css',
     'catalog/view/theme/unishop2/stylesheet/lavka-mobile-cards.css',
     'catalog/view/theme/unishop2/template/extension/module/uni_stickers.twig',
     'admin/controller/catalog/product.php',

@@ -22,12 +22,12 @@ cart_code = 'var cart = {' + common.split('var cart = {',1)[1].split('var vouche
 # The actual uniSelectView and module plugin are tested separately from menu initialization.
 view_code = 'var uniSelectView = {' + common.split('var uniSelectView = {',1)[1].split('function uniMenuBlur',1)[0]
 module_code = common[common.index('(function($){\n\tvar Modules = {'):common.index('function uniTimer') if 'function uniTimer' in common else common.index('var cart = {')]
-html = '<html lang="uk"><head><style>'+(THEME/'stylesheet/bootstrap.min.css').read_text()+(THEME/'stylesheet/stylesheet.css').read_text()+(THEME/'stylesheet/lavka-mobile-cards.css').read_text()+'</style></head><body><main><div class="container"><div id="content"><div class="products-block row">'+card(816)+card(817,'Ваніль натуральна мелена з тростинним цукром', 'select')+'</div></div></div></main></body></html>'
+html = '<html lang="uk"><head><base href="https://fixture.invalid/"><style>'+(THEME/'stylesheet/bootstrap.min.css').read_text()+(THEME/'stylesheet/stylesheet.css').read_text()+(THEME/'stylesheet/lavka-mobile-cards.css').read_text()+(THEME/'stylesheet/lavka-card-reviews.css').read_text()+'</style></head><body><main><div class="container"><div id="content"><div class="products-block row">'+card(816)+card(817,'Ваніль натуральна мелена з тростинним цукром', 'select')+'</div></div></div></main></body></html>'
 html = html.replace('</style>', '@media(max-width:519px){.product-thumb__option{display:none!important}}</style>',1)
 bootstrap = r"""
 window.uniJsVars={currency:{decimal:0,decimal_p:'.',thousand_p:' ',symbol_l:'',symbol_r:' грн'},cart_popup_disable:true,cart_popup_autohide:false,cart_btn:{}};
 window.items_on_mobile=2;window.default_view='grid';window.module_on_mobile='carousel';window.uni_touch_support=false;
-// set_content creates an opaque origin; use in-memory view preferences for this fixture.
+// Keep view preferences isolated from other browser scenarios.
 var viewPreferences={};Object.defineProperty(window,'localStorage',{value:{getItem:function(key){return viewPreferences[key]||null;},setItem:function(key,value){viewPreferences[key]=String(value);}}});
 window.uniAutoHeight=function(){};window.uniFlyAlert=function(){};window.uniModalWindow=function(){};window.getURLVar=function(){return '';};
 window.requests=[];window.headerUpdates=0;window.delegatedClicks=0;
@@ -46,13 +46,20 @@ with sync_playwright() as p:
     page.set_default_timeout(6000)
     errors=[]
     page.on('pageerror',lambda error:errors.append(str(error)))
-    page.set_content(html)
+    page.route('https://fixture.invalid/**',lambda route:route.abort())
+    page.route('https://fixture.invalid/category',lambda route:route.fulfill(status=200,content_type='text/html; charset=utf-8',body=html))
+    page.goto('https://fixture.invalid/category')
     page.add_script_tag(content=(THEME/'js/jquery-2.2.4.min.js').read_text())
     page.add_script_tag(content=bootstrap)
     page.add_script_tag(content=cart_code)
     page.evaluate('()=>{cart.uniHeaderCartUpd=function(){headerUpdates++;};}')
     page.add_script_tag(content=(THEME/'js/live-price.js').read_text())
     page.add_script_tag(content=(THEME/'js/lavka-mobile-cards.js').read_text())
+    page.add_script_tag(content=(THEME/'js/lavka-card-reviews.js').read_text())
+    page.wait_for_function('document.querySelectorAll(".lavka-mobile-card").length===2')
+    # Supply the same summary event as the metadata route; cart transport stays independent.
+    page.evaluate('()=>document.querySelectorAll(".product-thumb__image").forEach(image=>image.dispatchEvent(new CustomEvent("lavka:review-summary",{bubbles:true,detail:{enabled:true,summary:{total:12,rating:4.8}}})))')
+    page.wait_for_function('document.querySelectorAll(".lavka-card-reviews").length===2')
     first=page.locator('[data-test="816"]').first; second=page.locator('[data-test="817"]')
     first.locator('.lavka-pack-caption').wait_for(state='visible')
     assert first.locator('.lavka-pack-caption').inner_text()=='за 50 г'
@@ -132,6 +139,12 @@ with sync_playwright() as p:
     page.evaluate('(markup)=>{document.querySelector("main").insertAdjacentHTML("beforeend",markup);$(".uni-module").uniModules({type:"carousel",loop:true,autoheight:[],items:{0:{items:2}}});}',module)
     assert page.evaluate('$(".owl-carousel").data("owl.carousel").options.loop') is False
     assert page.locator('.owl-item.cloned').count()==0
+    page.wait_for_function('document.querySelectorAll(".uni-module .lavka-mobile-card").length===2')
+    page.evaluate('()=>document.querySelectorAll(".uni-module .product-thumb__image").forEach(image=>image.dispatchEvent(new CustomEvent("lavka:review-summary",{bubbles:true,detail:{enabled:true,summary:{total:12,rating:4.8}}})))')
+    page.wait_for_function('document.querySelectorAll(".uni-module .lavka-reviews-inline").length===2')
+    rating=page.locator('.uni-module .lavka-card-reviews').first.bounding_box()
+    buy=page.locator('.uni-module .product-thumb__add-to-cart').first.bounding_box()
+    assert rating['x']+rating['width']<=buy['x'] and buy['width']==36
     passed('The actual Owl/UniShop module disables radio clones that clear the chosen pack')
     page.evaluate('(markup)=>document.querySelector(".products-block").insertAdjacentHTML("beforeend",markup)',card(821,'Товар з кількома опціями',extra=True))
     page.locator('[data-lavka-fallback]').wait_for(state='visible')

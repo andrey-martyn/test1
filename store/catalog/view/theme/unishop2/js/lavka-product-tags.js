@@ -101,6 +101,10 @@
                 pictures.get(id).forEach(function (image) {
                     if (!image.isConnected) { pictures.get(id).delete(image); return; }
                     render(image,json.products[id]);
+                    if (typeof json.review_enabled==='boolean') {
+                        image.lavkaReviewSummary={enabled:json.review_enabled,summary:json.reviews && json.reviews[id]};
+                        image.dispatchEvent(new CustomEvent('lavka:review-summary',{bubbles:true,detail:image.lavkaReviewSummary}));
+                    }
                 });
             });
         }).always(function () {

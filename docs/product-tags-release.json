@@ -3,7 +3,7 @@
   "database": "lavkasp_test",
   "store_id": 0,
   "source_commit": "647cb88a41cd5a66e3524f576b28c8c897f7f2d1",
-  "upgrade_from_commit": "acbb27095d687ae94d01ad584024959e07540a73",
+  "upgrade_from_commit": "b2be391d6b1e66efaee64e2e651ea83c874c9324",
   "files": [
     {
       "path": "system/library/lavka_product_tags.php",
@@ -41,7 +41,7 @@
         "4aeff449ec386c8840e8a4795927020ff44c2352fa70c816e4141c28b661b329",
         "c27e92b7d18798e2f352ddd29ef227a9cecc2566fbd2d264e77969334ffe2075"
       ],
-      "after_sha256": "c27e92b7d18798e2f352ddd29ef227a9cecc2566fbd2d264e77969334ffe2075"
+      "after_sha256": "afe79b8b27d069849d8f48496a7cb1ba1fe3e650534058522dbcdcb33b21a228"
     },
     {
       "path": "admin/view/template/extension/module/lavka_tag_controls.twig",
@@ -123,7 +123,7 @@
         "76067c5fdf951eaa48ba852e5ef354ebae19fa282af2f3cc1fc649074bc73d06",
         "dc5da0e9b614e05bc5875bf5e6381bf9a88ac97ffad420826d3116288a5914bb"
       ],
-      "after_sha256": "dc5da0e9b614e05bc5875bf5e6381bf9a88ac97ffad420826d3116288a5914bb"
+      "after_sha256": "b5d01a97e872e34c3144a60d1349a2360df68ae34b7e8d6a6e29ec18530f7079"
     },
     {
       "path": "catalog/view/theme/unishop2/stylesheet/lavka-product-tags.css",
@@ -131,10 +131,24 @@
       "allowed_before_sha256": [
         "1db59b197ce8e1fb1654b67d8486badf2f6621a677d0a3da5796c20d54347eee",
         "1ff0fd9e3eee93ae32e2f1e18151e9915a86e6c8c361ce3f324098a5f6cc9c5d",
+        "4dddcf09ded820e3ccc6dfc4e743073c83fbf6ef7d3d941bd1c50098215dc4f3",
         "7d1d67fb8f784dcf57746da24f6673e1d9eeb3a64fab8d7160a40d8bd3f00785",
+        "dc38c86eadb6719cfcbb136d8106ccd3f3f26f2f98166e4ca1022de38e0e1a6b",
         "f287c33a935d34410ff012dab252dbd80b1fc97b6f591453d0558678f68651fd"
       ],
       "after_sha256": "4dddcf09ded820e3ccc6dfc4e743073c83fbf6ef7d3d941bd1c50098215dc4f3"
+    },
+    {
+      "path": "catalog/view/theme/unishop2/js/lavka-card-reviews.js",
+      "before_sha256": null,
+      "allowed_before_sha256": [],
+      "after_sha256": "ea3a198f0f86ef73b98280d31854b56651fd63739acdfd92e4c4149798e6fffa"
+    },
+    {
+      "path": "catalog/view/theme/unishop2/stylesheet/lavka-card-reviews.css",
+      "before_sha256": null,
+      "allowed_before_sha256": [],
+      "after_sha256": "1aaecbdf0307618a7666451df0bce7c0f2a777a239e336eddded58d278a8b845"
     },
     {
       "path": "catalog/view/theme/unishop2/stylesheet/lavka-mobile-cards.css",
@@ -223,15 +237,17 @@
       "before_sha256": "1eee34b7e2069869419e63af017d090a6b755002e6ef308779b077ebc16cff74",
       "allowed_before_sha256": [
         "0d6df32e5949cc98cb8cbfa54fffaa2c255d32d624300a8b6edf1e84614004e0",
+        "18357a092fdef766f83903a78edfcf477a3c44d50110c8f13e5e79edd231a7eb",
         "1eee34b7e2069869419e63af017d090a6b755002e6ef308779b077ebc16cff74",
         "2537633f60b45d1c6b49b01d5341836e1a4d49d32ff2f89d903c0c0ba0b2331c",
+        "5081de2fe7b1b04cd1afd2d44a5bf93726d419e34a4ac4cfb2ccec62643b29a3",
         "550a8de443d88b3cea8d9f0ddbc83b22044456f7d1e2aec07cc0ba024f152cf7",
         "8e40d1c962981c81f9b0a111bf4795e7b5f02daf26ddac7e149eb116b224f3c8",
         "ab0fee0eeeae14f0589d6a19720fe9f2830318883257e5502d9a3c99f7bf0d66",
         "b7c4eb55c8142e6f4c9c78eb5d7dfb9ab21db3a72f275dccc47de56911249a78",
         "d1ef60fd57dc268b0b2ec22687694eefbe4ccfc3b89c5ac9a40e7b653aaa754e"
       ],
-      "after_sha256": "18357a092fdef766f83903a78edfcf477a3c44d50110c8f13e5e79edd231a7eb"
+      "after_sha256": "408fb3cce294fada03d77f6c7b931ad8725a26e5cad22b822e5307e37691c127"
     }
   ],
   "deleted_files": [],

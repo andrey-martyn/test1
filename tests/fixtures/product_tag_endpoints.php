@@ -39,6 +39,8 @@ if (strpos($scenario,'public')===0) {
     $request->post=['product_ids'=>['816','817']];
     if ($scenario==='public_bad_ids') $request->post=['product_ids'=>['816) OR 1=1']];
     if ($scenario==='public_get') $request->server['REQUEST_METHOD']='GET';
+    if ($scenario==='public_reviews_off') $registry->get('config')->values['config_review_status']=0;
+    if ($scenario==='public_no_reviews') $db->reviewRows=[];
     $controller->info();
     $output=json_decode($response->output,true);
     if ($scenario==='public_ok') {
@@ -46,7 +48,11 @@ if (strpos($scenario,'public')===0) {
         verify(!isset($output['products'][816]['price']) && strpos($response->output,'767')===false,'Public API must expose only sticker properties');
         verify(strpos($db->queries[0],'ps.store_id=0 AND p.status=1 AND p.date_available<=NOW()')!==false,'Public read must restrict store, status and availability');
         verify(strpos($response->output,'fixture-token')===false,'No session token in response');
-    } else verify(!$loader->calls && !$db->queries,'Invalid public request must stop before DB');
+    } elseif ($scenario==='public_reviews_off') {
+        verify(!$output['review_enabled'] && !$output['reviews'],'Disabled reviews must return no summaries');
+        verify(!array_filter($db->queries,function($q){return strpos($q,'SELECT r.product_id')===0;}),'Disabled reviews must not query review table');
+    } elseif ($scenario==='public_no_reviews') verify($output['reviews'][816]===['total'=>0,'rating'=>0],'No published reviews must be represented as zero, not a rating');
+    else verify(!$loader->calls && !$db->queries,'Invalid public request must stop before DB');
 } else {
     require __DIR__.'/../../store/admin/controller/catalog/product.php';
     $controller=new ControllerCatalogProduct($registry);
@@ -65,4 +71,4 @@ if (strpos($scenario,'public')===0) {
     } elseif ($scenario==='auto_hit') verify($output['error']==='INVALID_INPUT' && !$db->queries,'Automatic Top must reject manual writes before SQL');
     else verify(!$loader->calls && !$db->queries,'Authorization/verb/input rejection must precede DB');
 }
-echo json_encode(['ok'=>true,'scenario'=>$scenario,'response'=>$output,'headers'=>$response->headers]);
+echo json_encode(['ok'=>true,'scenario'=>$scenario,'response'=>$output,'headers'=>$response->headers,'queries'=>$db->queries]);

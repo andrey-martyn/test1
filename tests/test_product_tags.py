@@ -36,6 +36,19 @@ class ProductTags(unittest.TestCase):
         reply=self.scenario('public_ok','product_tag_endpoints.php')
         self.assertIn('Cache-Control: private, no-store, max-age=0',reply['headers'])
 
+    def test_review_summary_uses_one_published_aggregate_for_visible_ids(self):
+        reply=self.scenario('public_ok','product_tag_endpoints.php')
+        self.assertTrue(reply['response']['review_enabled'])
+        self.assertEqual(reply['response']['reviews'],{'816':{'total':12,'rating':4.8}})
+        queries=[query for query in reply['queries'] if query.startswith('SELECT r.product_id')]
+        self.assertEqual(len(queries),1)
+        self.assertIn('r.status=1 AND r.product_id IN (816)',queries[0])
+        self.assertNotIn('author',queries[0]);self.assertNotIn('text',queries[0])
+
+    def test_disabled_reviews_skip_aggregate_and_empty_reviews_have_zero_state(self):
+        self.assertFalse(self.scenario('public_reviews_off','product_tag_endpoints.php')['response']['review_enabled'])
+        self.assertEqual(self.scenario('public_no_reviews','product_tag_endpoints.php')['response']['reviews']['816']['total'],0)
+
     def test_public_api_rejects_invalid_ids_and_get_before_db(self):
         for name in ('public_bad_ids','public_get'):
             with self.subTest(name=name): self.assertIn('error',self.scenario(name,'product_tag_endpoints.php')['response'])

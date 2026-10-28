@@ -35,6 +35,16 @@ class TagSql(unittest.TestCase):
             'INSERT INTO assert_upgrade VALUES (IF((SELECT COUNT(*) FROM oc_lavka_tag_definition)=1,1,0))']
         self.execute(queries)
 
+    def test_published_review_aggregate_excludes_unpublished_and_other_products(self):
+        reply=json.loads(subprocess.check_output([PHP,'-n',str(ROOT/'tests/fixtures/product_tag_endpoints.php'),'public_ok'],universal_newlines=True))
+        query=next(q for q in reply['queries'] if q.startswith('SELECT r.product_id'))
+        self.execute(['CREATE DATABASE review_fixture','USE review_fixture',
+            'CREATE TABLE oc_review (product_id INT, rating INT, status INT) ENGINE=InnoDB',
+            'INSERT INTO oc_review VALUES (816,5,1),(816,5,1),(816,5,1),(816,5,1),(816,4,1),(816,1,0),(999,1,1)',
+            'CREATE TABLE assert_reviews (ok INT CHECK(ok=1)) ENGINE=InnoDB',
+            'INSERT INTO assert_reviews SELECT IF(total=5 AND ROUND(rating,1)=4.8 AND product_id=816,1,0) FROM ('+query+') stats',
+            'INSERT INTO assert_reviews VALUES (IF((SELECT COUNT(*) FROM ('+query+') stats)=1,1,0))'])
+
     def test_real_ddl_cas_and_transaction_queries_execute(self):
         reply=subprocess.check_output([PHP,'-n',str(ROOT/'tests/fixtures/product_tags.php'),'sql'],universal_newlines=True)
         queries=json.loads(reply)['queries']
