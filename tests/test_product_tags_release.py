@@ -63,6 +63,13 @@ class TagRelease(unittest.TestCase):
         status,output=self.run_action('--apply');self.assertEqual(status,2);self.assertIn('SOURCE_HASH_MISMATCH',output)
         self.database.assert_not_called();self.assertFalse(self.backups.exists())
 
+    def test_known_previous_module_file_can_be_upgraded_and_rolled_back(self):
+        entry=self.files[1];old=b'previous module\n';target=self.shop/entry['path'];target.parent.mkdir(parents=True);target.write_bytes(old)
+        entry['allowed_before_sha256']=[hashlib.sha256(old).hexdigest()];self.save_manifest()
+        status,output=self.run_action('--apply');self.assertEqual(status,0,output);result=json.loads(output)
+        status,output=self.run_action('--rollback',result['rollback_id']);self.assertEqual(status,0,output)
+        self.assertEqual(target.read_bytes(),old)
+
     def test_target_identity_must_confirm_default_test_store(self):
         self.preflight.return_value={'ok':True,'db':{'runtime_store_id':3}}
         status,_=self.run_action('--apply');self.assertEqual(status,2);self.database.assert_not_called()

@@ -7,6 +7,7 @@ import subprocess
 
 ROOT=Path(__file__).resolve().parents[1]
 BASE='647cb88'
+PREVIOUS='38e56b3'
 FILES=[
     'system/library/lavka_product_tags.php',
     'catalog/model/extension/module/lavka_product_tags.php',
@@ -36,6 +37,10 @@ for path in FILES:
     found=subprocess.run(['git','show',BASE+':store/'+path],cwd=ROOT,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     b=found.stdout if found.returncode==0 else None
     variants=[] if b is None else sorted({sha(b),sha(b.replace(b'\r\n',b'\n')),sha(b.replace(b'\r\n',b'\n').replace(b'\n',b'\r\n'))})
+    installed=subprocess.run(['git','show',PREVIOUS+':store/'+path],cwd=ROOT,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    if installed.returncode==0:
+        old=installed.stdout
+        variants=sorted(set(variants+[sha(old),sha(old.replace(b'\r\n',b'\n')),sha(old.replace(b'\r\n',b'\n').replace(b'\n',b'\r\n'))]))
     if path in ('catalog/controller/extension/module/uni_new_data.php','catalog/view/theme/unishop2/stylesheet/lavka-mobile-cards.css'):
         previous=subprocess.check_output(['git','show','f006edb:store/'+path],cwd=ROOT)
         variants=sorted(set(variants+[sha(previous),sha(previous.replace(b'\r\n',b'\n'))]))
@@ -43,8 +48,9 @@ for path in FILES:
     entries.append({'path':path,'before_sha256':sha(b) if b is not None else None,'allowed_before_sha256':variants,'after_sha256':after})
 manifest={'target':'test.lavka-speciy.com','database':'lavkasp_test','store_id':0,
           'source_commit':subprocess.check_output(['git','rev-parse',BASE],cwd=ROOT,universal_newlines=True).strip(),
+          'upgrade_from_commit':subprocess.check_output(['git','rev-parse',PREVIOUS],cwd=ROOT,universal_newlines=True).strip(),
           'files':entries,'deleted_files':[],
-          'database_changes':['Create only lavka_tag_definition and lavka_product_tag; initialize five definitions without modifying product identifiers.']}
+          'database_changes':['Create only lavka_tag_definition and lavka_product_tag if absent; add min_sales DEFAULT 11 to the known previous tag definition schema. Existing labels, manual flags, products and orders are retained.']}
 (ROOT/'docs/product-tags-release.json').write_text(json.dumps(manifest,indent=2)+'\n')
 patch=subprocess.check_output(['git','diff','--no-ext-diff','--relative=store',BASE,'--']+['store/'+p for p in FILES],cwd=ROOT)
 (ROOT/'docs/product-tags.patch').write_bytes(patch)

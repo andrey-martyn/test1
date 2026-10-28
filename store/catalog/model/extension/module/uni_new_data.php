@@ -172,19 +172,7 @@ class ModelExtensionModuleUniNewData extends Controller {
 				);
 			}
 			
-			if(isset($uniset['sticker_bestseller'])) {
-				$bestseller = $this->getBestSellerSticker($result['product_id']);
-				
-				if ($bestseller) {
-					$stickers[] = array(
-						'name'		 => 'bestseller',
-						'text' 		 => $uniset[$lang_id]['sticker_bestseller_text'],
-						'text_after' => '',
-						'value' 	 => '',
-						'length' 	 => strlen($uniset[$lang_id]['sticker_bestseller_text'])
-					);
-				}
-			}
+			// Marketing bestseller is composed by LavkaProductTags from completed sales.
 			
 			$date = strtotime($result['date_available']) + $uniset['sticker_new_date'] * 24 * 3600;
 				

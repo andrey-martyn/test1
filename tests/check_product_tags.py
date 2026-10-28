@@ -38,6 +38,8 @@ with sync_playwright() as p:
         assert page.locator('.lavka-fresh').first.evaluate('(e)=>getComputedStyle(e).backgroundColor')=='rgb(79, 127, 40)'
         assert page.locator('.lavka-fresh').first.evaluate('(e)=>getComputedStyle(e).opacity')=='1'
         if width<520:
+            shape=page.locator('.lavka-fresh').first.evaluate('(e)=>({radius:getComputedStyle(e).borderRadius,clip:getComputedStyle(e).clipPath})')
+            assert shape['radius']=='0px' and shape['clip'].startswith('polygon('),shape
             page.wait_for_timeout(80)
             bounds=page.locator('.lavka-mobile-card').first.evaluate('''card=>{var tags=card.querySelector('.sticker').getBoundingClientRect(),packs=card.querySelector('.product-thumb__option').getBoundingClientRect(),image=card.querySelector('.product-thumb__image').getBoundingClientRect(),heart=card.querySelector('.product-thumb__wishlist').getBoundingClientRect();return {tagsBottom:tags.bottom,packsTop:packs.top,tagsRight:tags.right,heartLeft:heart.left,imageBottom:image.bottom,packsBottom:packs.bottom};}''')
             assert bounds['tagsBottom']<bounds['packsTop'],bounds
@@ -73,19 +75,23 @@ with sync_playwright() as p:
     print('PASS product page: initially empty labels refresh even when price/cart/product_id input is hidden',flush=True)
     page.close()
     page=browser.new_page()
-    widget='<div class="lavka-tag-controls" data-product-id="816" data-url="https://fixture.invalid/admin/tag" data-saving="Saving" data-saved="Saved" data-error="Error" data-conflict="Conflict"><input type="checkbox" data-tag="hit" data-revision="0"><input type="checkbox" data-tag="brand" data-revision="0"><small class="lavka-tag-status"></small></div>'
+    widget='<div class="lavka-tag-controls" data-product-id="816" data-url="https://fixture.invalid/admin/tag" data-saving="Saving" data-saved="Saved" data-error="Error" data-conflict="Conflict"><input type="checkbox" data-auto-tag="hit" disabled checked><input type="checkbox" data-tag="fresh" data-revision="0"><input type="checkbox" data-tag="brand" data-revision="0"><small class="lavka-tag-status"></small></div>'
     page.set_content('<form><input type="checkbox" name="selected[]">'+widget+widget+'</form>')
     page.add_script_tag(content=JQ);page.add_script_tag(content=MOCK)
     page.add_script_tag(content=(ROOT/'store/admin/view/javascript/lavka-product-tags.js').read_text())
-    hit=page.locator('input[data-tag=hit]').first
+    automatic=page.locator('input[data-auto-tag=hit]').first
+    assert automatic.is_disabled()
+    automatic.evaluate('(el)=>{el.click();el.dispatchEvent(new Event("change",{bubbles:true}));}')
+    assert page.evaluate('requests.length')==0,'Automatic Top must not send a manual save'
+    hit=page.locator('input[data-tag=fresh]').first
     hit.check();assert hit.is_disabled();assert page.locator('input[data-tag=brand]').first.is_enabled()
     assert page.locator('input[name="selected[]"]').is_checked() is False
-    page.evaluate('requests[0].deferred.resolve({success:true,state:{hit:{enabled:true,revision:1}}})')
+    page.evaluate('requests[0].deferred.resolve({success:true,state:{fresh:{enabled:true,revision:1}}})')
     assert hit.is_enabled() and hit.is_checked()
-    assert page.locator('input[data-tag=hit]').nth(1).is_checked()
+    assert page.locator('input[data-tag=fresh]').nth(1).is_checked()
     hit.uncheck()
     page.evaluate('()=>{requests[1].deferred.reject({responseJSON:{error:"TAG_CONFLICT"}});} ')
     assert hit.is_checked() and page.locator('.lavka-tag-status').first.inner_text()=='Conflict'
     assert page.evaluate('requests.length')==2
-    print('PASS admin: partial writes, pending state, independent bulk selection, duplicate widget synchronization and conflict',flush=True)
+    print('PASS admin: automatic Top cannot be toggled, partial writes, independent bulk selection and conflict',flush=True)
     browser.close()

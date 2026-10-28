@@ -18,17 +18,19 @@ class ProductTags(unittest.TestCase):
         self.assertEqual(reply.stderr,'')
         return json.loads(reply.stdout)
 
-    def test_all_tags_native_colors_language_and_explicit_override(self): self.assertTrue(self.scenario('compose')['ok'])
+    def test_all_tags_native_colors_language_and_automatic_top(self): self.assertTrue(self.scenario('compose')['ok'])
     def test_automatic_period_uses_availability_and_expires(self): self.assertTrue(self.scenario('dates')['ok'])
     def test_partial_updates_reject_stale_revisions_without_product_writes(self): self.assertTrue(self.scenario('conflicts')['ok'])
     def test_settings_validation_transactions_and_repeat_initialization(self): self.assertTrue(self.scenario('settings')['ok'])
-    def test_native_bestseller_inheritance_can_be_manually_disabled(self): self.assertTrue(self.scenario('bestseller')['ok'])
+    def test_automatic_sales_threshold_cache_and_no_manual_override(self): self.assertTrue(self.scenario('bestseller')['ok'])
 
     def test_admin_guard_rejects_token_permission_verb_and_input_before_db(self):
         for name in ('bad_token','array_token','no_permission','get','bad_input'):
             with self.subTest(name=name): self.assertIn('error',self.scenario(name,'product_tag_endpoints.php')['response'])
 
     def test_admin_authorized_partial_save_and_targeted_cache_request(self): self.assertTrue(self.scenario('admin_ok','product_tag_endpoints.php')['response']['success'])
+
+    def test_admin_cannot_manually_write_automatic_top(self): self.assertEqual(self.scenario('auto_hit','product_tag_endpoints.php')['response']['error'],'INVALID_INPUT')
 
     def test_public_api_restricts_visibility_and_exposes_no_price_or_session(self):
         reply=self.scenario('public_ok','product_tag_endpoints.php')

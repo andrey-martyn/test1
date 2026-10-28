@@ -72,7 +72,7 @@ class ControllerCatalogProduct extends Controller {
         $data['lavka_label_key'] = strpos((string)$this->config->get('config_admin_language'),'uk') === 0 ? 'label_uk' : 'label_ru';
         $data['lavka_tag_url'] = html_entity_decode($this->url->link('catalog/product/lavkaTag','user_token='.$this->session->data['user_token'],true),ENT_QUOTES,'UTF-8');
         $data['lavka_tag_settings'] = html_entity_decode($this->url->link('catalog/product/lavkaTagSettings','user_token='.$this->session->data['user_token'],true),ENT_QUOTES,'UTF-8');
-        $this->document->addScript('view/javascript/lavka-product-tags.js?v=1');
+        $this->document->addScript('view/javascript/lavka-product-tags.js?v=2');
         $this->document->addStyle('view/stylesheet/lavka-product-tags.css?v=1');
         return $engine;
     }

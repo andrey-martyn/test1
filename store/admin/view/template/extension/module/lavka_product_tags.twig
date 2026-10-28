@@ -8,7 +8,7 @@
 <div class="panel panel-default"><div class="panel-heading">{{ text_settings_help }}</div><div class="panel-body">
 <form id="lavka-tags-settings" action="{{ action }}" method="post">
 <div class="table-responsive"><table class="table table-bordered"><thead><tr>
-<th>{{ text_type }}</th><th>{{ text_enabled }}</th><th>{{ text_label_ru }}</th><th>{{ text_label_uk }}</th><th>{{ text_background }}</th><th>{{ text_foreground }}</th><th>{{ text_order }}</th><th>{{ text_days }}</th><th>{{ text_preview }}</th>
+<th>{{ text_type }}</th><th>{{ text_enabled }}</th><th>{{ text_label_ru }}</th><th>{{ text_label_uk }}</th><th>{{ text_background }}</th><th>{{ text_foreground }}</th><th>{{ text_order }}</th><th>{{ text_days }}</th><th>{{ text_min_sales }}</th><th>{{ text_preview }}</th>
 </tr></thead><tbody>
 {% for code, tag in tags %}<tr>
 <td>{{ code }}<input type="hidden" name="tags[{{ code }}][revision]" value="{{ tag.revision }}"></td>
@@ -19,9 +19,10 @@
 <td><input type="color" name="tags[{{ code }}][foreground]" value="{{ tag.foreground }}"></td>
 <td><input type="number" class="form-control" name="tags[{{ code }}][sort_order]" value="{{ tag.sort_order }}" min="0" max="999" required style="width:75px"></td>
 <td><input type="number" class="form-control" name="tags[{{ code }}][days]" value="{{ tag.days }}" min="0" max="3650" {{ code != 'new' ? 'readonly' : '' }} required style="width:75px"></td>
+<td>{% if code == 'hit' %}<input type="number" class="form-control" name="tags[{{ code }}][min_sales]" value="{{ tag.min_sales }}" min="1" max="1000000" required style="width:90px">{% else %}—<input type="hidden" name="tags[{{ code }}][min_sales]" value="0">{% endif %}</td>
 <td><span class="lavka-tag-preview" style="background:{{ tag.background }};color:{{ tag.foreground }};padding:4px 8px;border-radius:4px;white-space:nowrap">{{ tag.label_ru|e }}</span></td>
 </tr>{% endfor %}</tbody></table></div></form>
-<p>{{ text_period_help }}</p><p>{{ text_legacy_help }}</p>
+<p>{{ text_period_help }}</p><p>{{ text_sales_help }}</p><p>{{ text_legacy_help }}</p>
 </div></div></div></div>
 <script>
 (function($){$('#lavka-tags-settings').on('input change','input',function(){var row=$(this).closest('tr');row.find('.lavka-tag-preview').text(row.find('input[name$="[label_ru]"]').val()).css({backgroundColor:row.find('input[name$="[background]"]').val(),color:row.find('input[name$="[foreground]"]').val()});});})(jQuery);

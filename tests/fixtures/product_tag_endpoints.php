@@ -55,12 +55,14 @@ if (strpos($scenario,'public')===0) {
     if ($scenario==='no_permission') $user->allowed=false;
     if ($scenario==='get') $request->server['REQUEST_METHOD']='GET';
     if ($scenario==='bad_input') $request->post['revision']=[];
+    if ($scenario==='auto_hit') $request->post['code']='hit';
     $controller->lavkaTag();
     $output=json_decode($response->output,true);
     if ($scenario==='admin_ok') {
         verify($output['success'] && $output['state']['brand']['enabled'],'Authorized partial save');
         verify($model->purged===[816],'Only the selected product cache path may be invoked');
         verify($db->products[816]['mpn']==='Популярно' && $db->products[816]['quantity']===767,'Unrelated product values preserved');
-    } else verify(!$loader->calls && !$db->queries,'Authorization/verb/input rejection must precede DB');
+    } elseif ($scenario==='auto_hit') verify($output['error']==='INVALID_INPUT' && !$db->queries,'Automatic Top must reject manual writes before SQL');
+    else verify(!$loader->calls && !$db->queries,'Authorization/verb/input rejection must precede DB');
 }
 echo json_encode(['ok'=>true,'scenario'=>$scenario,'response'=>$output,'headers'=>$response->headers]);

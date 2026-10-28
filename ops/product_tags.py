@@ -23,7 +23,7 @@ def release():
         actual=store.sha(target) if target.is_file() else None
         if actual==entry['after_sha256']: current.append(entry['path']); continue
         if entry['before_sha256'] is None:
-            if target.exists(): raise ValueError('New-file collision')
+            if target.exists() and actual not in entry['allowed_before_sha256']: raise ValueError('New-file collision')
         elif actual not in entry['allowed_before_sha256']:
             raise store.ReleaseCheckError(json.dumps({'error':'SOURCE_HASH_MISMATCH','path':str(relative),'actual_sha256':actual,'allowed_before_sha256':entry['allowed_before_sha256']}))
         entry['before_sha256']=actual

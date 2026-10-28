@@ -2,10 +2,11 @@
   <div class="lavka-tag-new">{{ lavka_text.text_auto_new }}: {% if lavka_state.new.enabled and lavka_definitions.new.enabled %}{{ lavka_text.text_until }} {{ lavka_state.new.until }}{% else %}—{% endif %}</div>
   <div class="lavka-tag-checks">
   {% for code in ['hit','fresh','brand','exclusive'] %}
-    <label title="{{ not lavka_definitions[code].enabled ? lavka_text.text_hidden : (lavka_state[code].inherited ? lavka_text.text_inherited : '') }}" class="{{ not lavka_definitions[code].enabled ? 'lavka-tag-muted' : '' }}">
-      <input type="checkbox" data-tag="{{ code }}" data-revision="{{ lavka_state[code].revision }}" {{ lavka_state[code].enabled ? 'checked' : '' }} {{ not lavka_can_modify or not lavka_product_id ? 'disabled' : '' }}> {{ lavka_definitions[code][lavka_label_key]|e }}
+    <label title="{{ (not lavka_definitions[code].enabled ? lavka_text.text_hidden : (code == 'hit' ? lavka_text.text_hit_auto|replace({'%sold%':lavka_state.hit.sales,'%min%':lavka_state.hit.min_sales}) : ''))|e('html_attr') }}" class="{{ not lavka_definitions[code].enabled ? 'lavka-tag-muted' : '' }}">
+      <input type="checkbox" {% if code == 'hit' %}data-auto-tag="hit" disabled{% else %}data-tag="{{ code }}" data-revision="{{ lavka_state[code].revision }}" {{ not lavka_can_modify or not lavka_product_id ? 'disabled' : '' }}{% endif %} {{ lavka_state[code].enabled ? 'checked' : '' }}> {{ lavka_definitions[code][lavka_label_key]|e }}{% if code == 'hit' %} <small>({{ lavka_text.text_auto }})</small>{% endif %}
     </label>
   {% endfor %}
   </div>
+  {% if lavka_product_id and not lavka_state.hit.configured %}<small class="text-warning">{{ lavka_text.text_no_complete_status|e }}</small>{% endif %}
   <small class="lavka-tag-status" role="status" aria-live="polite"></small>
 </div>

@@ -34,10 +34,10 @@ try {
     define('DB_PREFIX',$input['DB_PREFIX']);
     require_once __DIR__.'/../store/system/library/lavka_product_tags.php';
     $expected=[
-        'lavka_tag_definition'=>['store_id','code','enabled','label_ru','label_uk','background','foreground','sort_order','days','revision'],
+        'lavka_tag_definition'=>['store_id','code','enabled','label_ru','label_uk','background','foreground','sort_order','days','revision','min_sales'],
         'lavka_product_tag'=>['store_id','product_id','code','enabled','revision']
     ];
-    $tables=[];
+    $tables=[]; $upgrades=[];
     foreach ($expected as $name=>$columns) {
         $table=DB_PREFIX.$name;
         $q=$db->query("SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='".$db->escape($table)."'");
@@ -45,7 +45,9 @@ try {
         if ($exists) {
             if (strtolower($q->row['ENGINE'])!=='innodb') stop_tags_db('EXISTING_TAG_TABLE_ENGINE_DIFFERS');
             $actual=$db->query('SHOW COLUMNS FROM `'.$table.'`')->rows;
-            if (array_column($actual,'Field')!==$columns) stop_tags_db('EXISTING_TAG_TABLE_SCHEMA_DIFFERS');
+            $fields=array_column($actual,'Field');
+            if ($name==='lavka_tag_definition' && $fields===array_slice($columns,0,-1)) $upgrades[]=LavkaProductTags::upgradeSql(DB_PREFIX);
+            elseif ($fields!==$columns) stop_tags_db('EXISTING_TAG_TABLE_SCHEMA_DIFFERS');
             $keys=$db->query("SHOW INDEX FROM `".$table."` WHERE Key_name='PRIMARY'")->rows;
             $required=$name==='lavka_tag_definition' ? ['store_id','code'] : ['store_id','product_id','code'];
             if (array_column($keys,'Column_name')!==$required) stop_tags_db('EXISTING_TAG_TABLE_KEY_DIFFERS');
@@ -60,11 +62,12 @@ try {
         elseif ((int)$count>5) stop_tags_db('EXISTING_TAG_DEFINITIONS_DIFFER');
     }
     if ($input['action']==='initialize') {
+        foreach ($upgrades as $sql) $db->query($sql);
         $preview=$engine->initialize();
         foreach ($tables as &$table) $table['exists']=true;
         unset($table);
     } elseif ($input['action']!=='check') { stop_tags_db('UNKNOWN_ACTION'); }
-    echo json_encode(['ok'=>true,'database'=>'lavkasp_test','tables'=>$tables,'definitions'=>$preview,
+    echo json_encode(['ok'=>true,'database'=>'lavkasp_test','tables'=>$tables,'definitions'=>$preview,'schema_upgrades'=>$upgrades,
         'database_writes'=>$input['action']==='initialize','scope'=>'Only two new tag tables; existing products/settings are not updated.']);
     $connection->close();
 } catch (Throwable $e) { stop_tags_db('TAG_SCHEMA_OPERATION_FAILED'); }
