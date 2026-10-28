@@ -7,8 +7,8 @@ import subprocess
 
 ROOT=Path(__file__).resolve().parents[1]
 BASE='647cb88'
-PREVIOUS='b2be391'
-COMPATIBLE=['38e56b3','acbb270',PREVIOUS]
+PREVIOUS='6487db4'
+COMPATIBLE=['38e56b3','acbb270','b2be391',PREVIOUS]
 FILES=[
     'system/library/lavka_product_tags.php',
     'catalog/model/extension/module/lavka_product_tags.php',

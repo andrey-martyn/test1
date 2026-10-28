@@ -52,7 +52,11 @@ with sync_playwright() as p:
             assert cart['width']==36 and cart['height']==36
             if width>=390:
                 assert price['x']+price['width']<=box['x'] and box['x']+box['width']<=cart['x'],(width,price,box,cart)
-                assert abs(box['y']+box['height']/2-(cart['y']+cart['height']/2))<1
+                assert abs(box['y']-cart['y'])<1 and abs(price['y']-cart['y'])<1
+                assert abs((box['x']+box['width']/2)-(price['x']+price['width']+cart['x'])/2)<1
+                empty=page.locator('.product-thumb').nth(1)
+                empty_box=links.nth(1).bounding_box();empty_buy=empty.locator('.product-thumb__add-to-cart').bounding_box()
+                assert abs(empty_box['y']-empty_buy['y'])<1
             else: assert box['y']+box['height']<=price['y']
             page.screenshot(path='/tmp/lavka-card-reviews-'+str(width)+'.png',full_page=True)
             card.locator('.product-thumb__price').evaluate('(el)=>el.textContent="123456789 грн"')

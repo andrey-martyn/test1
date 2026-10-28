@@ -217,7 +217,7 @@ class ControllerExtensionModuleUniNewData extends Controller {
 		$this->document->addScript('catalog/view/theme/unishop2/js/lavka-mobile-cards.js?v=1');
 		$this->document->addStyle('catalog/view/theme/unishop2/stylesheet/lavka-product-tags.css?v=3');
 		$this->document->addScript('catalog/view/theme/unishop2/js/lavka-product-tags.js?v=2');
-		$this->document->addStyle('catalog/view/theme/unishop2/stylesheet/lavka-card-reviews.css?v=1');
+		$this->document->addStyle('catalog/view/theme/unishop2/stylesheet/lavka-card-reviews.css?v=2');
 		$this->document->addScript('catalog/view/theme/unishop2/js/lavka-card-reviews.js?v=1');
 
 		if(isset($uniset['liveprice'])) {
