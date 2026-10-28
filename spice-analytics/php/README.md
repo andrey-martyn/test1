@@ -7,6 +7,9 @@
 на рабочий сайт. Состав данных, сверка идентификаторов и порядок пробного
 переноса — [PRODUCTION_MIGRATION.md](PRODUCTION_MIGRATION.md).
 
+План размещения папок хостинга и команда инвентаризации зависимостей без
+перемещения файлов — [HOSTING_LAYOUT.md](HOSTING_LAYOUT.md).
+
 Концепция «факт → следующий шаг → проверка результата», сравнение регионов
 по годам и план второй фазы GA4 / Search Console / SEO —
 [ACTIONABLE_ANALYTICS.md](ACTIONABLE_ANALYTICS.md). API Google пока не подключены.
