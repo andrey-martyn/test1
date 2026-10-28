@@ -7,6 +7,7 @@ if (PHP_SAPI !== "cli") {
 require_once dirname(__DIR__) . "/src/Core.php";
 require_once dirname(__DIR__) . "/src/Shop.php";
 require_once dirname(__DIR__) . "/src/Competitors.php";
+require_once dirname(__DIR__) . "/src/Replies.php";
 use function ReviewFactory\json;
 use function ReviewFactory\database;
 use ReviewFactory\Problem;
@@ -349,7 +350,9 @@ function rf_run(string $command, array $a): array
             \ReviewFactory\rebuildQueue($db);
             return ["state" => "checked"] + $summary;
         }
-        if ($command === "sync" || $command === "dispatch" || $command === "review-schema") {
+        if (
+            in_array($command, ["sync", "dispatch", "review-schema", "reply-sync", "reply-worker"], true)
+        ) {
             if ($command === "review-schema" && $c["environment"] !== "test") {
                 throw new Problem("reply_diagnostics_test_only");
             }
@@ -358,6 +361,21 @@ function rf_run(string $command, array $a): array
             $prefix = $cfg["DB_PREFIX"];
             if ($command === "review-schema") {
                 return \ReviewFactory\reviewReplySchema($shop, $prefix);
+            }
+            if ($command === "reply-sync") {
+                $result = \ReviewFactory\importReplies($db, $shop, $prefix, $c["language"]);
+                \ReviewFactory\execute($db, "DELETE FROM settings WHERE key='replies_error'");
+                return ["state" => "replies_synced"] + $result;
+            }
+            if ($command === "reply-worker") {
+                return ["state" => "replies_processed"] +
+                    \ReviewFactory\replyTick(
+                        $db,
+                        $shop,
+                        $prefix,
+                        $c["language"],
+                        (int) ($a["limit"] ?? 3),
+                    );
             }
             if ($command === "dispatch") {
                 return ["state" => "processed"] +
@@ -377,6 +395,22 @@ function rf_run(string $command, array $a): array
                 $c["statuses"],
                 $c["shop_url"],
             );
+            try {
+                $summary["reply_reviews"] = \ReviewFactory\importReplies(
+                    $db,
+                    $shop,
+                    $prefix,
+                    $c["language"],
+                )["reviews"];
+                \ReviewFactory\execute($db, "DELETE FROM settings WHERE key='replies_error'");
+            } catch (\Throwable $e) {
+                $summary["reply_reviews"] = "unavailable";
+                \ReviewFactory\execute(
+                    $db,
+                    "INSERT OR REPLACE INTO settings VALUES('replies_error',?)",
+                    [\ReviewFactory\now()],
+                );
+            }
             if (!empty($c["analytics_data"])) {
                 try {
                     $summary += \ReviewFactory\importMatches($db, $c["analytics_data"]);
@@ -430,16 +464,23 @@ function rf_run(string $command, array $a): array
             return ["state" => "backup_created"];
         }
         throw new Problem(
-            "Команды: setup, user, reset-password, sync, collect, queue, dispatch, status, backup, deploy, resume, review-schema",
+            "Команды: setup, user, reset-password, sync, collect, queue, dispatch, status, backup, deploy, resume, review-schema, reply-sync, reply-worker",
         );
     } catch (\Throwable $e) {
-        if (isset($db) && in_array($command, ["sync", "collect", "dispatch"], true)) {
+        if (
+            isset($db) &&
+            in_array($command, ["sync", "collect", "dispatch", "reply-sync", "reply-worker"], true)
+        ) {
             $code =
                 $e instanceof Problem && preg_match('/^[a-z_]{1,60}$/D', $e->getMessage())
                     ? $e->getMessage()
                     : "worker_error";
             try {
-                \ReviewFactory\execute($db, "INSERT OR REPLACE INTO settings VALUES('sync_error',?)", [
+                $key = in_array($command, ["reply-sync", "reply-worker"], true)
+                    ? "replies_error"
+                    : "sync_error";
+                \ReviewFactory\execute($db, "INSERT OR REPLACE INTO settings VALUES(?,?)", [
+                    $key,
                     json(["command" => $command, "code" => $code, "at" => \ReviewFactory\now()]),
                 ]);
                 if ($command === "dispatch") {

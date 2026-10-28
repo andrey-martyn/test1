@@ -4,6 +4,7 @@ if (PHP_SAPI !== "cli") {
     exit();
 }
 require_once dirname(__DIR__) . "/src/Core.php";
+require_once dirname(__DIR__) . "/src/Replies.php";
 $dir = $argv[1] ?? "";
 if (!$dir || is_dir($dir)) {
     throw new RuntimeException("Use a new private directory");
@@ -16,6 +17,7 @@ if (!$password) {
 }
 \ReviewFactory\createUser($db, [
     "login" => "tanya-demo",
+    "work_mode" => "author",
     "name" => "Таня · демо",
     "staff_role" => "хозяйка",
     "role" => "admin",
@@ -26,6 +28,13 @@ if (!$password) {
     "name" => "Автор · демо",
     "staff_role" => "сотрудник",
     "role" => "author",
+    "password" => $password,
+]);
+\ReviewFactory\createUser($db, [
+    "login" => "admin-review",
+    "name" => "Таня · демо",
+    "staff_role" => "хозяйка",
+    "role" => "admin",
     "password" => $password,
 ]);
 $products = [
@@ -94,4 +103,30 @@ foreach (["deluxe" => 72, "spicery" => 48, "banka" => 19, "specii" => 8] as $sou
     gmdate("Y-m-d H:i:s"),
 ]);
 \ReviewFactory\rebuildQueue($db);
+$review = [
+    "id" => 17,
+    "product_id" => 1,
+    "author" => "Покупатель · тест",
+    "body" => "Подскажите, как лучше хранить корицу после открытия?",
+    "rating" => 3,
+    "status" => 1,
+    "published_at" => "2026-10-20 12:00:00",
+];
+\ReviewFactory\execute(
+    $db,
+    "INSERT INTO reply_reviews(id,product_id,product_name,author,body,rating,status,published_at,shop_reply,context_hash,source_database,search_text,updated_at) VALUES(17,1,?,?,?,?,?,?,?,?,?,?,?)",
+    [
+        $products[0][0],
+        $review["author"],
+        $review["body"],
+        3,
+        1,
+        $review["published_at"],
+        "",
+        \ReviewFactory\replyContext($review),
+        "lavkasp_test",
+        mb_strtolower($products[0][0] . " " . $review["body"]),
+        \ReviewFactory\now(),
+    ],
+);
 echo "Synthetic fixture created\n";

@@ -122,7 +122,33 @@ function database(string $directory): \PDO
       CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY,user_id INTEGER,action TEXT NOT NULL,entity TEXT NOT NULL,detail TEXT NOT NULL,created_at TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS drafts_author ON drafts(author_id,state);
-      CREATE INDEX IF NOT EXISTS reviews_product ON shop_reviews(product_id);");
+      CREATE INDEX IF NOT EXISTS reviews_product ON shop_reviews(product_id);
+      CREATE TABLE IF NOT EXISTS reply_reviews(id INTEGER PRIMARY KEY,product_id INTEGER NOT NULL,product_name TEXT NOT NULL,author TEXT NOT NULL,body TEXT NOT NULL,plus_text TEXT NOT NULL DEFAULT '',minus_text TEXT NOT NULL DEFAULT '',rating INTEGER NOT NULL,status INTEGER NOT NULL,published_at TEXT NOT NULL,shop_reply TEXT NOT NULL,context_hash TEXT NOT NULL,source_database TEXT NOT NULL,available INTEGER NOT NULL DEFAULT 1,search_text TEXT NOT NULL,updated_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS reply_drafts(id TEXT PRIMARY KEY,review_id INTEGER NOT NULL,user_id INTEGER NOT NULL REFERENCES users(id),body TEXT NOT NULL,base_reply TEXT NOT NULL,context_hash TEXT NOT NULL,source_database TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'draft',revision INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+      CREATE UNIQUE INDEX IF NOT EXISTS reply_one_open ON reply_drafts(review_id) WHERE state IN ('draft','queued');
+      CREATE TABLE IF NOT EXISTS reply_jobs(id INTEGER PRIMARY KEY,draft_id TEXT NOT NULL UNIQUE REFERENCES reply_drafts(id),payload TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'pending',error TEXT,attempts INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL);");
+    // Additive migration; existing accounts, credentials and drafts stay intact.
+    $db->exec("BEGIN IMMEDIATE");
+    try {
+        if (!in_array("work_mode", array_column(rows($db, "PRAGMA table_info(users)"), "name"), true)) {
+            $db->exec("ALTER TABLE users ADD COLUMN work_mode TEXT NOT NULL DEFAULT 'author'");
+        }
+        if (!one($db, "SELECT value FROM settings WHERE key='reply_workspace_v1'")) {
+            execute(
+                $db,
+                "UPDATE users SET work_mode='replies' WHERE role='moderator' OR (role='admin' AND lower(login) IN ('admin-review','tanya'))",
+            );
+            execute(
+                $db,
+                "DELETE FROM assignments WHERE user_id IN (SELECT id FROM users WHERE work_mode='replies')",
+            );
+            execute($db, "INSERT INTO settings VALUES('reply_workspace_v1','1')");
+        }
+        $db->exec("COMMIT");
+    } catch (\Throwable $e) {
+        $db->exec("ROLLBACK");
+        throw $e;
+    }
     execute($db, "INSERT OR IGNORE INTO settings VALUES('weights',?)", [
         json(["competitor" => 55, "gap" => 20, "sales" => 15, "views" => 10]),
     ]);
@@ -134,13 +160,19 @@ function safeUser(array $user): array
 {
     return array_intersect_key(
         $user,
-        array_flip(["id", "login", "name", "staff_role", "role", "active"]),
+        array_flip(["id", "login", "name", "staff_role", "role", "active", "work_mode"]),
     );
 }
 function requireRole(array $user, array $roles): void
 {
     if (!in_array($user["role"], $roles, true)) {
         throw new Problem("Недостаточно прав", 403);
+    }
+}
+function requireAuthoring(array $user): void
+{
+    if (($user["work_mode"] ?? "author") === "replies") {
+        throw new Problem("Эта учётная запись предназначена для ответов магазина", 403);
     }
 }
 function createUser(\PDO $db, array $body, ?int $actor = null): array
@@ -156,6 +188,13 @@ function createUser(\PDO $db, array $body, ?int $actor = null): array
         throw new Problem("Сократите имя или должность для подписи");
     }
     $role = enum($body["role"] ?? "", ["admin", "author", "moderator"]);
+    $mode = enum($body["work_mode"] ?? "auto", ["auto", "author", "replies"]);
+    if ($mode === "auto") {
+        $mode = $role === "author" ? "author" : "replies";
+    }
+    if ($role === "author" && $mode === "replies") {
+        throw new Problem("Для ответов нужна роль администратора или редактора");
+    }
     $password = text($body["password"] ?? "", 512, true);
     if (mb_strlen($password) < 12) {
         throw new Problem("Пароль должен содержать минимум 12 символов");
@@ -168,17 +207,24 @@ function createUser(\PDO $db, array $body, ?int $actor = null): array
         "time_cost" => 3,
         "threads" => 1,
     ]);
-    return transaction($db, function () use ($db, $login, $name, $staffRole, $role, $hash, $actor) {
+    return transaction($db, function () use (
+        $db,
+        $login,
+        $name,
+        $staffRole,
+        $role,
+        $hash,
+        $actor,
+        $mode
+    ) {
         if (one($db, "SELECT id FROM users WHERE login=?", [$login])) {
             throw new Problem("Логин уже занят", 409);
         }
-        execute($db, "INSERT INTO users(login,name,staff_role,role,hash) VALUES(?,?,?,?,?)", [
-            $login,
-            $name,
-            $staffRole,
-            $role,
-            $hash,
-        ]);
+        execute(
+            $db,
+            "INSERT INTO users(login,name,staff_role,role,hash,work_mode) VALUES(?,?,?,?,?,?)",
+            [$login, $name, $staffRole, $role, $hash, $mode],
+        );
         $id = (int) $db->lastInsertId();
         audit($db, $actor, "user.created", (string) $id, ["role" => $role]);
         return safeUser(one($db, "SELECT * FROM users WHERE id=?", [$id]));
@@ -364,6 +410,7 @@ function rebuildQueue(\PDO $db): void
 }
 function claim(\PDO $db, array $user, int $count = 1): array
 {
+    requireAuthoring($user);
     integer($count, 1, 10);
     if (!in_array($count, [1, 5, 10], true)) {
         throw new Problem("Размер пакета: 1, 5 или 10");
@@ -504,6 +551,7 @@ function guidance(array $p): array
 }
 function saveDraft(\PDO $db, array $user, array $body): array
 {
+    requireAuthoring($user);
     $productId = integer($body["product_id"] ?? null, 1, 2147483647);
     $p = one($db, "SELECT * FROM products WHERE id=?", [$productId]);
     if (!$p || !$p["active"]) {
@@ -610,6 +658,7 @@ function saveDraft(\PDO $db, array $user, array $body): array
 }
 function submit(\PDO $db, array $user, string $id, int $revision): array
 {
+    requireAuthoring($user);
     return transaction($db, function () use ($db, $user, $id, $revision) {
         $d = one($db, "SELECT * FROM drafts WHERE id=? AND author_id=?", [$id, $user["id"]]);
         if (!$d) {

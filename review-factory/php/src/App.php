@@ -2,6 +2,7 @@
 declare(strict_types=1);
 namespace ReviewFactory;
 require_once __DIR__ . "/Core.php";
+require_once __DIR__ . "/Replies.php";
 function response($data, int $status = 200): void
 {
     http_response_code($status);
@@ -36,11 +37,12 @@ function api(\PDO $db, string $path, string $method, array $body, ?array $user):
             "environment" => one($db, "SELECT value FROM settings WHERE key='environment'")["value"],
             "health" => rows(
                 $db,
-                "SELECT key,value FROM settings WHERE key IN ('shop_updated','queue_updated','matches_updated','bridge_ready','competitors_last_run','sync_error')",
+                "SELECT key,value FROM settings WHERE key IN ('shop_updated','queue_updated','matches_updated','bridge_ready','competitors_last_run','sync_error','replies_updated','replies_last_run','replies_error')",
             ),
         ];
     }
     if ($path === "claim" && $method === "POST") {
+        requireAuthoring($user);
         return ["ids" => claim($db, $user, integer($body["count"] ?? 1, 1, 10))];
     }
     if ($path === "assignments") {
@@ -56,12 +58,15 @@ function api(\PDO $db, string $path, string $method, array $body, ?array $user):
         return product($db, (int) $m[1], $user);
     }
     if ($path === "drafts" && $method === "POST") {
+        requireAuthoring($user);
         return saveDraft($db, $user, $body);
     }
     if (preg_match('~^drafts/([a-f0-9]{32})/submit$~D', $path, $m) && $method === "POST") {
+        requireAuthoring($user);
         return submit($db, $user, $m[1], integer($body["revision"] ?? null, 1, 2147483647));
     }
     if (preg_match('~^drafts/([a-f0-9]{32})/copy$~D', $path, $m) && $method === "POST") {
+        requireAuthoring($user);
         $d = one($db, "SELECT * FROM drafts WHERE id=? AND author_id=? AND state='historical'", [
             $m[1],
             $user["id"],
@@ -140,6 +145,55 @@ function api(\PDO $db, string $path, string $method, array $body, ?array $user):
     }
     if ($path === "stats") {
         return stats($db, $user);
+    }
+    if ($path === "replies" && $method === "GET") {
+        return replyList($db, $user);
+    }
+    if ($path === "replies/search" && $method === "POST") {
+        return replyList($db, $user, $body);
+    }
+    if (preg_match('~^replies/([1-9][0-9]{0,9})$~D', $path, $m) && $method === "GET") {
+        return replyDetail($db, $user, (int) $m[1]);
+    }
+    if ($path === "reply-drafts" && $method === "POST") {
+        return saveReply($db, $user, $body);
+    }
+    if (preg_match('~^reply-drafts/([a-f0-9]{32})/submit$~D', $path, $m) && $method === "POST") {
+        return queueReply($db, $user, $m[1], integer($body["revision"] ?? null, 1, 2147483647));
+    }
+    if ($path === "reply-history" && $method === "GET") {
+        requireRole($user, ["admin", "moderator"]);
+        return [
+            "items" => rows(
+                $db,
+                "SELECT d.*,r.product_name,r.author,r.available,j.error FROM reply_drafts d JOIN reply_reviews r ON r.id=d.review_id LEFT JOIN reply_jobs j ON j.draft_id=d.id WHERE d.user_id=? ORDER BY d.updated_at DESC LIMIT 100",
+                [$user["id"]],
+            ),
+        ];
+    }
+    if (preg_match('~^replies/([1-9][0-9]{0,9})/restart$~D', $path, $m) && $method === "POST") {
+        requireRole($user, ["admin", "moderator"]);
+        transaction($db, function () use ($db, $m, $user) {
+            $d = one(
+                $db,
+                "SELECT * FROM reply_drafts WHERE review_id=? AND state IN ('draft','queued')",
+                [(int) $m[1]],
+            );
+            if ($d) {
+                if ((int) $d["user_id"] !== (int) $user["id"] || $d["state"] !== "draft") {
+                    throw new Problem(
+                        "Дождитесь сохранения ответа или завершения работы другого сотрудника",
+                        409,
+                    );
+                }
+                execute($db, "UPDATE reply_drafts SET state='conflict',updated_at=? WHERE id=?", [
+                    now(),
+                    $d["id"],
+                ]);
+                audit($db, (int) $user["id"], "reply.restarted", $d["id"]);
+            }
+        });
+        return ["ok" => true];
     }
     requireRole($user, ["admin"]);
     if ($path === "users" && $method === "GET") {
@@ -299,7 +353,12 @@ function run(string $directory, string $publicUrl, bool $development = false): v
                 throw new Problem("Метод не поддерживается", 405);
             }
             $name = substr($route, 7);
-            $files = ["app.js" => "application/javascript", "style.css" => "text/css"];
+            $files = [
+                "app.js" => "application/javascript",
+                "style.css" => "text/css",
+                "replies.js" => "application/javascript",
+                "replies.css" => "text/css",
+            ];
             if (!isset($files[$name])) {
                 throw new Problem("Файл не найден", 404);
             }
@@ -321,7 +380,9 @@ function run(string $directory, string $publicUrl, bool $development = false): v
                     hash(
                         "sha256",
                         hash_file("sha256", dirname(__DIR__) . "/static/app.js") .
-                            hash_file("sha256", dirname(__DIR__) . "/static/style.css"),
+                            hash_file("sha256", dirname(__DIR__) . "/static/style.css") .
+                            hash_file("sha256", dirname(__DIR__) . "/static/replies.js") .
+                            hash_file("sha256", dirname(__DIR__) . "/static/replies.css"),
                     ),
                     0,
                     24,

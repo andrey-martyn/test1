@@ -24,7 +24,7 @@ function migrationMapping(array $source, array $target, array $overrides = []): 
             if ($value !== "") {
                 $indexes[$key][$value][] = (int) $p["id"];
             }
-        };
+        }
     }
     $targetIds = array_map("intval", array_column($target, "id"));
     $manual = [];
@@ -119,6 +119,24 @@ function migrateCopy(\PDO $source, string $destination, array $mapping): array
                         [$d["id"], json($d), now()],
                     );
                 }
+                foreach (rows($copy, "SELECT * FROM reply_drafts") as $d) {
+                    execute(
+                        $copy,
+                        "INSERT INTO migration_archive(entity,payload,archived_at) VALUES(?,?,?)",
+                        ["reply:" . $d["id"], json($d), now()],
+                    );
+                }
+                foreach (rows($copy, "SELECT * FROM reply_jobs") as $j) {
+                    execute(
+                        $copy,
+                        "INSERT INTO migration_archive(entity,payload,archived_at) VALUES(?,?,?)",
+                        ["reply-job:" . $j["draft_id"], json($j), now()],
+                    );
+                }
+                // Native review IDs belong to the source shop. Do not replay TEST replies.
+                $copy->exec(
+                    'DELETE FROM reply_jobs;DELETE FROM reply_drafts;DELETE FROM reply_reviews;DELETE FROM settings WHERE key IN (\'replies_updated\',\'replies_last_run\',\'replies_error\')',
+                );
                 $copy->exec(
                     "DELETE FROM sessions; DELETE FROM attempts; DELETE FROM outbox; DELETE FROM shop_reviews; DELETE FROM queue; DELETE FROM settings WHERE key IN ('shop_updated','queue_updated','matches_updated','competitors_last_run','sync_error','maintenance'); UPDATE drafts SET state='historical',review_id=NULL,revision=revision+1 WHERE state<>'draft'; UPDATE products SET active=0,stock=NULL,customer_count=NULL,customer_rating=NULL,sales90=NULL,views30=NULL,cooldown_until=NULL; UPDATE settings SET value='0' WHERE key='bridge_ready';UPDATE settings SET value='production' WHERE key='environment'",
                 );

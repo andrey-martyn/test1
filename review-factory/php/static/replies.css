@@ -1,0 +1,153 @@
+.reply-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.reply-toolbar form {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+  min-width: 220px;
+}
+.reply-toolbar input {
+  margin: 0;
+}
+.reply-toolbar label {
+  min-width: 150px;
+}
+.reply-toolbar select {
+  margin: 0;
+}
+.reply-list {
+  display: grid;
+  gap: 14px;
+}
+.reply-card {
+  padding: 22px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+.reply-card > div {
+  flex: 1;
+  min-width: 0;
+}
+.reply-card h2 {
+  font-size: 16px;
+  margin-bottom: 10px;
+}
+.reply-excerpt {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+.reply-rating {
+  display: inline-block;
+  margin-left: 12px;
+  color: #956029;
+  font-size: 13px;
+  font-weight: 650;
+}
+.reply-pagination,
+.reply-back {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 20px;
+}
+.reply-workspace {
+  align-items: start;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 24px;
+  margin-top: 20px;
+}
+.reply-review-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.reply-original,
+.reply-existing p,
+.reply-recent p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.75;
+}
+.reply-original {
+  margin-top: 24px;
+}
+.reply-existing {
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+  margin-top: 20px;
+}
+.reply-banner {
+  background: #f8edcf;
+  border-radius: 8px;
+  padding: 14px;
+  font-size: 13px;
+}
+.reply-recent {
+  border-top: 1px solid var(--line);
+  margin-top: 24px;
+  padding-top: 20px;
+}
+.reply-recent details {
+  margin: 12px 0;
+  font-size: 13px;
+}
+.reply-recent summary {
+  cursor: pointer;
+  min-height: 35px;
+}
+.reply-workspace textarea {
+  margin-top: 10px;
+  min-height: 260px;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+@media (max-width: 850px) {
+  .reply-workspace {
+    align-items: start;
+    grid-template-columns: 1fr;
+  }
+  .reply-card {
+    padding: 18px;
+    display: block;
+  }
+  .reply-card button {
+    width: 100%;
+    margin-top: 10px;
+  }
+  .reply-toolbar {
+    display: block;
+  }
+  .reply-toolbar > label,
+  .reply-toolbar > button {
+    margin-top: 12px;
+  }
+  .reply-toolbar form {
+    min-width: 0;
+  }
+  .reply-pagination {
+    font-size: 12px;
+    gap: 8px;
+  }
+  .reply-pagination button {
+    padding: 10px;
+  }
+  .reply-original {
+    font-size: 14px;
+  }
+}

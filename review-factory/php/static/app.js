@@ -107,7 +107,7 @@ function healthRows(rows) {
   state.health = Object.fromEntries((rows || []).map((r) => [r.key, r.value]));
 }
 function navigation() {
-  return `<nav aria-label="Разделы"><button data-view="write" class="${state.view === "write" ? "active" : ""}">Написать материал</button><button data-view="drafts" class="${state.view === "drafts" ? "active" : ""}">Мои материалы</button><button data-view="stats" class="${state.view === "stats" ? "active" : ""}">Результаты</button>${state.user.role === "admin" ? `<button data-view="team" class="${state.view === "team" ? "active" : ""}">Команда и настройки</button><button data-view="queue" class="${state.view === "queue" ? "active" : ""}">Очередь товаров</button>` : ""}</nav>`;
+  return `<nav aria-label="Разделы">${state.user.work_mode!=="replies"?`<button data-view="write" class="${state.view === "write" ? "active" : ""}">Написать материал</button>`:""}${["admin","moderator"].includes(state.user.role)?`<button data-view="replies" class="${state.view === "replies" ? "active" : ""}">Ответы магазина</button>`:""}<button data-view="drafts" class="${state.view === "drafts" ? "active" : ""}">${state.user.work_mode==="replies"?"Материалы команды":"Мои материалы"}</button><button data-view="stats" class="${state.view === "stats" ? "active" : ""}">Результаты</button>${state.user.role === "admin" ? `<button data-view="team" class="${state.view === "team" ? "active" : ""}">Команда и настройки</button><button data-view="queue" class="${state.view === "queue" ? "active" : ""}">Очередь товаров</button>` : ""}</nav>`;
 }
 function intro(title, description) {
   return `${navigation()}<div class="intro"><div><div class="eyebrow">ОПЫТ КОМАНДЫ · ЛАВКА СПЕЦИЙ</div><h1>${title}</h1><p>${description}</p></div><span class="environment">${state.environment === "production" ? "РАБОЧИЙ САЙТ" : "TEST · РАЗРАБОТКА"}</span></div>`;
@@ -121,7 +121,7 @@ async function start() {
     healthRows(r.health);
     $("#account").innerHTML =
       `<span>${esc(state.user.name)}</span><button class="quiet small" id="logout">Выйти</button>`;
-    await show("write");
+    await show(state.user.work_mode === "replies" ? "replies" : "write");
   } catch (e) {
     if (state.user) notice(e.message, true);
   }
@@ -143,7 +143,8 @@ async function show(view) {
   main.innerHTML =
     navigation() + '<div class="skeleton">Загружаем мастерскую…</div>';
   try {
-    if (view === "write") await loadWork();
+    if (view === "replies") await renderReplies();
+    else if (view === "write") await loadWork();
     else if (view === "drafts") await renderDrafts();
     else if (view === "stats") await renderStats();
     else if (view === "team") await renderTeam();
@@ -312,7 +313,7 @@ async function renderDrafts() {
       state.user.role === "author" ? "Мои материалы." : "Материалы команды.",
       "Черновики остаются в мастерской. Проверка и активация отправленных материалов — в админке магазина.",
     ) +
-    `<div class="table-wrap"><table><thead><tr><th>Товар и текст</th><th>Автор</th><th>Статус</th><th>Обновлено</th></tr></thead><tbody>${r.items.map((d) => `<tr><td><strong>${esc(d.product_name)}</strong><details><summary>${num(d.rating)} / 5 · ${esc(depths[(d.body.match(/\S+/g) || []).length <= 30 ? "short" : (d.body.match(/\S+/g) || []).length <= 100 ? "normal" : "deep"])}</summary><p>${esc(d.body)}</p></details>${d.state === "historical" && Number(d.author_id) === Number(state.user.id) ? `<button class="small" data-copy="${d.id}">Подготовить к рабочему сайту</button>` : ""}${d.state === "draft" && Number(d.author_id) === Number(state.user.id) ? `<button class="small" data-edit="${d.product_id}">Продолжить</button>` : ""}</td><td>${esc(d.author_name)}</td><td><span class="status ${esc(d.state)}">${esc(labels[d.state])}</span>${d.last_error ? `<p class="error-text">${d.last_error === "extension_not_verified" ? "Ожидает настройки передачи в магазин. Текст сохранён." : d.last_error === "dispatch_conflict" ? "Передача приостановлена: конфликт записи. Нужна проверка администратора." : "Передача не завершилась; обработчик повторит попытку."}</p>` : ""}</td><td>${date(d.updated_at)}</td></tr>`).join("") || '<tr><td colspan="4">Материалов пока нет.</td></tr>'}</tbody></table></div><p class="caption">Статусы магазина обновляются фоновым обработчиком. Отключённая запись остаётся «На модерации»: отдельного статуса отказа в стандартной таблице ocStore нет.</p>`;
+    `<div class="table-wrap"><table><thead><tr><th>Товар и текст</th><th>Автор</th><th>Статус</th><th>Обновлено</th></tr></thead><tbody>${r.items.map((d) => `<tr><td><strong>${esc(d.product_name)}</strong><details><summary>${num(d.rating)} / 5 · ${esc(depths[(d.body.match(/\S+/g) || []).length <= 30 ? "short" : (d.body.match(/\S+/g) || []).length <= 100 ? "normal" : "deep"])}</summary><p>${esc(d.body)}</p></details>${d.state === "historical" && state.user.work_mode!=="replies" && Number(d.author_id) === Number(state.user.id) ? `<button class="small" data-copy="${d.id}">Подготовить к рабочему сайту</button>` : ""}${d.state === "draft" && state.user.work_mode!=="replies" && Number(d.author_id) === Number(state.user.id) ? `<button class="small" data-edit="${d.product_id}">Продолжить</button>` : ""}</td><td>${esc(d.author_name)}</td><td><span class="status ${esc(d.state)}">${esc(labels[d.state])}</span>${d.last_error ? `<p class="error-text">${d.last_error === "extension_not_verified" ? "Ожидает настройки передачи в магазин. Текст сохранён." : d.last_error === "dispatch_conflict" ? "Передача приостановлена: конфликт записи. Нужна проверка администратора." : "Передача не завершилась; обработчик повторит попытку."}</p>` : ""}</td><td>${date(d.updated_at)}</td></tr>`).join("") || '<tr><td colspan="4">Материалов пока нет.</td></tr>'}</tbody></table></div><p class="caption">Статусы магазина обновляются фоновым обработчиком. Отключённая запись остаётся «На модерации»: отдельного статуса отказа в стандартной таблице ocStore нет.</p>`;
 }
 async function renderStats() {
   const r = await request("stats");
