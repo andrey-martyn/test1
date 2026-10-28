@@ -3,15 +3,16 @@
 declare(strict_types=1);
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
 require_once dirname(__DIR__) . '/src/common.php';
+require_once dirname(__DIR__) . '/src/HostingLayout.php';
 
 // Short update command for the existing installation. This never switches an
 // environment, initializes a store or runs a price job.
 try {
     if (PHP_VERSION_ID < 80200) throw new RuntimeException('Запустите команду через PHP 8.2 CLI.');
     $app = realpath(dirname(__DIR__));
-    $home = $app === false ? false : realpath(dirname($app, 3));
-    if ($home === false) throw new RuntimeException('Не найден каталог существующей установки.');
-    $data = $home . '/analytics-private-test';
+    if ($app === false) throw new RuntimeException('Не найден каталог существующей установки.');
+    $layout=\Lavka\hosting_layout_for_application($app);
+    $home=$layout['home'];$data=$layout['data_dir'];
     $metadataPath = $data . '/deployment-php.json';
     $sandboxPath = $data . '/sandbox.json';
     foreach ([$data, $metadataPath, $sandboxPath] as $path) {

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 require_once dirname(__DIR__) . '/src/common.php';
+require_once dirname(__DIR__) . '/src/HostingLayout.php';
 function refresh_expect(bool $ok,string $message): void { if (!$ok) throw new RuntimeException($message); }
 function refresh_run(string $script): array {
     $process=proc_open(escapeshellarg(PHP_BINARY).' '.escapeshellarg($script),[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes);
@@ -33,5 +34,15 @@ try {
     $marker['database']='lavkasp_test';$meta['document_root']=$home.'/www/analytics';$write();$result=refresh_run($app.'/bin/refresh_sandbox.php');refresh_expect($result[0]!==0&&$result[1]==='','Wrong public path rejected');
     $meta['document_root']=$home.'/test/analytics';$write();rename($data.'/deployment-php.json',$data.'/metadata.json');symlink($data.'/metadata.json',$data.'/deployment-php.json');
     $result=refresh_run($app.'/bin/refresh_sandbox.php');refresh_expect($result[0]!==0&&$result[1]==='','Symlink metadata rejected');
+    $organized=\Lavka\hosting_layout_paths($home,'organized');$organizedApp=$organized['application_root'];$organizedData=$organized['data_dir'];
+    mkdir($organizedApp.'/bin',0700,true);mkdir($organizedApp.'/src',0700);mkdir($organizedData,0700,true);
+    copy($source,$organizedApp.'/bin/refresh_sandbox.php');foreach(glob(dirname(__DIR__).'/src/*.php') as $file)copy($file,$organizedApp.'/src/'.basename($file));
+    file_put_contents($organizedApp.'/bin/deploy.php','<?php echo json_encode($argv)."\\n";');
+    file_put_contents($organizedData.'/deployment-php.json',json_encode(['application_root'=>$organizedApp,'data_dir'=>$organizedData,'document_root'=>$home.'/test/analytics','shop_root'=>$home.'/test','public_url'=>'https://test.lavka-speciy.com/analytics']));
+    file_put_contents($organizedData.'/sandbox.json',json_encode(['environment'=>'sandbox','database'=>'lavkasp_test','data_dir'=>$organizedData]));
+    $result=refresh_run($organizedApp.'/bin/refresh_sandbox.php');$args=json_decode(explode("\n",trim($result[1]))[0],true);
+    refresh_expect($result[0]===0&&in_array($organizedData,$args,true)&&!in_array($data,$args,true),'Organized application selects organized data and preserves public roots');
+    rename($organizedData.'/deployment-php.json',$organizedData.'/metadata.json');$result=refresh_run($organizedApp.'/bin/refresh_sandbox.php');
+    refresh_expect($result[0]!==0&&$result[1]==='','New application never falls back to an old private directory');
     echo "{\"existing_sandbox_refresh\":true,\"wrong_environment_and_paths_rejected\":true,\"shop_writes\":false}\n";
 } finally { refresh_remove($home); }

@@ -91,7 +91,7 @@ function hosting_inventory(string $root,?string $cronText=null): array
     $real=realpath($root);
     if(!$real||$real!==rtrim($root,'/')||is_link($root)||!is_dir($root))throw new InvalidArgumentException('Нужен существующий абсолютный --root без симлинка.');
     $manifests=[];$adminPaths=[];
-    foreach(['analytics-private','analytics-private-test'] as $name){
+    foreach(['analytics-private','analytics-private-test','private/analytics/previous','private/analytics/test'] as $name){
         if(is_link($real.'/'.$name)){$manifests[]=['file'=>$real.'/'.$name,'state'=>'symlink_directory_not_read'];continue;}
         foreach(['deployment-php.json','sandbox.json'] as $json){
             $file=$real.'/'.$name.'/'.$json;
@@ -102,7 +102,7 @@ function hosting_inventory(string $root,?string $cronText=null): array
         }
     }
     $reviewManifests=[];
-    foreach(['review-factory-private-test','review-harvester-private'] as $name){
+    foreach(['review-factory-private-test','review-harvester-private','private/review-factory/test'] as $name){
         $directory=$real.'/'.$name;$file=$directory.'/instance.json';
         if(is_link($directory)){$reviewManifests[]=['file'=>$directory,'state'=>'symlink_directory_not_read'];continue;}
         if(file_exists($file)||is_link($file))$reviewManifests[]=hosting_inventory_manifest($file);
