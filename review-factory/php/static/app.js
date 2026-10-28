@@ -107,6 +107,7 @@ function healthRows(rows) {
   state.health = Object.fromEntries((rows || []).map((r) => [r.key, r.value]));
 }
 function navigation() {
+  if(state.user.work_mode==="testing") return `<nav aria-label="Разделы"><button data-view="simulation" class="${state.view==='simulation'?'active':''}">Очередь тестовых отзывов</button><button data-view="simulation-history" class="${state.view==='simulation-history'?'active':''}">Тестовые записи</button>${state.user.role==='admin'?'<button data-view="team">Команда и настройки</button>':''}</nav>`;
   return `<nav aria-label="Разделы">${state.user.work_mode!=="replies"?`<button data-view="write" class="${state.view === "write" ? "active" : ""}">Написать материал</button>`:""}${["admin","moderator"].includes(state.user.role)?`<button data-view="replies" class="${state.view === "replies" ? "active" : ""}">Ответы магазина</button>`:""}<button data-view="drafts" class="${state.view === "drafts" ? "active" : ""}">${state.user.work_mode==="replies"?"Материалы команды":"Мои материалы"}</button><button data-view="stats" class="${state.view === "stats" ? "active" : ""}">Результаты</button>${state.user.role === "admin" ? `<button data-view="team" class="${state.view === "team" ? "active" : ""}">Команда и настройки</button><button data-view="queue" class="${state.view === "queue" ? "active" : ""}">Очередь товаров</button>` : ""}</nav>`;
 }
 function intro(title, description) {
@@ -121,7 +122,7 @@ async function start() {
     healthRows(r.health);
     $("#account").innerHTML =
       `<span>${esc(state.user.name)}</span><button class="quiet small" id="logout">Выйти</button>`;
-    await show(state.user.work_mode === "replies" ? "replies" : "write");
+    await show(state.user.work_mode === "testing" ? (state.environment==="test"?"simulation":"stats") : state.user.work_mode === "replies" ? "replies" : "write");
   } catch (e) {
     if (state.user) notice(e.message, true);
   }
@@ -143,7 +144,9 @@ async function show(view) {
   main.innerHTML =
     navigation() + '<div class="skeleton">Загружаем мастерскую…</div>';
   try {
-    if (view === "replies") await renderReplies();
+    if (view === "simulation") await simulationWork();
+    else if (view === "simulation-history") await simulationHistory();
+    else if (view === "replies") await renderReplies();
     else if (view === "write") await loadWork();
     else if (view === "drafts") await renderDrafts();
     else if (view === "stats") await renderStats();

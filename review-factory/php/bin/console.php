@@ -8,6 +8,7 @@ require_once dirname(__DIR__) . "/src/Core.php";
 require_once dirname(__DIR__) . "/src/Shop.php";
 require_once dirname(__DIR__) . "/src/Competitors.php";
 require_once dirname(__DIR__) . "/src/Replies.php";
+require_once dirname(__DIR__) . "/src/Simulation.php";
 use function ReviewFactory\json;
 use function ReviewFactory\database;
 use ReviewFactory\Problem;
@@ -281,6 +282,19 @@ function rf_run(string $command, array $a): array
             \ReviewFactory\audit($db, null, "password.reset", (string) $user["id"]);
             return ["state" => "password_reset"];
         }
+        if ($command === "simulation-status") {
+            $sim = \ReviewFactory\simulationDb($db);
+            return [
+                "state" => "private_simulation_ready",
+                "environment" => $c["environment"],
+                "shop_publication" => false,
+                "products" => (int) \ReviewFactory\one(
+                    $db,
+                    "SELECT count(*) n FROM products WHERE active=1",
+                )["n"],
+                "entries" => (int) \ReviewFactory\one($sim, "SELECT count(*) n FROM entries")["n"],
+            ];
+        }
         if ($command === "status") {
             return [
                 "state" => "ok",
@@ -355,6 +369,24 @@ function rf_run(string $command, array $a): array
         ) {
             if ($command === "review-schema" && $c["environment"] !== "test") {
                 throw new Problem("reply_diagnostics_test_only");
+            }
+            if (
+                $command === "reply-worker" &&
+                !(int) \ReviewFactory\one(
+                    $db,
+                    "SELECT count(*) n FROM users WHERE active=1 AND role IN ('admin','moderator') AND work_mode<>'testing'",
+                )["n"]
+            ) {
+                return ["state" => "reply_workspace_disabled"];
+            }
+            if (
+                $command === "dispatch" &&
+                !(int) \ReviewFactory\one(
+                    $db,
+                    "SELECT count(*) n FROM users WHERE active=1 AND work_mode='author'",
+                )["n"]
+            ) {
+                return ["state" => "native_authoring_disabled"];
             }
             $cfg = \ReviewFactory\shopConfig($c["shop_root"], $c["environment"]);
             $shop = \ReviewFactory\shopConnect($cfg);
@@ -449,6 +481,12 @@ function rf_run(string $command, array $a): array
                 }
                 $copy->exec("DELETE FROM sessions;DELETE FROM attempts;PRAGMA wal_checkpoint(TRUNCATE)");
                 $copy = null;
+                if (is_file($dir . "/synthetic-reviews.sqlite3")) {
+                    $sim = \ReviewFactory\simulationDb($db);
+                    $sim->exec("VACUUM INTO " . $sim->quote($tmp . "/synthetic-reviews.sqlite3"));
+                    chmod($tmp . "/synthetic-reviews.sqlite3", 0600);
+                    $sim = null;
+                }
                 copy($dir . "/instance.json", $tmp . "/instance.json");
                 chmod($tmp . "/instance.json", 0600);
                 if (!rename($tmp, $dest)) {
@@ -464,7 +502,7 @@ function rf_run(string $command, array $a): array
             return ["state" => "backup_created"];
         }
         throw new Problem(
-            "Команды: setup, user, reset-password, sync, collect, queue, dispatch, status, backup, deploy, resume, review-schema, reply-sync, reply-worker",
+            "Команды: setup, user, reset-password, sync, collect, queue, dispatch, status, simulation-status, backup, deploy, resume, review-schema, reply-sync, reply-worker",
         );
     } catch (\Throwable $e) {
         if (

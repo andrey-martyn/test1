@@ -37,6 +37,7 @@ try {
         "name" => "Владелец",
         "staff_role" => "хозяин",
         "role" => "admin",
+        "work_mode" => "replies",
         "password" => "Synthetic-only-password",
     ]);
     $a = ReviewFactory\createUser($db, [
@@ -44,6 +45,7 @@ try {
         "name" => "Автор А",
         "staff_role" => "сотрудник",
         "role" => "author",
+        "work_mode" => "author",
         "password" => "Synthetic-only-password",
     ]);
     $b = ReviewFactory\createUser($db, [
@@ -51,6 +53,7 @@ try {
         "name" => "Автор Б",
         "staff_role" => "сотрудник",
         "role" => "author",
+        "work_mode" => "author",
         "password" => "Synthetic-only-password",
     ]);
     check(!isset($a["hash"]), "Password hash does not leave user response");
@@ -60,6 +63,7 @@ try {
             "name" => "А",
             "staff_role" => "сотрудник",
             "role" => "admin",
+            "work_mode" => "replies",
             "password" => "Synthetic-only-password",
         ]);
     }, 409);

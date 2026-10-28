@@ -20,7 +20,7 @@ with sync_playwright() as p:
     page=ctx.new_page();errors=[]
     page.on('pageerror',lambda e:errors.append(str(e)))
     page.goto(base)
-    page.locator('input[name=login]').fill('admin-review')
+    page.locator('input[name=login]').fill('reply-demo')
     page.locator('input[name=password]').fill(password)
     page.get_by_role('button',name='Войти в мастерскую').click()
     page.get_by_role('button',name='Ответить',exact=True).wait_for()

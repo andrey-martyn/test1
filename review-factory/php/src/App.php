@@ -3,6 +3,7 @@ declare(strict_types=1);
 namespace ReviewFactory;
 require_once __DIR__ . "/Core.php";
 require_once __DIR__ . "/Replies.php";
+require_once __DIR__ . "/Simulation.php";
 function response($data, int $status = 200): void
 {
     http_response_code($status);
@@ -30,6 +31,27 @@ function requestBody(): array
 }
 function api(\PDO $db, string $path, string $method, array $body, ?array $user): array
 {
+    if ($path === "simulation/claim" && $method === "POST") {
+        return simulationClaim($db, $user, integer($body["count"] ?? 1, 1, 10));
+    }
+    if ($path === "simulation/summary" && $method === "GET") {
+        return simulationSummary($db, $user);
+    }
+    if (preg_match('~^simulation/entries/([a-f0-9]{32})$~D', $path, $m) && $method === "GET") {
+        return simulationEntry($db, $user, $m[1]);
+    }
+    if (
+        preg_match('~^simulation/entries/([a-f0-9]{32})/(draft|save)$~D', $path, $m) &&
+        $method === "POST"
+    ) {
+        return simulationSave($db, $user, $m[1], $body, $m[2] === "save");
+    }
+    if (preg_match('~^simulation/entries/([a-f0-9]{32})/skip$~D', $path, $m) && $method === "POST") {
+        return simulationSkip($db, $user, $m[1]);
+    }
+    if (preg_match('~^simulation/preview/([1-9][0-9]{0,9})$~D', $path, $m) && $method === "GET") {
+        return simulationPreview($db, $user, (int) $m[1]);
+    }
     if ($path === "me") {
         return [
             "user" => safeUser($user),
@@ -358,6 +380,8 @@ function run(string $directory, string $publicUrl, bool $development = false): v
                 "style.css" => "text/css",
                 "replies.js" => "application/javascript",
                 "replies.css" => "text/css",
+                "simulation.js" => "application/javascript",
+                "simulation.css" => "text/css",
             ];
             if (!isset($files[$name])) {
                 throw new Problem("Файл не найден", 404);
@@ -382,7 +406,9 @@ function run(string $directory, string $publicUrl, bool $development = false): v
                         hash_file("sha256", dirname(__DIR__) . "/static/app.js") .
                             hash_file("sha256", dirname(__DIR__) . "/static/style.css") .
                             hash_file("sha256", dirname(__DIR__) . "/static/replies.js") .
-                            hash_file("sha256", dirname(__DIR__) . "/static/replies.css"),
+                            hash_file("sha256", dirname(__DIR__) . "/static/replies.css") .
+                            hash_file("sha256", dirname(__DIR__) . "/static/simulation.js") .
+                            hash_file("sha256", dirname(__DIR__) . "/static/simulation.css"),
                     ),
                     0,
                     24,

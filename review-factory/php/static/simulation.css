@@ -1,0 +1,122 @@
+.simulation-banner {
+  background: #fff1cd;
+  border: 2px solid #bb7b18;
+  color: #68450b;
+  border-radius: 10px;
+  padding: 15px 18px;
+  margin-bottom: 22px;
+}
+.simulation-banner strong {
+  display: block;
+  font-size: 14px;
+}
+.simulation-banner span {
+  display: block;
+  font-size: 12px;
+  margin-top: 5px;
+}
+.simulation-toolbar {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+.simulation-toolbar label {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.simulation-toolbar select {
+  width: auto;
+  margin: 0;
+}
+.simulation-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 0 0 22px;
+}
+.simulation-fields > div {
+  background: #f3f6ef;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 12px;
+  min-width: 0;
+}
+.simulation-fields dt {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 5px;
+}
+.simulation-fields dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.simulation-preview {
+  max-width: 850px;
+  margin: 25px auto;
+}
+.simulation-preview-list {
+  display: grid;
+  gap: 18px;
+  margin-top: 24px;
+}
+.simulation-entry-mark {
+  font-size: 11px;
+  font-weight: 700;
+  color: #80500b;
+  background: #fff1cd;
+  border-radius: 5px;
+  padding: 7px;
+  margin-bottom: 15px;
+}
+.simulation-stars {
+  color: #97621b;
+  font-size: 24px;
+}
+.simulation-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.simulation-workspace .source {
+  margin-bottom: 12px;
+}
+.simulation-workspace .source p {
+  margin: 10px 0;
+}
+.simulation-workspace .source small {
+  font-size: 11px;
+}
+@media (max-width: 480px) {
+  .simulation-fields {
+    gap: 8px;
+  }
+  .simulation-fields > div {
+    padding: 10px;
+  }
+  .simulation-fields dd {
+    font-size: 12px;
+  }
+  .simulation-banner {
+    padding: 12px;
+  }
+  .simulation-banner strong {
+    font-size: 12px;
+  }
+  .simulation-banner span {
+    font-size: 11px;
+  }
+  .simulation-toolbar {
+    gap: 10px;
+  }
+  .simulation-toolbar > button {
+    width: 100%;
+  }
+  .simulation-toolbar label {
+    font-size: 12px;
+  }
+}

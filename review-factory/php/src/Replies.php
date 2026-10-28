@@ -114,6 +114,9 @@ function replyDetail(\PDO $db, array $user, int $id): array
 function saveReply(\PDO $db, array $user, array $body): array
 {
     requireRole($user, ["admin", "moderator"]);
+    if (($user["work_mode"] ?? "author") === "testing") {
+        throw new Problem("В тестовом генераторе запись в магазин отключена", 403);
+    }
     $id = integer($body["review_id"] ?? null, 1, 2147483647);
     $text = replyBody($body["body"] ?? "");
     $revision = integer($body["revision"] ?? 0, 0, 2147483647);
@@ -180,6 +183,9 @@ function saveReply(\PDO $db, array $user, array $body): array
 function queueReply(\PDO $db, array $user, string $id, int $revision): array
 {
     requireRole($user, ["admin", "moderator"]);
+    if (($user["work_mode"] ?? "author") === "testing") {
+        throw new Problem("В тестовом генераторе запись в магазин отключена", 403);
+    }
     return transaction($db, function () use ($db, $user, $id, $revision) {
         $d = one($db, "SELECT * FROM reply_drafts WHERE id=? AND user_id=?", [$id, $user["id"]]);
         if (!$d) {
@@ -369,7 +375,11 @@ function processReplies(\PDO $db, \PDO $shop, string $prefix, int $limit = 3): a
         $payload = json_decode($j["payload"], true, 32, JSON_THROW_ON_ERROR);
         try {
             $user = one($db, "SELECT * FROM users WHERE id=? AND active=1", [$j["user_id"]]);
-            if (!$user || !in_array($user["role"], ["admin", "moderator"], true)) {
+            if (
+                !$user ||
+                ($user["work_mode"] ?? "") === "testing" ||
+                !in_array($user["role"], ["admin", "moderator"], true)
+            ) {
                 throw new Problem("reply_author_disabled");
             }
             $result = applyReply($shop, $prefix, $payload);

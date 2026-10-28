@@ -144,6 +144,26 @@ function database(string $directory): \PDO
             );
             execute($db, "INSERT INTO settings VALUES('reply_workspace_v1','1')");
         }
+        if (!one($db, "SELECT value FROM settings WHERE key='simulation_workspace_v1'")) {
+            $environment =
+                one($db, "SELECT value FROM settings WHERE key='environment'")["value"] ?? "test";
+            if ($environment === "test") {
+                execute($db, "UPDATE users SET work_mode='testing'");
+                execute($db, "UPDATE reply_jobs SET state='paused',updated_at=? WHERE state='pending'", [
+                    now(),
+                ]);
+                execute(
+                    $db,
+                    "UPDATE reply_drafts SET state='paused',updated_at=? WHERE state='queued'",
+                    [now()],
+                );
+                execute($db, "UPDATE outbox SET state='paused',updated_at=? WHERE state='pending'", [
+                    now(),
+                ]);
+                execute($db, "DELETE FROM assignments");
+            }
+            execute($db, "INSERT INTO settings VALUES('simulation_workspace_v1','1')");
+        }
         $db->exec("COMMIT");
     } catch (\Throwable $e) {
         $db->exec("ROLLBACK");
@@ -171,8 +191,8 @@ function requireRole(array $user, array $roles): void
 }
 function requireAuthoring(array $user): void
 {
-    if (($user["work_mode"] ?? "author") === "replies") {
-        throw new Problem("Эта учётная запись предназначена для ответов магазина", 403);
+    if (($user["work_mode"] ?? "author") !== "author") {
+        throw new Problem("В этом режиме запись отзывов в магазин отключена", 403);
     }
 }
 function createUser(\PDO $db, array $body, ?int $actor = null): array
@@ -188,9 +208,15 @@ function createUser(\PDO $db, array $body, ?int $actor = null): array
         throw new Problem("Сократите имя или должность для подписи");
     }
     $role = enum($body["role"] ?? "", ["admin", "author", "moderator"]);
-    $mode = enum($body["work_mode"] ?? "auto", ["auto", "author", "replies"]);
+    $mode = enum($body["work_mode"] ?? "auto", ["auto", "author", "replies", "testing"]);
     if ($mode === "auto") {
-        $mode = $role === "author" ? "author" : "replies";
+        $mode =
+            (one($db, "SELECT value FROM settings WHERE key='environment'")["value"] ?? "test") ===
+            "test"
+                ? "testing"
+                : ($role === "author"
+                    ? "author"
+                    : "replies");
     }
     if ($role === "author" && $mode === "replies") {
         throw new Problem("Для ответов нужна роль администратора или редактора");

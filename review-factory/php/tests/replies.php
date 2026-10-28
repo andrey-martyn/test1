@@ -31,6 +31,7 @@ try {
         "name" => "Таня",
         "staff_role" => "хозяйка",
         "role" => "admin",
+        "work_mode" => "replies",
         "password" => "Synthetic-test-password",
     ]);
     $author = ReviewFactory\createUser($db, [
@@ -38,6 +39,7 @@ try {
         "name" => "Автор",
         "staff_role" => "сотрудник",
         "role" => "author",
+        "work_mode" => "author",
         "password" => "Synthetic-test-password",
     ]);
     $other = ReviewFactory\createUser($db, [
@@ -45,6 +47,7 @@ try {
         "name" => "Редактор",
         "staff_role" => "сотрудник",
         "role" => "moderator",
+        "work_mode" => "replies",
         "password" => "Synthetic-test-password",
     ]);
     rc($manager["work_mode"] === "replies", "Reply account has a separate workspace");
@@ -190,7 +193,7 @@ try {
     $legacy = database($legacyDir);
     $upgraded = one($legacy, "SELECT * FROM users WHERE id=7");
     rc(
-        $upgraded["work_mode"] === "replies" && $upgraded["hash"] === $hash,
+        $upgraded["work_mode"] === "testing" && $upgraded["hash"] === $hash,
         "Legacy account upgraded without password reset",
     );
     $legacy = null;

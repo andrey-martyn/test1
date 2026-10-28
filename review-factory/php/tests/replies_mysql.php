@@ -40,6 +40,7 @@ try {
         "name" => "Таня",
         "staff_role" => "хозяйка",
         "role" => "admin",
+        "work_mode" => "replies",
         "password" => "Synthetic-test-password",
     ]);
     $original = one($shop, "SELECT * FROM rf_reply_review WHERE review_id=17");

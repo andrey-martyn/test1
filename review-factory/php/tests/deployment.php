@@ -57,6 +57,24 @@ try {
         "password" => "Synthetic-password-only",
     ]);
     $s = \ReviewFactory\login($db, "tester", "Synthetic-password-only", "127.0.0.1");
+    dc(
+        rf_run("simulation-status", ["data" => $a["data"]])["shop_publication"] === false,
+        "QA status never enables native publishing",
+    );
+    dc(
+        rf_run("reply-worker", ["data" => $a["data"]])["state"] === "reply_workspace_disabled",
+        "Old reply cron stops before reading shop credentials",
+    );
+    dc(
+        rf_run("dispatch", ["data" => $a["data"]])["state"] === "native_authoring_disabled",
+        "Old publication cron stops for QA users",
+    );
+    $sim = \ReviewFactory\simulationDb($db);
+    \ReviewFactory\execute(
+        $sim,
+        "INSERT INTO events(operator_id,entry_id,action,created_at) VALUES(1,'fixture','backup_test',?)",
+        [\ReviewFactory\now()],
+    );
     $backup = $base . "/backup";
     rf_run("backup", ["data" => $a["data"], "destination" => $backup]);
     $copy = \ReviewFactory\database($backup);
@@ -68,6 +86,13 @@ try {
         (int) \ReviewFactory\one($copy, "SELECT count(*) n FROM users")["n"] === 1,
         "Backup retains accounts",
     );
+    $simCopy = \ReviewFactory\simulationDb($copy);
+    dc(
+        (int) \ReviewFactory\one($simCopy, "SELECT count(*) n FROM events")["n"] === 1,
+        "Backup includes a consistent synthetic SQLite snapshot",
+    );
+    $simCopy = null;
+    $sim = null;
     $copy = null;
     $config =
         "<?php\ndefine('DB_HOSTNAME','lavkasp.mysql.tools');define('DB_USERNAME','synthetic');define('DB_PASSWORD','synthetic-secret');define('DB_DATABASE','lavkasp_test');define('DB_PORT','3306');define('DB_PREFIX','oc_');file_put_contents(" .

@@ -25,6 +25,7 @@ if (!$password) {
 ]);
 \ReviewFactory\createUser($db, [
     "login" => "author-demo",
+    "work_mode" => "author",
     "name" => "Автор · демо",
     "staff_role" => "сотрудник",
     "role" => "author",
@@ -34,6 +35,22 @@ if (!$password) {
     "login" => "admin-review",
     "name" => "Таня · демо",
     "staff_role" => "хозяйка",
+    "role" => "admin",
+    "password" => $password,
+]);
+file_put_contents(
+    $dir . "/instance.json",
+    \ReviewFactory\json([
+        "environment" => "test",
+        "shop_url" => "https://test.lavka-speciy.com",
+        "public_url" => "https://test.lavka-speciy.com/review-workshop/",
+    ]),
+);
+\ReviewFactory\createUser($db, [
+    "login" => "reply-demo",
+    "work_mode" => "replies",
+    "name" => "Редактор демо",
+    "staff_role" => "сотрудник",
     "role" => "admin",
     "password" => $password,
 ]);
