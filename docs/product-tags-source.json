@@ -1,0 +1,43 @@
+{
+  "archive": "222.zip",
+  "archive_sha256": "044d543ba168d187d89fcd4125838ceb15507c94058d74adc9a9d74c53aad60d",
+  "excluded": [
+    "config.php",
+    "unrelated admin scripts",
+    "uploads",
+    "cache",
+    "license data"
+  ],
+  "files": [
+    {
+      "path": "admin/controller/catalog/product.php",
+      "sha256": "175e8a0199ecf606cd60377bc6b6c776339bcf244a81bc10d2c7c2b8dd03feeb",
+      "lf_sha256": "150578a0ff789fd6d58e3f69b287c5a576e8bcd10878e521c2697803ba0f7daa"
+    },
+    {
+      "path": "admin/model/catalog/product.php",
+      "sha256": "f05d447ef5f7254ebaea51e36c0017e7f4d5c03889d99f291d4be0ed481362e2",
+      "lf_sha256": "5afde635fd8cbe9deb3f1dabaf47bf2e3a9f6db3e728819998686ee020c61fc4"
+    },
+    {
+      "path": "admin/view/template/catalog/product_list.twig",
+      "sha256": "af91ecdb0f686c6cb9b9a9f7c9202db0c5ed853872bdc8c856081140e971bd05",
+      "lf_sha256": "af91ecdb0f686c6cb9b9a9f7c9202db0c5ed853872bdc8c856081140e971bd05"
+    },
+    {
+      "path": "admin/view/template/catalog/product_form.twig",
+      "sha256": "ae0a1efb6e91cdc8ea789aea9163e238f1d07d5ebba7e49f88a28128e3513d3f",
+      "lf_sha256": "ae0a1efb6e91cdc8ea789aea9163e238f1d07d5ebba7e49f88a28128e3513d3f"
+    },
+    {
+      "path": "catalog/model/extension/module/uni_new_data.php",
+      "sha256": "5437d0d4e3e64537733c5b1a68648f3f82ff2d8f71b877ebcaa09c8dd40bab7d",
+      "lf_sha256": "a9172f4275e439c006f9d1fddd685bc5f936d916fac96b4449b7c26c077ffd37"
+    },
+    {
+      "path": "catalog/view/theme/unishop2/template/extension/module/uni_stickers.twig",
+      "sha256": "cdd140e0b50ffca47e04ede20e391bae79e46840aeb58d38bc6da7750796f89a",
+      "lf_sha256": "cdd140e0b50ffca47e04ede20e391bae79e46840aeb58d38bc6da7750796f89a"
+    }
+  ]
+}
