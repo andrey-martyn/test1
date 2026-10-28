@@ -3,6 +3,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . "/src/Shop.php";
 use function ReviewFactory\one;
 use function ReviewFactory\execute;
+use function ReviewFactory\rows;
 $env = [];
 foreach (file("/test-secrets/mysql.env", FILE_IGNORE_NEW_LINES) as $line) {
     $pair = explode("=", $line, 2);
@@ -98,6 +99,43 @@ ck(
 );
 $all = one($shop, "SELECT count(*) n FROM oc_review WHERE status=1");
 ck((int) $all["n"] === 2, "Both remain in native review list");
+$shop->exec("ALTER TABLE oc_review ADD COLUMN admin_reply TEXT NULL");
+$shop->exec(
+    "DROP TABLE IF EXISTS oc_uni_review_reply;CREATE TABLE oc_uni_review_reply(review_id INT,reply_text TEXT)",
+);
+$beforeSchema = rows(
+    $shop,
+    "SELECT column_name FROM information_schema.COLUMNS WHERE table_schema=DATABASE() AND table_name='oc_review' ORDER BY ordinal_position",
+);
+$schema = ReviewFactory\reviewReplySchema($shop, "oc_");
+ck(
+    in_array("admin_reply", array_column($schema["columns"], "column_name"), true),
+    "Native reply column discovered",
+);
+ck(
+    in_array("oc_uni_review_reply", array_column($schema["columns"], "table_name"), true),
+    "Separate reply table discovered",
+);
+ck(
+    !in_array("oc_review_factory_meta", array_column($schema["columns"], "table_name"), true),
+    "Own metadata omitted from reply diagnostics",
+);
+ck(
+    strpos(ReviewFactory\json($schema), $d["body"]) === false,
+    "Reply diagnostics contain no review text",
+);
+ck(
+    (int) one($shop, "SELECT count(*) n FROM oc_review")["n"] === 2,
+    "Reply diagnostics preserve reviews",
+);
+ck(
+    $beforeSchema ===
+        rows(
+            $shop,
+            "SELECT column_name FROM information_schema.COLUMNS WHERE table_schema=DATABASE() AND table_name='oc_review' ORDER BY ordinal_position",
+        ),
+    "Reply diagnostics do not alter schema",
+);
 foreach (
     [
         "product_description",

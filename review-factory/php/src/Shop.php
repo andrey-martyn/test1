@@ -77,6 +77,25 @@ function shopConnect(array $c): \PDO
     $db->exec("SET SESSION lock_wait_timeout=5;SET SESSION innodb_lock_wait_timeout=5");
     return $db;
 }
+/** Reply integration discovery: column metadata only, never customer/review rows. */
+function reviewReplySchema(\PDO $shop, string $prefix): array
+{
+    if (!preg_match('/^[a-zA-Z0-9_]{1,24}$/D', $prefix)) {
+        throw new Problem("invalid_table_prefix");
+    }
+    if ($shop->query("SELECT DATABASE()")->fetchColumn() !== "lavkasp_test") {
+        throw new Problem("reply_diagnostics_test_only");
+    }
+    $columns = rows(
+        $shop,
+        "SELECT TABLE_NAME AS table_name,COLUMN_NAME AS column_name,COLUMN_TYPE AS column_type,IS_NULLABLE AS nullable FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND LEFT(TABLE_NAME,CHAR_LENGTH(?))=? AND LOCATE('review',SUBSTRING(TABLE_NAME,CHAR_LENGTH(?)+1))>0 AND TABLE_NAME NOT IN (?,?) ORDER BY TABLE_NAME,ORDINAL_POSITION LIMIT 201",
+        [$prefix, $prefix, $prefix, $prefix . "review_factory_meta", $prefix . "review_factory_config"],
+    );
+    if (count($columns) > 200) {
+        throw new Problem("reply_schema_limit");
+    }
+    return ["state" => "review_schema", "environment" => "test", "columns" => $columns];
+}
 function shopLanguage(\PDO $shop, string $prefix): int
 {
     $setting = one(
@@ -130,7 +149,7 @@ function salesStatuses(\PDO $shop, string $prefix, int $language, string $analyt
             ) {
                 $ids[] = $id;
             }
-        };
+        }
     }
     foreach ($ids as $id) {
         if (!isset($names[$id])) {

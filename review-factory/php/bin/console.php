@@ -349,10 +349,16 @@ function rf_run(string $command, array $a): array
             \ReviewFactory\rebuildQueue($db);
             return ["state" => "checked"] + $summary;
         }
-        if ($command === "sync" || $command === "dispatch") {
+        if ($command === "sync" || $command === "dispatch" || $command === "review-schema") {
+            if ($command === "review-schema" && $c["environment"] !== "test") {
+                throw new Problem("reply_diagnostics_test_only");
+            }
             $cfg = \ReviewFactory\shopConfig($c["shop_root"], $c["environment"]);
             $shop = \ReviewFactory\shopConnect($cfg);
             $prefix = $cfg["DB_PREFIX"];
+            if ($command === "review-schema") {
+                return \ReviewFactory\reviewReplySchema($shop, $prefix);
+            }
             if ($command === "dispatch") {
                 return ["state" => "processed"] +
                     \ReviewFactory\dispatch(
@@ -424,7 +430,7 @@ function rf_run(string $command, array $a): array
             return ["state" => "backup_created"];
         }
         throw new Problem(
-            "Команды: setup, user, reset-password, sync, collect, queue, dispatch, status, backup, deploy, resume",
+            "Команды: setup, user, reset-password, sync, collect, queue, dispatch, status, backup, deploy, resume, review-schema",
         );
     } catch (\Throwable $e) {
         if (isset($db) && in_array($command, ["sync", "collect", "dispatch"], true)) {
