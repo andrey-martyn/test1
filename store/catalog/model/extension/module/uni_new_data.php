@@ -267,7 +267,8 @@ class ModelExtensionModuleUniNewData extends Controller {
 			}	
 		}
 		
-		return $stickers;
+		$this->load->model('extension/module/lavka_product_tags');
+		return $this->model_extension_module_lavka_product_tags->engine()->stickers($result, $stickers);
 	}
 	
 	private function getQuantityIndicator($quantity, $options) {

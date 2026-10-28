@@ -36,6 +36,7 @@
     },
     {
       "path": "catalog/view/theme/unishop2/template/extension/module/uni_stickers.twig",
+      "origin": "111.zip; not present in 222.zip; deployment requires the exact recorded source",
       "sha256": "cdd140e0b50ffca47e04ede20e391bae79e46840aeb58d38bc6da7750796f89a",
       "lf_sha256": "cdd140e0b50ffca47e04ede20e391bae79e46840aeb58d38bc6da7750796f89a"
     }

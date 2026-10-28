@@ -5,6 +5,78 @@
 class ControllerCatalogProduct extends Controller {
 	private $error = array();
 
+    // Tag endpoints use the existing catalog/product permissions.
+    private function lavkaTagJson($data, $status = 200) {
+        $this->response->addHeader('Content-Type: application/json; charset=utf-8');
+        $this->response->addHeader('Cache-Control: private, no-store');
+        if ($status !== 200) $this->response->addHeader('HTTP/1.1 '.$status.' Tag request failed');
+        $this->response->setOutput(json_encode($data));
+    }
+
+    private function lavkaTagAllowed($write) {
+        $token = isset($this->request->get['user_token']) ? $this->request->get['user_token'] : null;
+        return is_string($token) && isset($this->session->data['user_token']) && hash_equals($this->session->data['user_token'],$token)
+            && $this->user->hasPermission($write ? 'modify' : 'access','catalog/product');
+    }
+
+    public function lavkaTag() {
+        if (!$this->lavkaTagAllowed(true)) { $this->lavkaTagJson(['error'=>'FORBIDDEN'],403); return; }
+        if ($this->request->server['REQUEST_METHOD'] !== 'POST') { $this->lavkaTagJson(['error'=>'POST_REQUIRED'],405); return; }
+        $p = $this->request->post;
+        foreach (['product_id','enabled','revision'] as $key) if (!isset($p[$key]) || !is_scalar($p[$key]) || !preg_match('/^\d{1,10}$/D',(string)$p[$key])) { $this->lavkaTagJson(['error'=>'INVALID_INPUT'],400); return; }
+        if (!isset($p['code']) || !is_string($p['code'])) { $this->lavkaTagJson(['error'=>'INVALID_INPUT'],400); return; }
+        try {
+            $this->load->model('extension/module/lavka_product_tags');
+            $state = $this->model_extension_module_lavka_product_tags->engine()->writeFlag((int)$p['product_id'],$p['code'],(int)$p['enabled'],(int)$p['revision']);
+            $cache = 'pending';
+            try { $cache=$this->model_extension_module_lavka_product_tags->purge((int)$p['product_id']); } catch (Exception $e) { $cache='warning'; }
+            $this->lavkaTagJson(['success'=>true,'state'=>$state,'page_cache'=>$cache]);
+        } catch (InvalidArgumentException $e) { $this->lavkaTagJson(['error'=>'INVALID_INPUT'],400);
+        } catch (RuntimeException $e) { $this->lavkaTagJson(['error'=>$e->getMessage()==='TAG_CONFLICT'?'TAG_CONFLICT':'SAVE_FAILED'],409);
+        } catch (Exception $e) { $this->lavkaTagJson(['error'=>'SAVE_FAILED'],500); }
+    }
+
+    public function lavkaTagSettings() {
+        if (!$this->lavkaTagAllowed(false)) { $this->lavkaTagJson(['error'=>'FORBIDDEN'],403); return; }
+        $messages = $this->load->language('extension/module/lavka_product_tags');
+        $this->load->model('extension/module/lavka_product_tags');
+        $engine = $this->model_extension_module_lavka_product_tags->engine();
+        $data = array_merge($messages,['error_warning'=>'','success'=>'']);
+        if ($this->request->server['REQUEST_METHOD'] === 'POST') {
+            if (!$this->lavkaTagAllowed(true)) { $this->lavkaTagJson(['error'=>'FORBIDDEN'],403); return; }
+            try {
+                $engine->saveDefinitions(isset($this->request->post['tags'])?$this->request->post['tags']:[]);
+                $data['success']=$this->language->get('text_saved');
+                try { $this->model_extension_module_lavka_product_tags->purge(0); } catch (Exception $e) { $data['error_warning']=$this->language->get('text_cache_warning'); }
+            } catch (InvalidArgumentException $e) { $data['error_warning']=$this->language->get('text_invalid');
+            } catch (Exception $e) { $data['error_warning']=$this->language->get('text_conflict'); }
+        }
+        $data['tags']=$engine->definitions();
+        $data['can_modify']=$this->user->hasPermission('modify','catalog/product');
+        $data['action']=$this->url->link('catalog/product/lavkaTagSettings','user_token='.$this->session->data['user_token'],true);
+        $data['cancel']=$this->url->link('catalog/product','user_token='.$this->session->data['user_token'],true);
+        $this->document->setTitle($this->language->get('heading_tags'));
+        $data['header']=$this->load->controller('common/header');
+        $data['column_left']=$this->load->controller('common/column_left');
+        $data['footer']=$this->load->controller('common/footer');
+        $this->response->setOutput($this->load->view('extension/module/lavka_product_tags',$data));
+    }
+
+
+    private function lavkaTagData(&$data) {
+        $data['lavka_text'] = $this->load->language('extension/module/lavka_product_tags');
+        $this->load->model('extension/module/lavka_product_tags');
+        $engine = $this->model_extension_module_lavka_product_tags->engine();
+        $data['lavka_definitions'] = $engine->definitions();
+        $data['lavka_can_modify'] = $this->user->hasPermission('modify','catalog/product');
+        $data['lavka_label_key'] = strpos((string)$this->config->get('config_admin_language'),'uk') === 0 ? 'label_uk' : 'label_ru';
+        $data['lavka_tag_url'] = html_entity_decode($this->url->link('catalog/product/lavkaTag','user_token='.$this->session->data['user_token'],true),ENT_QUOTES,'UTF-8');
+        $data['lavka_tag_settings'] = html_entity_decode($this->url->link('catalog/product/lavkaTagSettings','user_token='.$this->session->data['user_token'],true),ENT_QUOTES,'UTF-8');
+        $this->document->addScript('view/javascript/lavka-product-tags.js?v=1');
+        $this->document->addStyle('view/stylesheet/lavka-product-tags.css?v=1');
+        return $engine;
+    }
+
 	public function index() {
 		$this->load->language('catalog/product');
 
@@ -621,6 +693,7 @@ class ControllerCatalogProduct extends Controller {
 		$product_total = $this->model_catalog_product->getTotalProducts($filter_data);
 
 		$results = $this->model_catalog_product->getProducts($filter_data);
+		$lavkaEngine = $this->lavkaTagData($data);
 
 		foreach ($results as $result) {
 			if (is_file(DIR_IMAGE . $result['image'])) {
@@ -643,6 +716,7 @@ class ControllerCatalogProduct extends Controller {
 
 			$data['products'][] = array(
 				'product_id' => $result['product_id'],
+				'lavka_state' => $lavkaEngine->state($result),
 				'image'      => $image,
 				'name'       => $result['name'],
 				'model'      => $result['model'],
@@ -973,6 +1047,12 @@ class ControllerCatalogProduct extends Controller {
 		}
 
 		$data['cancel'] = $this->url->link('catalog/product', 'user_token=' . $this->session->data['user_token'] . $url, true);
+        $lavkaEngine = $this->lavkaTagData($data);
+        $data['lavka_product_id'] = isset($this->request->get['product_id']) ? (int)$this->request->get['product_id'] : 0;
+        $lavkaProduct = $data['lavka_product_id'] ? $this->model_catalog_product->getProduct($data['lavka_product_id']) : false;
+        if (!$lavkaProduct) { $data['lavka_product_id']=0; $lavkaProduct=['product_id'=>0,'date_available'=>date('Y-m-d'),'mpn'=>'']; }
+        $data['lavka_state'] = $lavkaEngine->state($lavkaProduct);
+
 
 		if (isset($this->request->get['product_id']) && ($this->request->server['REQUEST_METHOD'] != 'POST')) {
 			$product_info = $this->model_catalog_product->getProduct($this->request->get['product_id']);

@@ -1,0 +1,9 @@
+.lavka-tag-column{min-width:220px;max-width:280px}
+.lavka-tag-new{font-size:11px;color:#63745e;margin-bottom:4px}
+.lavka-tag-checks{display:grid;grid-template-columns:1fr 1fr;gap:3px 10px}
+.lavka-tag-checks label{font-size:11px;font-weight:400;margin:0;white-space:nowrap;cursor:pointer}
+.lavka-tag-checks input{vertical-align:middle;margin:0 3px 0 0}
+.lavka-tag-checks input:disabled{cursor:not-allowed}
+.lavka-tag-checks input[data-pending="1"]{cursor:progress}
+.lavka-tag-muted{color:#858585}
+.lavka-tag-status{display:block;min-height:14px;font-size:10px;margin-top:2px}

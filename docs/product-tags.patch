@@ -1,0 +1,874 @@
+diff --git a/admin/controller/catalog/product.php b/admin/controller/catalog/product.php
+index fb1de10..52b86c7 100644
+--- a/admin/controller/catalog/product.php
++++ b/admin/controller/catalog/product.php
+@@ -5,6 +5,78 @@
+ class ControllerCatalogProduct extends Controller {
+ 	private $error = array();
+ 
++    // Tag endpoints use the existing catalog/product permissions.
++    private function lavkaTagJson($data, $status = 200) {
++        $this->response->addHeader('Content-Type: application/json; charset=utf-8');
++        $this->response->addHeader('Cache-Control: private, no-store');
++        if ($status !== 200) $this->response->addHeader('HTTP/1.1 '.$status.' Tag request failed');
++        $this->response->setOutput(json_encode($data));
++    }
++
++    private function lavkaTagAllowed($write) {
++        $token = isset($this->request->get['user_token']) ? $this->request->get['user_token'] : null;
++        return is_string($token) && isset($this->session->data['user_token']) && hash_equals($this->session->data['user_token'],$token)
++            && $this->user->hasPermission($write ? 'modify' : 'access','catalog/product');
++    }
++
++    public function lavkaTag() {
++        if (!$this->lavkaTagAllowed(true)) { $this->lavkaTagJson(['error'=>'FORBIDDEN'],403); return; }
++        if ($this->request->server['REQUEST_METHOD'] !== 'POST') { $this->lavkaTagJson(['error'=>'POST_REQUIRED'],405); return; }
++        $p = $this->request->post;
++        foreach (['product_id','enabled','revision'] as $key) if (!isset($p[$key]) || !is_scalar($p[$key]) || !preg_match('/^\d{1,10}$/D',(string)$p[$key])) { $this->lavkaTagJson(['error'=>'INVALID_INPUT'],400); return; }
++        if (!isset($p['code']) || !is_string($p['code'])) { $this->lavkaTagJson(['error'=>'INVALID_INPUT'],400); return; }
++        try {
++            $this->load->model('extension/module/lavka_product_tags');
++            $state = $this->model_extension_module_lavka_product_tags->engine()->writeFlag((int)$p['product_id'],$p['code'],(int)$p['enabled'],(int)$p['revision']);
++            $cache = 'pending';
++            try { $cache=$this->model_extension_module_lavka_product_tags->purge((int)$p['product_id']); } catch (Exception $e) { $cache='warning'; }
++            $this->lavkaTagJson(['success'=>true,'state'=>$state,'page_cache'=>$cache]);
++        } catch (InvalidArgumentException $e) { $this->lavkaTagJson(['error'=>'INVALID_INPUT'],400);
++        } catch (RuntimeException $e) { $this->lavkaTagJson(['error'=>$e->getMessage()==='TAG_CONFLICT'?'TAG_CONFLICT':'SAVE_FAILED'],409);
++        } catch (Exception $e) { $this->lavkaTagJson(['error'=>'SAVE_FAILED'],500); }
++    }
++
++    public function lavkaTagSettings() {
++        if (!$this->lavkaTagAllowed(false)) { $this->lavkaTagJson(['error'=>'FORBIDDEN'],403); return; }
++        $messages = $this->load->language('extension/module/lavka_product_tags');
++        $this->load->model('extension/module/lavka_product_tags');
++        $engine = $this->model_extension_module_lavka_product_tags->engine();
++        $data = array_merge($messages,['error_warning'=>'','success'=>'']);
++        if ($this->request->server['REQUEST_METHOD'] === 'POST') {
++            if (!$this->lavkaTagAllowed(true)) { $this->lavkaTagJson(['error'=>'FORBIDDEN'],403); return; }
++            try {
++                $engine->saveDefinitions(isset($this->request->post['tags'])?$this->request->post['tags']:[]);
++                $data['success']=$this->language->get('text_saved');
++                try { $this->model_extension_module_lavka_product_tags->purge(0); } catch (Exception $e) { $data['error_warning']=$this->language->get('text_cache_warning'); }
++            } catch (InvalidArgumentException $e) { $data['error_warning']=$this->language->get('text_invalid');
++            } catch (Exception $e) { $data['error_warning']=$this->language->get('text_conflict'); }
++        }
++        $data['tags']=$engine->definitions();
++        $data['can_modify']=$this->user->hasPermission('modify','catalog/product');
++        $data['action']=$this->url->link('catalog/product/lavkaTagSettings','user_token='.$this->session->data['user_token'],true);
++        $data['cancel']=$this->url->link('catalog/product','user_token='.$this->session->data['user_token'],true);
++        $this->document->setTitle($this->language->get('heading_tags'));
++        $data['header']=$this->load->controller('common/header');
++        $data['column_left']=$this->load->controller('common/column_left');
++        $data['footer']=$this->load->controller('common/footer');
++        $this->response->setOutput($this->load->view('extension/module/lavka_product_tags',$data));
++    }
++
++
++    private function lavkaTagData(&$data) {
++        $data['lavka_text'] = $this->load->language('extension/module/lavka_product_tags');
++        $this->load->model('extension/module/lavka_product_tags');
++        $engine = $this->model_extension_module_lavka_product_tags->engine();
++        $data['lavka_definitions'] = $engine->definitions();
++        $data['lavka_can_modify'] = $this->user->hasPermission('modify','catalog/product');
++        $data['lavka_label_key'] = strpos((string)$this->config->get('config_admin_language'),'uk') === 0 ? 'label_uk' : 'label_ru';
++        $data['lavka_tag_url'] = html_entity_decode($this->url->link('catalog/product/lavkaTag','user_token='.$this->session->data['user_token'],true),ENT_QUOTES,'UTF-8');
++        $data['lavka_tag_settings'] = html_entity_decode($this->url->link('catalog/product/lavkaTagSettings','user_token='.$this->session->data['user_token'],true),ENT_QUOTES,'UTF-8');
++        $this->document->addScript('view/javascript/lavka-product-tags.js?v=1');
++        $this->document->addStyle('view/stylesheet/lavka-product-tags.css?v=1');
++        return $engine;
++    }
++
+ 	public function index() {
+ 		$this->load->language('catalog/product');
+ 
+@@ -621,6 +693,7 @@ class ControllerCatalogProduct extends Controller {
+ 		$product_total = $this->model_catalog_product->getTotalProducts($filter_data);
+ 
+ 		$results = $this->model_catalog_product->getProducts($filter_data);
++		$lavkaEngine = $this->lavkaTagData($data);
+ 
+ 		foreach ($results as $result) {
+ 			if (is_file(DIR_IMAGE . $result['image'])) {
+@@ -643,6 +716,7 @@ class ControllerCatalogProduct extends Controller {
+ 
+ 			$data['products'][] = array(
+ 				'product_id' => $result['product_id'],
++				'lavka_state' => $lavkaEngine->state($result),
+ 				'image'      => $image,
+ 				'name'       => $result['name'],
+ 				'model'      => $result['model'],
+@@ -973,6 +1047,12 @@ class ControllerCatalogProduct extends Controller {
+ 		}
+ 
+ 		$data['cancel'] = $this->url->link('catalog/product', 'user_token=' . $this->session->data['user_token'] . $url, true);
++        $lavkaEngine = $this->lavkaTagData($data);
++        $data['lavka_product_id'] = isset($this->request->get['product_id']) ? (int)$this->request->get['product_id'] : 0;
++        $lavkaProduct = $data['lavka_product_id'] ? $this->model_catalog_product->getProduct($data['lavka_product_id']) : false;
++        if (!$lavkaProduct) { $data['lavka_product_id']=0; $lavkaProduct=['product_id'=>0,'date_available'=>date('Y-m-d'),'mpn'=>'']; }
++        $data['lavka_state'] = $lavkaEngine->state($lavkaProduct);
++
+ 
+ 		if (isset($this->request->get['product_id']) && ($this->request->server['REQUEST_METHOD'] != 'POST')) {
+ 			$product_info = $this->model_catalog_product->getProduct($this->request->get['product_id']);
+diff --git a/admin/language/en-gb/extension/module/lavka_product_tags.php b/admin/language/en-gb/extension/module/lavka_product_tags.php
+new file mode 100644
+index 0000000..e9c4ec1
+--- /dev/null
++++ b/admin/language/en-gb/extension/module/lavka_product_tags.php
+@@ -0,0 +1,29 @@
++<?php
++$_['heading_tags'] = 'Product labels';
++$_['text_settings_help'] = 'Names, colors and order are shared by categories, product pages and modules.';
++$_['text_saved'] = 'Saved';
++$_['text_saving'] = 'Saving…';
++$_['text_error'] = 'Could not save. Refresh the page and check the state.';
++$_['text_conflict'] = 'Data changed in another window. Refresh the page.';
++$_['text_invalid'] = 'Check labels, HEX colors, numbers and duration.';
++$_['text_cache_warning'] = 'Settings saved; check the page cache purge.';
++$_['text_type'] = 'Type';
++$_['text_enabled'] = 'Show';
++$_['text_label_ru'] = 'RU label';
++$_['text_label_uk'] = 'UA label';
++$_['text_background'] = 'Background';
++$_['text_foreground'] = 'Text';
++$_['text_order'] = 'Order';
++$_['text_days'] = 'Days';
++$_['text_preview'] = 'Preview';
++$_['text_auto_new'] = 'New: automatic';
++$_['text_until'] = 'until';
++$_['text_hidden'] = 'This type is disabled in label settings';
++$_['text_inherited'] = 'Inherited from the previous MPN/bestseller; a manual choice takes priority';
++$_['text_column'] = 'Labels';
++$_['text_settings'] = 'Label settings';
++$_['text_form_note'] = 'Labels save immediately, independently of other form fields. Save a new product first.';
++$_['text_period_help'] = 'New is automatic: availability date plus this duration. Checkbox changes do not change the product date.';
++$_['text_legacy_help'] = 'Identifier fields are unchanged. Previous Popular and Bestseller labels are inherited until the first manual Hit choice. Enabled native UPC/EAN and other stickers are retained.';
++$_['button_save'] = 'Save';
++$_['button_back'] = 'Products';
+diff --git a/admin/language/ru-ru/extension/module/lavka_product_tags.php b/admin/language/ru-ru/extension/module/lavka_product_tags.php
+new file mode 100644
+index 0000000..121498c
+--- /dev/null
++++ b/admin/language/ru-ru/extension/module/lavka_product_tags.php
+@@ -0,0 +1,29 @@
++<?php
++$_['heading_tags'] = 'Метки товаров';
++$_['text_settings_help'] = 'Названия, цвета и порядок едины для категории, страницы товара и модулей.';
++$_['text_saved'] = 'Сохранено';
++$_['text_saving'] = 'Сохраняю…';
++$_['text_error'] = 'Не удалось сохранить. Обновите страницу и проверьте состояние.';
++$_['text_conflict'] = 'Данные изменены в другом окне. Обновите страницу.';
++$_['text_invalid'] = 'Проверьте названия, HEX-цвета, числа и срок.';
++$_['text_cache_warning'] = 'Настройки сохранены; проверьте очистку кэша страниц.';
++$_['text_type'] = 'Тип';
++$_['text_enabled'] = 'Показывать';
++$_['text_label_ru'] = 'Название RU';
++$_['text_label_uk'] = 'Название UA';
++$_['text_background'] = 'Фон';
++$_['text_foreground'] = 'Текст';
++$_['text_order'] = 'Порядок';
++$_['text_days'] = 'Дней';
++$_['text_preview'] = 'Пример';
++$_['text_auto_new'] = 'Новинка: авто';
++$_['text_until'] = 'до';
++$_['text_hidden'] = 'Тип отключён в настройках меток';
++$_['text_inherited'] = 'Унаследовано из прежнего MPN/Лидера продаж; ручной выбор имеет приоритет';
++$_['text_column'] = 'Метки';
++$_['text_settings'] = 'Оформление меток';
++$_['text_form_note'] = 'Метки сохраняются сразу, отдельно от других полей формы. Для нового товара сначала сохраните товар.';
++$_['text_period_help'] = 'Новинка считается автоматически: дата доступности + указанный срок. Изменение чекбоксов не меняет дату товара.';
++$_['text_legacy_help'] = 'Кодовые поля не изменяются. Прежнее «Популярно» и Лидер продаж наследуются до первого ручного выбора Хита. UPC/EAN и другие включённые штатные стикеры сохраняются.';
++$_['button_save'] = 'Сохранить';
++$_['button_back'] = 'К товарам';
+diff --git a/admin/language/uk-ua/extension/module/lavka_product_tags.php b/admin/language/uk-ua/extension/module/lavka_product_tags.php
+new file mode 100644
+index 0000000..ecdc1f0
+--- /dev/null
++++ b/admin/language/uk-ua/extension/module/lavka_product_tags.php
+@@ -0,0 +1,29 @@
++<?php
++$_['heading_tags'] = 'Мітки товарів';
++$_['text_settings_help'] = 'Назви, кольори та порядок однакові для категорії, сторінки товару й модулів.';
++$_['text_saved'] = 'Збережено';
++$_['text_saving'] = 'Зберігаю…';
++$_['text_error'] = 'Не вдалося зберегти. Оновіть сторінку.';
++$_['text_conflict'] = 'Дані змінено в іншому вікні. Оновіть сторінку.';
++$_['text_invalid'] = 'Перевірте назви, HEX-кольори, числа та строк.';
++$_['text_cache_warning'] = 'Налаштування збережено; перевірте очищення кешу сторінок.';
++$_['text_type'] = 'Тип';
++$_['text_enabled'] = 'Показувати';
++$_['text_label_ru'] = 'Назва RU';
++$_['text_label_uk'] = 'Назва UA';
++$_['text_background'] = 'Тло';
++$_['text_foreground'] = 'Текст';
++$_['text_order'] = 'Порядок';
++$_['text_days'] = 'Днів';
++$_['text_preview'] = 'Приклад';
++$_['text_auto_new'] = 'Новинка: авто';
++$_['text_until'] = 'до';
++$_['text_hidden'] = 'Тип вимкнено в налаштуваннях міток';
++$_['text_inherited'] = 'Успадковано з попереднього MPN/Лідера продажів; ручний вибір має пріоритет';
++$_['text_column'] = 'Мітки';
++$_['text_settings'] = 'Оформлення міток';
++$_['text_form_note'] = 'Мітки зберігаються одразу, окремо від інших полів форми. Для нового товару спочатку збережіть товар.';
++$_['text_period_help'] = 'Новинка визначається автоматично: дата доступності + зазначений строк. Зміна прапорців не змінює дату товару.';
++$_['text_legacy_help'] = 'Кодові поля не змінюються. Попереднє «Популярно» та Лідер продажів успадковуються до першого ручного вибору Хіта. UPC/EAN та інші ввімкнені штатні стікери зберігаються.';
++$_['button_save'] = 'Зберегти';
++$_['button_back'] = 'До товарів';
+diff --git a/admin/model/catalog/product.php b/admin/model/catalog/product.php
+index 24af16d..28c1148 100644
+--- a/admin/model/catalog/product.php
++++ b/admin/model/catalog/product.php
+@@ -375,11 +375,13 @@ class ModelCatalogProduct extends Model {
+ 			$data['product_store'] = $this->getProductStores($product_id);
+ 			$data['product_recurrings'] = $this->getRecurrings($product_id);
+ 
+-			$this->addProduct($data);
++            $lavkaCopyId = $this->addProduct($data);
++            $this->db->query("INSERT INTO `".DB_PREFIX."lavka_product_tag` (store_id,product_id,code,enabled,revision) SELECT store_id,".(int)$lavkaCopyId.",code,enabled,1 FROM `".DB_PREFIX."lavka_product_tag` WHERE product_id=".(int)$product_id);
+ 		}
+ 	}
+ 
+ 	public function deleteProduct($product_id) {
++        $this->db->query("DELETE FROM `".DB_PREFIX."lavka_product_tag` WHERE product_id=".(int)$product_id);
+ 		$this->db->query("DELETE FROM " . DB_PREFIX . "product WHERE product_id = '" . (int)$product_id . "'");
+ 		$this->db->query("DELETE FROM " . DB_PREFIX . "product_attribute WHERE product_id = '" . (int)$product_id . "'");
+ 		$this->db->query("DELETE FROM " . DB_PREFIX . "product_description WHERE product_id = '" . (int)$product_id . "'");
+diff --git a/admin/model/extension/module/lavka_product_tags.php b/admin/model/extension/module/lavka_product_tags.php
+new file mode 100644
+index 0000000..15eb1ef
+--- /dev/null
++++ b/admin/model/extension/module/lavka_product_tags.php
+@@ -0,0 +1,19 @@
++<?php
++require_once DIR_SYSTEM.'library/lavka_product_tags.php';
++class ModelExtensionModuleLavkaProductTags extends Model {
++    public function engine() {
++        if (!$this->registry->has('lavka_product_tags')) $this->registry->set('lavka_product_tags',new LavkaProductTags($this->registry));
++        return $this->registry->get('lavka_product_tags');
++    }
++    public function purge($product_id) {
++        // Call only the known cache integration, never synthetic full-product edit events.
++        $path = DIR_APPLICATION.'controller/extension/module/lscache.php';
++        if (!is_file($path)) return 'not_installed';
++        if (!class_exists('ControllerExtensionModuleLSCache',false)) require_once $path;
++        $controller = new ControllerExtensionModuleLSCache($this->registry);
++        if (!is_callable([$controller,'editProduct'])) return 'unsupported';
++        $args = [(int)$product_id]; $output = null;
++        $controller->editProduct('catalog/product/lavkaTag',$args,$output);
++        return 'requested';
++    }
++}
+diff --git a/admin/view/javascript/lavka-product-tags.js b/admin/view/javascript/lavka-product-tags.js
+new file mode 100644
+index 0000000..becd172
+--- /dev/null
++++ b/admin/view/javascript/lavka-product-tags.js
+@@ -0,0 +1,32 @@
++(function ($) {
++    'use strict';
++    $(document).on('change.lavkaTags', '.lavka-tag-controls input[data-tag]', function () {
++        var input = this, widget = input.closest('.lavka-tag-controls');
++        var prior = !input.checked, desired = input.checked, code = input.dataset.tag;
++        var status = widget.querySelector('.lavka-tag-status');
++        if (input.dataset.pending === '1') { input.checked = prior; return; }
++        input.dataset.pending = '1'; input.disabled = true;
++        status.textContent = widget.dataset.saving; status.classList.remove('text-danger');
++        $.ajax({url: widget.dataset.url, type: 'POST', dataType: 'json', data: {
++            product_id: widget.dataset.productId, code: code, enabled: desired ? 1 : 0, revision: input.dataset.revision
++        }}).done(function (json) {
++            if (!json.success || !json.state || !json.state[code]) { failed(json.error); return; }
++            input.checked = !!json.state[code].enabled;
++            input.dataset.revision = json.state[code].revision;
++            status.textContent = widget.dataset.saved;
++            // If the same product widget occurs twice, keep both copies synchronized.
++            $('.lavka-tag-controls').filter(function () { return this.dataset.productId === widget.dataset.productId; }).find('input[data-tag="' + code + '"]').each(function () {
++                this.checked = input.checked; this.dataset.revision = input.dataset.revision;
++                var label=this.closest('label');
++                if (label && !label.classList.contains('lavka-tag-muted')) label.removeAttribute('title');
++            });
++        }).fail(function (xhr) {
++            failed(xhr.responseJSON && xhr.responseJSON.error);
++        }).always(function () { input.disabled = false; delete input.dataset.pending; });
++        function failed(error) {
++            input.checked = prior;
++            status.textContent = error === 'TAG_CONFLICT' ? widget.dataset.conflict : widget.dataset.error;
++            status.classList.add('text-danger');
++        }
++    });
++})(jQuery);
+diff --git a/admin/view/stylesheet/lavka-product-tags.css b/admin/view/stylesheet/lavka-product-tags.css
+new file mode 100644
+index 0000000..2e12151
+--- /dev/null
++++ b/admin/view/stylesheet/lavka-product-tags.css
+@@ -0,0 +1,9 @@
++.lavka-tag-column{min-width:220px;max-width:280px}
++.lavka-tag-new{font-size:11px;color:#63745e;margin-bottom:4px}
++.lavka-tag-checks{display:grid;grid-template-columns:1fr 1fr;gap:3px 10px}
++.lavka-tag-checks label{font-size:11px;font-weight:400;margin:0;white-space:nowrap;cursor:pointer}
++.lavka-tag-checks input{vertical-align:middle;margin:0 3px 0 0}
++.lavka-tag-checks input:disabled{cursor:not-allowed}
++.lavka-tag-checks input[data-pending="1"]{cursor:progress}
++.lavka-tag-muted{color:#858585}
++.lavka-tag-status{display:block;min-height:14px;font-size:10px;margin-top:2px}
+diff --git a/admin/view/template/catalog/product_form.twig b/admin/view/template/catalog/product_form.twig
+index 61ef924..df1c2fc 100644
+--- a/admin/view/template/catalog/product_form.twig
++++ b/admin/view/template/catalog/product_form.twig
+@@ -95,6 +95,10 @@
+                 {% endfor %}</div>
+             </div>
+             <div class="tab-pane" id="tab-data">
++              <div class="form-group"><label class="col-sm-2 control-label">{{ lavka_text.text_column }}</label><div class="col-sm-10">
++              {% include 'extension/module/lavka_tag_controls.twig' %}
++              <small>{{ lavka_text.text_form_note }}</small> <a href="{{ lavka_tag_settings }}">{{ lavka_text.text_settings }}</a>
++              </div></div>
+               <div class="form-group required">
+                 <label class="col-sm-2 control-label" for="input-model">{{ entry_model }}</label>
+                 <div class="col-sm-10">
+diff --git a/admin/view/template/catalog/product_list.twig b/admin/view/template/catalog/product_list.twig
+index b741fa9..3f7ea67 100644
+--- a/admin/view/template/catalog/product_list.twig
++++ b/admin/view/template/catalog/product_list.twig
+@@ -245,6 +245,7 @@
+                       <td style="width: 1px;" class="text-center"><input type="checkbox" onclick="$('input[name*=\'selected\']').prop('checked', this.checked);" /></td>
+                       <td class="text-center">{{ column_image }}</td>
+                       <td class="text-left">{% if sort == 'pd.name' %} <a href="{{ sort_name }}" class="{{ order|lower }}">{{ column_name }}</a> {% else %} <a href="{{ sort_name }}">{{ column_name }}</a> {% endif %}</td>
++                      <td class="text-left lavka-tag-column">{{ lavka_text.text_column }} <a href="{{ lavka_tag_settings }}" title="{{ lavka_text.text_settings|e('html_attr') }}"><i class="fa fa-cog"></i></a></td>
+                       <td class="text-left">{% if sort == 'p.model' %} <a href="{{ sort_model }}" class="{{ order|lower }}">{{ column_model }}</a> {% else %} <a href="{{ sort_model }}">{{ column_model }}</a> {% endif %}</td>
+                       <td class="text-right">{% if sort == 'p.price' %} <a href="{{ sort_price }}" class="{{ order|lower }}">{{ column_price }}</a> {% else %} <a href="{{ sort_price }}">{{ column_price }}</a> {% endif %}</td>
+                       <td class="text-right">{% if sort == 'p.quantity' %} <a href="{{ sort_quantity }}" class="{{ order|lower }}">{{ column_quantity }}</a> {% else %} <a href="{{ sort_quantity }}">{{ column_quantity }}</a> {% endif %}</td>
+@@ -265,6 +266,7 @@
+                       {% endif %}</td>
+                     <td class="text-center">{% if product.image %} <img src="{{ product.image }}" alt="{{ product.name }}" class="img-thumbnail" /> {% else %} <span class="img-thumbnail list"><i class="fa fa-camera fa-2x"></i></span> {% endif %}</td>
+                     <td class="text-left">{{ product.name }}</td>
++                    <td class="text-left lavka-tag-column">{% set lavka_product_id = product.product_id %}{% set lavka_state = product.lavka_state %}{% include 'extension/module/lavka_tag_controls.twig' %}</td>
+                     <td class="text-left">{{ product.model }}</td>
+                     <td class="text-right">{% if product.special %} <span style="text-decoration: line-through;">{{ product.price }}</span><br/>
+                       <div class="text-danger">{{ product.special }}</div>
+@@ -282,7 +284,7 @@
+                   {% endfor %}
+                   {% else %}
+                   <tr>
+-                    <td class="text-center" colspan="9">{{ text_no_results }}</td>
++                    <td class="text-center" colspan="10">{{ text_no_results }}</td>
+                   </tr>
+                   {% endif %}
+                     </tbody>
+diff --git a/admin/view/template/extension/module/lavka_product_tags.twig b/admin/view/template/extension/module/lavka_product_tags.twig
+new file mode 100644
+index 0000000..e191cbc
+--- /dev/null
++++ b/admin/view/template/extension/module/lavka_product_tags.twig
+@@ -0,0 +1,29 @@
++{{ header }}{{ column_left }}
++<div id="content"><div class="page-header"><div class="container-fluid">
++  <div class="pull-right"><button type="submit" form="lavka-tags-settings" class="btn btn-primary" {{ not can_modify ? 'disabled' : '' }}>{{ button_save }}</button> <a href="{{ cancel }}" class="btn btn-default">{{ button_back }}</a></div>
++  <h1>{{ heading_tags }}</h1>
++</div></div><div class="container-fluid">
++{% if error_warning %}<div class="alert alert-danger">{{ error_warning|e }}</div>{% endif %}
++{% if success %}<div class="alert alert-success">{{ success|e }}</div>{% endif %}
++<div class="panel panel-default"><div class="panel-heading">{{ text_settings_help }}</div><div class="panel-body">
++<form id="lavka-tags-settings" action="{{ action }}" method="post">
++<div class="table-responsive"><table class="table table-bordered"><thead><tr>
++<th>{{ text_type }}</th><th>{{ text_enabled }}</th><th>{{ text_label_ru }}</th><th>{{ text_label_uk }}</th><th>{{ text_background }}</th><th>{{ text_foreground }}</th><th>{{ text_order }}</th><th>{{ text_days }}</th><th>{{ text_preview }}</th>
++</tr></thead><tbody>
++{% for code, tag in tags %}<tr>
++<td>{{ code }}<input type="hidden" name="tags[{{ code }}][revision]" value="{{ tag.revision }}"></td>
++<td><input type="hidden" name="tags[{{ code }}][enabled]" value="0"><input type="checkbox" name="tags[{{ code }}][enabled]" value="1" {{ tag.enabled ? 'checked' : '' }} {{ not can_modify ? 'disabled' : '' }}></td>
++<td><input class="form-control" name="tags[{{ code }}][label_ru]" maxlength="40" value="{{ tag.label_ru|e('html_attr') }}" required></td>
++<td><input class="form-control" name="tags[{{ code }}][label_uk]" maxlength="40" value="{{ tag.label_uk|e('html_attr') }}" required></td>
++<td><input type="color" name="tags[{{ code }}][background]" value="{{ tag.background }}"></td>
++<td><input type="color" name="tags[{{ code }}][foreground]" value="{{ tag.foreground }}"></td>
++<td><input type="number" class="form-control" name="tags[{{ code }}][sort_order]" value="{{ tag.sort_order }}" min="0" max="999" required style="width:75px"></td>
++<td><input type="number" class="form-control" name="tags[{{ code }}][days]" value="{{ tag.days }}" min="0" max="3650" {{ code != 'new' ? 'readonly' : '' }} required style="width:75px"></td>
++<td><span class="lavka-tag-preview" style="background:{{ tag.background }};color:{{ tag.foreground }};padding:4px 8px;border-radius:4px;white-space:nowrap">{{ tag.label_ru|e }}</span></td>
++</tr>{% endfor %}</tbody></table></div></form>
++<p>{{ text_period_help }}</p><p>{{ text_legacy_help }}</p>
++</div></div></div></div>
++<script>
++(function($){$('#lavka-tags-settings').on('input change','input',function(){var row=$(this).closest('tr');row.find('.lavka-tag-preview').text(row.find('input[name$="[label_ru]"]').val()).css({backgroundColor:row.find('input[name$="[background]"]').val(),color:row.find('input[name$="[foreground]"]').val()});});})(jQuery);
++</script>
++{{ footer }}
+diff --git a/admin/view/template/extension/module/lavka_tag_controls.twig b/admin/view/template/extension/module/lavka_tag_controls.twig
+new file mode 100644
+index 0000000..2b6b58b
+--- /dev/null
++++ b/admin/view/template/extension/module/lavka_tag_controls.twig
+@@ -0,0 +1,11 @@
++<div class="lavka-tag-controls" data-product-id="{{ lavka_product_id }}" data-url="{{ lavka_tag_url|e('html_attr') }}" data-saving="{{ lavka_text.text_saving|e('html_attr') }}" data-saved="{{ lavka_text.text_saved|e('html_attr') }}" data-error="{{ lavka_text.text_error|e('html_attr') }}" data-conflict="{{ lavka_text.text_conflict|e('html_attr') }}">
++  <div class="lavka-tag-new">{{ lavka_text.text_auto_new }}: {% if lavka_state.new.enabled and lavka_definitions.new.enabled %}{{ lavka_text.text_until }} {{ lavka_state.new.until }}{% else %}—{% endif %}</div>
++  <div class="lavka-tag-checks">
++  {% for code in ['hit','fresh','brand','exclusive'] %}
++    <label title="{{ not lavka_definitions[code].enabled ? lavka_text.text_hidden : (lavka_state[code].inherited ? lavka_text.text_inherited : '') }}" class="{{ not lavka_definitions[code].enabled ? 'lavka-tag-muted' : '' }}">
++      <input type="checkbox" data-tag="{{ code }}" data-revision="{{ lavka_state[code].revision }}" {{ lavka_state[code].enabled ? 'checked' : '' }} {{ not lavka_can_modify or not lavka_product_id ? 'disabled' : '' }}> {{ lavka_definitions[code][lavka_label_key]|e }}
++    </label>
++  {% endfor %}
++  </div>
++  <small class="lavka-tag-status" role="status" aria-live="polite"></small>
++</div>
+diff --git a/catalog/controller/extension/module/lavka_product_tags.php b/catalog/controller/extension/module/lavka_product_tags.php
+new file mode 100644
+index 0000000..ae6454b
+--- /dev/null
++++ b/catalog/controller/extension/module/lavka_product_tags.php
+@@ -0,0 +1,24 @@
++<?php
++class ControllerExtensionModuleLavkaProductTags extends Controller {
++    public function info() {
++        $this->response->addHeader('Content-Type: application/json; charset=utf-8');
++        $this->response->addHeader('Cache-Control: private, no-store, max-age=0');
++        $this->response->addHeader('X-LiteSpeed-Cache-Control: no-cache');
++        if ($this->request->server['REQUEST_METHOD'] !== 'POST') { $this->response->addHeader('HTTP/1.1 405 Method Not Allowed'); $this->response->setOutput(json_encode(['error'=>'POST_REQUIRED'])); return; }
++        $ids = isset($this->request->post['product_ids']) ? $this->request->post['product_ids'] : [];
++        if (!is_array($ids) || !$ids || count($ids)>100) { $this->response->setOutput(json_encode(['error'=>'INVALID_IDS'])); return; }
++        foreach ($ids as $id) if (!is_scalar($id) || !preg_match('/^[1-9][0-9]{0,9}$/D',(string)$id)) { $this->response->setOutput(json_encode(['error'=>'INVALID_IDS'])); return; }
++        $ids = array_values(array_unique(array_map('intval',$ids)));
++        try {
++            $this->load->model('extension/module/lavka_product_tags');
++            $engine = $this->model_extension_module_lavka_product_tags->engine();
++            $q = $this->db->query("SELECT p.* FROM `".DB_PREFIX."product` p INNER JOIN `".DB_PREFIX."product_to_store` ps ON p.product_id=ps.product_id WHERE ps.store_id=".(int)$this->config->get('config_store_id')." AND p.status=1 AND p.date_available<=NOW() AND p.product_id IN (".implode(',',$ids).")");
++            $data = [];
++            foreach ($q->rows as $product) $data[(int)$product['product_id']] = $engine->stickers($product);
++            $this->response->setOutput(json_encode(['products'=>$data]));
++        } catch (Exception $e) {
++            $this->response->addHeader('HTTP/1.1 503 Service Unavailable');
++            $this->response->setOutput(json_encode(['error'=>'TAGS_UNAVAILABLE']));
++        }
++    }
++}
+diff --git a/catalog/controller/extension/module/uni_new_data.php b/catalog/controller/extension/module/uni_new_data.php
+index c3761ce..baf0593 100644
+--- a/catalog/controller/extension/module/uni_new_data.php
++++ b/catalog/controller/extension/module/uni_new_data.php
+@@ -215,6 +215,8 @@ class ControllerExtensionModuleUniNewData extends Controller {
+ 		// Source assets for mobile product lists; included in UniShop's normal merge.
+ 		$this->document->addStyle('catalog/view/theme/unishop2/stylesheet/lavka-mobile-cards.css?v=2');
+ 		$this->document->addScript('catalog/view/theme/unishop2/js/lavka-mobile-cards.js?v=1');
++		$this->document->addStyle('catalog/view/theme/unishop2/stylesheet/lavka-product-tags.css?v=1');
++		$this->document->addScript('catalog/view/theme/unishop2/js/lavka-product-tags.js?v=1');
+ 
+ 		if(isset($uniset['liveprice'])) {
+ 			$this->document->addScript('catalog/view/theme/unishop2/js/live-price.js?v=3');
+diff --git a/catalog/model/extension/module/lavka_product_tags.php b/catalog/model/extension/module/lavka_product_tags.php
+new file mode 100644
+index 0000000..2cd25f1
+--- /dev/null
++++ b/catalog/model/extension/module/lavka_product_tags.php
+@@ -0,0 +1,8 @@
++<?php
++require_once DIR_SYSTEM.'library/lavka_product_tags.php';
++class ModelExtensionModuleLavkaProductTags extends Model {
++    public function engine() {
++        if (!$this->registry->has('lavka_product_tags')) $this->registry->set('lavka_product_tags',new LavkaProductTags($this->registry));
++        return $this->registry->get('lavka_product_tags');
++    }
++}
+diff --git a/catalog/model/extension/module/uni_new_data.php b/catalog/model/extension/module/uni_new_data.php
+index d70f0cd..ce52204 100644
+--- a/catalog/model/extension/module/uni_new_data.php
++++ b/catalog/model/extension/module/uni_new_data.php
+@@ -267,7 +267,8 @@ class ModelExtensionModuleUniNewData extends Controller {
+ 			}	
+ 		}
+ 		
+-		return $stickers;
++		$this->load->model('extension/module/lavka_product_tags');
++		return $this->model_extension_module_lavka_product_tags->engine()->stickers($result, $stickers);
+ 	}
+ 	
+ 	private function getQuantityIndicator($quantity, $options) {
+diff --git a/catalog/view/theme/unishop2/js/lavka-product-tags.js b/catalog/view/theme/unishop2/js/lavka-product-tags.js
+new file mode 100644
+index 0000000..d2168e1
+--- /dev/null
++++ b/catalog/view/theme/unishop2/js/lavka-product-tags.js
+@@ -0,0 +1,123 @@
++/* Fresh label fragments keep page-cache HTML from retaining stale assignments. */
++(function ($) {
++    'use strict';
++    var pictures = new Map(), waiting = new Set(), inFlight = new Set(), again = new Set();
++    var observed = new WeakSet(), timer;
++    var managed = ['new','bestseller','sku','upc','ean','jan','isbn','mpn','lavka-new','lavka-hit','lavka-fresh','lavka-brand','lavka-exclusive'];
++    var resize = window.ResizeObserver ? new ResizeObserver(function (entries) {
++        entries.forEach(function (entry) {
++            var card = entry.target.closest('.lavka-mobile-card');
++            if (card) fit(card);
++        });
++    }) : null;
++
++    function fit(card) {
++        var image = card.querySelector('.product-thumb__image');
++        if (!image) return;
++        if (!matchMedia('(max-width:519px)').matches) { image.style.minHeight = ''; image.style.height = ''; image.classList.remove('lavka-tags-expanded'); return; }
++        var tags = image.querySelector('.sticker'), packs = card.querySelector('.product-thumb__option');
++        var height = (tags ? tags.getBoundingClientRect().height : 0) + (packs ? packs.getBoundingClientRect().height : 0) + 22;
++        var minimum = height > image.clientWidth ? Math.ceil(height) + 'px' : '';
++        if (image.style.minHeight !== minimum) image.style.minHeight = minimum;
++        if (image.style.height !== minimum) image.style.height = minimum;
++        image.classList.toggle('lavka-tags-expanded',!!minimum);
++        if (resize) [tags,packs].forEach(function (element) { if (element && !observed.has(element)) { observed.add(element); resize.observe(element); } });
++    }
++
++    function identify(image) {
++        var card = image.closest('.product-thumb'), field, id;
++        field = image.querySelector('.sticker[data-lavka-product-id]');
++        id = field && field.dataset.lavkaProductId;
++        if (/^[1-9][0-9]*$/.test(id || '')) return Number(id);
++        if (card) {
++            field = card.querySelector('.product-thumb__add-to-cart[data-pid]');
++            id = field && field.getAttribute('data-pid');
++        } else {
++            field = (image.closest('.product-page') || document).querySelector('input[name="product_id"]');
++            id = field && field.value;
++        }
++        return /^[1-9][0-9]*$/.test(id || '') ? Number(id) : null;
++    }
++
++    function scan(node) {
++        var images = [];
++        if (node.matches && node.matches('.product-thumb__image,.product-page__image-main')) images.push(node);
++        if (node.querySelectorAll) images = images.concat(Array.from(node.querySelectorAll('.product-thumb__image,.product-page__image-main')));
++        images.forEach(function (image) {
++            var id = identify(image);
++            if (!id) return;
++            if (!pictures.has(id)) pictures.set(id,new Set());
++            if (pictures.get(id).has(image)) return;
++            pictures.get(id).add(image); waiting.add(id);
++            var card = image.closest('.lavka-mobile-card');
++            if (card) fit(card);
++            if (resize && !observed.has(image)) { observed.add(image); resize.observe(image); }
++        });
++        schedule();
++    }
++
++    function render(image, stickers) {
++        var box = image.querySelector('.sticker');
++        if (!box && stickers.length) { box = document.createElement('div'); box.className='sticker'; image.prepend(box); }
++        if (!box) return;
++        Array.from(box.children).forEach(function (item) {
++            if (managed.some(function (name) { return item.classList.contains(name); })) item.remove();
++        });
++        var fragment = document.createDocumentFragment();
++        stickers.forEach(function (tag) {
++            if (!managed.includes(tag.name)) return;
++            var item = document.createElement('div');
++            item.className='sticker__item '+tag.name;
++            item.textContent=[tag.text,tag.value,tag.text_after].filter(function (value) { return value !== '' && value != null; }).join(' ');
++            if (/^#[0-9a-f]{6}$/i.test(tag.background || '')) { item.style.backgroundColor=tag.background; item.style.setProperty('--lavka-sticker-bg',tag.background); }
++            if (/^#[0-9a-f]{6}$/i.test(tag.color || '')) item.style.color=tag.color;
++            fragment.appendChild(item);
++        });
++        box.prepend(fragment);
++        box.hidden = !box.children.length;
++        var card = image.closest('.lavka-mobile-card');
++        if (card) fit(card);
++    }
++
++    function schedule() { clearTimeout(timer); timer=setTimeout(flush,40); }
++    function flush() {
++        var ids = Array.from(waiting).filter(function (id) {
++            waiting.delete(id);
++            if (inFlight.has(id)) { again.add(id); return false; }
++            return true;
++        });
++        while (ids.length) {
++            var chunk=ids.splice(0,60);
++            fetchChunk(chunk);
++        }
++    }
++    function fetchChunk(ids) {
++        ids.forEach(function (id) { inFlight.add(id); });
++        $.ajax({url:new URL('index.php?route=extension/module/lavka_product_tags/info',document.baseURI).href,
++            type:'POST',dataType:'json',cache:false,data:{product_ids:ids}}).done(function (json) {
++            if (!json.products) return;
++            ids.forEach(function (id) {
++                if (!Array.isArray(json.products[id])) return;
++                pictures.get(id).forEach(function (image) {
++                    if (!image.isConnected) { pictures.get(id).delete(image); return; }
++                    render(image,json.products[id]);
++                });
++            });
++        }).always(function () {
++            ids.forEach(function (id) { inFlight.delete(id); if (again.delete(id)) waiting.add(id); });
++            if (waiting.size) schedule();
++        });
++    }
++    $(function () {
++        setTimeout(function () {
++            scan(document);
++            new MutationObserver(function (records) {
++                records.forEach(function (record) { record.addedNodes.forEach(function (node) {
++                    if (node.nodeType===1 && (node.matches('.product-thumb,.product-thumb__image,.product-page__image-main') || node.querySelector('.product-thumb__image,.product-page__image-main'))) scan(node);
++                }); });
++            }).observe(document.body,{subtree:true,childList:true});
++        },0);
++        window.addEventListener('focus',function () { pictures.forEach(function (_,id) { waiting.add(id); }); schedule(); });
++        window.addEventListener('resize',function () { document.querySelectorAll('.lavka-mobile-card').forEach(fit); });
++    });
++})(jQuery);
+diff --git a/catalog/view/theme/unishop2/stylesheet/lavka-product-tags.css b/catalog/view/theme/unishop2/stylesheet/lavka-product-tags.css
+new file mode 100644
+index 0000000..305ddb4
+--- /dev/null
++++ b/catalog/view/theme/unishop2/stylesheet/lavka-product-tags.css
+@@ -0,0 +1,7 @@
++.sticker__item{opacity:1!important;background-color:var(--lavka-sticker-bg,initial)}
++.sticker__item::before{border-top-color:var(--lavka-sticker-bg);border-right-color:var(--lavka-sticker-bg)}
++.product-thumb__image>.sticker,.product-page__image-main>.sticker{display:flex;flex-direction:column;align-items:flex-start;gap:3px;max-width:calc(100% - 44px);pointer-events:none}
++.product-thumb__image>.sticker[hidden],.product-page__image-main>.sticker[hidden]{display:none}
++.product-thumb__image>.sticker>.sticker__item,.product-page__image-main>.sticker>.sticker__item{float:none;clear:none;max-width:100%;margin:0;overflow-wrap:anywhere}
++@media(max-width:519px){.lavka-mobile-card .sticker{left:6px!important;top:6px;gap:2px}.lavka-mobile-card .sticker__item{font-size:9px;line-height:12px;padding:2px 5px;border-radius:3px}.lavka-mobile-card .sticker__item::before,.lavka-mobile-card .sticker__item::after{display:none}}
++@media(max-width:519px){.lavka-mobile-card .lavka-tags-expanded img{object-fit:cover}}
+diff --git a/catalog/view/theme/unishop2/template/extension/module/uni_stickers.twig b/catalog/view/theme/unishop2/template/extension/module/uni_stickers.twig
+index 9b20170..b5a51f3 100644
+--- a/catalog/view/theme/unishop2/template/extension/module/uni_stickers.twig
++++ b/catalog/view/theme/unishop2/template/extension/module/uni_stickers.twig
+@@ -1,7 +1,5 @@
+-{% if product.stickers %}
+-	<div class="sticker">
++	<div class="sticker" data-lavka-product-id="{{ (product.product_id ? product.product_id : product_id)|e('html_attr') }}"{% if not product.stickers %} hidden{% endif %}>
+ 		{% for sticker in product.stickers %}
+-			<div class="sticker__item {{sticker.name}}">{{ sticker.text }} {{ sticker.value }} {{ sticker.text_after }}</div>
++			<div class="sticker__item {{ sticker.name|e('html_attr') }}"{% if sticker.background or sticker.color %} style="{% if sticker.background %}--lavka-sticker-bg:{{ sticker.background|e('html_attr') }};background-color:{{ sticker.background|e('html_attr') }};{% endif %}{% if sticker.color %}color:{{ sticker.color|e('html_attr') }};{% endif %}"{% endif %}>{{ sticker.text|e }} {{ sticker.value|e }} {{ sticker.text_after|e }}</div>
+ 		{% endfor %}
+ 	</div>
+-{% endif %}
+\ No newline at end of file
+diff --git a/system/library/lavka_product_tags.php b/system/library/lavka_product_tags.php
+new file mode 100644
+index 0000000..1dd634b
+--- /dev/null
++++ b/system/library/lavka_product_tags.php
+@@ -0,0 +1,230 @@
++<?php
++/** Shared marketing labels. No product identifiers, prices or dates are written here. */
++class LavkaProductTags {
++    const TYPES = ['new', 'hit', 'fresh', 'brand', 'exclusive'];
++    const MANUAL = ['hit', 'fresh', 'brand', 'exclusive'];
++    private $registry;
++    private $db;
++    private $store;
++    private $native;
++    private $definitions;
++    private $flags;
++    private $best;
++
++    public function __construct($registry) {
++        $this->registry = $registry;
++        $this->db = $registry->get('db');
++        $this->store = (int)$registry->get('config')->get('config_store_id');
++    }
++
++    public static function color($value, $fallback = null) {
++        if (!is_string($value)) return $fallback;
++        $value = ltrim(trim($value), '#');
++        if (preg_match('/^[a-f0-9]{3}$/iD', $value)) $value = $value[0].$value[0].$value[1].$value[1].$value[2].$value[2];
++        return preg_match('/^[a-f0-9]{6}$/iD', $value) ? '#'.strtolower($value) : $fallback;
++    }
++
++    public static function schema($prefix) {
++        if (!preg_match('/^[a-zA-Z0-9_]*$/D', $prefix)) throw new InvalidArgumentException('Invalid prefix');
++        return [
++            "CREATE TABLE IF NOT EXISTS `".$prefix."lavka_tag_definition` (`store_id` INT NOT NULL, `code` VARCHAR(16) NOT NULL, `enabled` TINYINT NOT NULL, `label_ru` VARCHAR(80) NOT NULL, `label_uk` VARCHAR(80) NOT NULL, `background` CHAR(7) NOT NULL, `foreground` CHAR(7) NOT NULL, `sort_order` INT NOT NULL, `days` INT NOT NULL DEFAULT 0, `revision` INT UNSIGNED NOT NULL DEFAULT 1, PRIMARY KEY (`store_id`,`code`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
++            "CREATE TABLE IF NOT EXISTS `".$prefix."lavka_product_tag` (`store_id` INT NOT NULL, `product_id` INT NOT NULL, `code` VARCHAR(16) NOT NULL, `enabled` TINYINT NOT NULL, `revision` INT UNSIGNED NOT NULL DEFAULT 1, PRIMARY KEY (`store_id`,`product_id`,`code`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
++        ];
++    }
++
++    public function nativeSettings() {
++        if ($this->native === null) {
++            // Never expose this private JSON; only label/color switches are used in responses.
++            $q = $this->db->query("SELECT `data` FROM `".DB_PREFIX."uni_setting` WHERE `store_id`=".$this->store." LIMIT 2");
++            if (count($q->rows) !== 1) throw new RuntimeException('Native settings row is not unique');
++            $data = json_decode($q->row['data'], true);
++            if (!is_array($data)) throw new RuntimeException('Invalid native settings');
++            $this->native = $data;
++        }
++        return $this->native;
++    }
++
++    public function defaults() {
++        $u = $this->nativeSettings();
++        $labels = [
++            'new'=>['Новинка','Новинка','#7c9b42'],
++            'hit'=>['Хит продаж','Хіт продажів','#bb8a26'],
++            'fresh'=>['Свежий помол','Свіжий помел','#4f7f28'],
++            'brand'=>['Наша марка','Наша марка','#63745e'],
++            'exclusive'=>['Эксклюзив','Ексклюзив','#8c3445']
++        ];
++        $out = [];
++        foreach ($labels as $code=>$label) {
++            $old = $code === 'hit' ? (isset($u['mpn_as_sticker']) ? 'mpn' : 'bestseller') : $code;
++            $out[$code] = ['code'=>$code,'enabled'=>$code === 'new' ? (int)isset($u['sticker_new']) : 1,
++                'label_ru'=>$label[0],'label_uk'=>$label[1],
++                'background'=>self::color(isset($u['sticker_'.$old.'_background_color']) ? $u['sticker_'.$old.'_background_color'] : '',$label[2]),
++                'foreground'=>self::color(isset($u['sticker_'.$old.'_text_color']) ? $u['sticker_'.$old.'_text_color'] : '','#ffffff'),
++                'sort_order'=>(array_search($code,self::TYPES,true)+1)*10,
++                'days'=>$code === 'new' ? max(0,min(3650,isset($u['sticker_new_date'])?(int)$u['sticker_new_date']:30)) : 0,'revision'=>1];
++        }
++        return $out;
++    }
++
++    public function definitions() {
++        if ($this->definitions === null) {
++            $q = $this->db->query("SELECT * FROM `".DB_PREFIX."lavka_tag_definition` WHERE `store_id`=".$this->store);
++            $this->definitions = [];
++            foreach ($q->rows as $row) if (in_array($row['code'],self::TYPES,true)) $this->definitions[$row['code']] = $row;
++            if (count($this->definitions) !== 5) throw new RuntimeException('Tag definitions are not initialized');
++            $ordered=[];
++            foreach (self::TYPES as $code) $ordered[$code]=$this->definitions[$code];
++            $this->definitions=$ordered;
++        }
++        return $this->definitions;
++    }
++
++    public function initialize() {
++        foreach (self::schema(DB_PREFIX) as $sql) $this->db->query($sql);
++        foreach ($this->defaults() as $row) {
++            $sets = $this->definitionSets($row);
++            $this->db->query("INSERT IGNORE INTO `".DB_PREFIX."lavka_tag_definition` SET `store_id`=".$this->store.", `code`='".$row['code']."', ".$sets.", `revision`=1");
++        }
++        return $this->definitions();
++    }
++
++    private function definitionSets($row) {
++        $parts = [];
++        foreach (['label_ru','label_uk','background','foreground'] as $key) $parts[] = '`'.$key."`='".$this->db->escape($row[$key])."'";
++        foreach (['enabled','sort_order','days'] as $key) $parts[] = '`'.$key.'`='.(int)$row[$key];
++        return implode(', ',$parts);
++    }
++
++    public function saveDefinitions($input) {
++        if (!is_array($input) || array_diff(self::TYPES,array_keys($input)) || array_diff(array_keys($input),self::TYPES)) throw new InvalidArgumentException('Invalid tag types');
++        $validated = [];
++        foreach (self::TYPES as $code) {
++            $row = $input[$code];
++            if (!is_array($row)) throw new InvalidArgumentException('Invalid definition');
++            foreach (['label_ru','label_uk'] as $key) {
++                if (!isset($row[$key]) || !is_string($row[$key])) throw new InvalidArgumentException('Missing label');
++                $row[$key] = trim(html_entity_decode($row[$key],ENT_QUOTES,'UTF-8'));
++                if (!preg_match('/^[^<>\p{C}]{1,40}$/uD',$row[$key])) throw new InvalidArgumentException('Invalid label');
++            }
++            foreach (['background','foreground'] as $key) if (($row[$key] = self::color(isset($row[$key]) ? $row[$key] : null)) === null) throw new InvalidArgumentException('Invalid color');
++            foreach (['enabled','sort_order','days','revision'] as $key) {
++                if (!isset($row[$key]) || !is_scalar($row[$key]) || !preg_match('/^\d{1,10}$/D',(string)$row[$key])) throw new InvalidArgumentException('Invalid numeric value');
++                $row[$key] = (int)$row[$key];
++            }
++            if ($row['enabled'] > 1 || $row['sort_order'] > 999 || $row['days'] > 3650 || $row['revision'] < 1) throw new InvalidArgumentException('Value outside allowed range');
++            if ($code !== 'new') $row['days'] = 0;
++            $validated[$code] = $row;
++        }
++        $this->db->query('START TRANSACTION');
++        try {
++            foreach ($validated as $code=>$row) {
++                $this->db->query("UPDATE `".DB_PREFIX."lavka_tag_definition` SET ".$this->definitionSets($row).", `revision`=`revision`+1 WHERE `store_id`=".$this->store." AND `code`='".$code."' AND `revision`=".$row['revision']);
++                if ($this->db->countAffected() !== 1) throw new RuntimeException('TAG_CONFLICT');
++            }
++            $this->db->query('COMMIT');
++        } catch (Exception $e) { $this->db->query('ROLLBACK'); throw $e; }
++        $this->definitions = null;
++        return $this->definitions();
++    }
++
++    private function flags() {
++        if ($this->flags === null) {
++            $q = $this->db->query("SELECT `product_id`,`code`,`enabled`,`revision` FROM `".DB_PREFIX."lavka_product_tag` WHERE `store_id`=".$this->store);
++            $this->flags = [];
++            foreach ($q->rows as $row) if (in_array($row['code'],self::MANUAL,true)) $this->flags[(int)$row['product_id']][$row['code']] = $row;
++        }
++        return $this->flags;
++    }
++
++    private function legacyHit($product) {
++        if ((int)$product['product_id'] < 1) return false;
++        $mpn = isset($product['mpn']) ? trim($product['mpn']) : '';
++        $u = $this->nativeSettings();
++        if (isset($u['mpn_as_sticker']) && in_array($mpn,['Популярно','Хит продаж','Хіт продажів'],true)) return true;
++        if (!isset($u['sticker_bestseller'])) return false;
++        if ($this->best === null) {
++            $key = 'unishop.sticker.bestseller.'.$this->store;
++            $ids = $this->registry->get('cache')->get($key);
++            if (!is_array($ids) || !$ids) {
++                $q = $this->db->query("SELECT op.product_id, SUM(op.quantity) AS total FROM `".DB_PREFIX."order_product` op LEFT JOIN `".DB_PREFIX."product` p ON op.product_id=p.product_id LEFT JOIN `".DB_PREFIX."order` o ON op.order_id=o.order_id WHERE o.order_status_id>0 AND p.date_available<=NOW() AND p.status=1 GROUP BY op.product_id");
++                $ids = [0];
++                foreach ($q->rows as $row) if ((int)$row['total'] >= (int)$u['sticker_bestseller_item']) $ids[] = (int)$row['product_id'];
++                $this->registry->get('cache')->set($key,$ids);
++            }
++            $this->best = array_fill_keys($ids,true);
++        }
++        return isset($this->best[(int)$product['product_id']]);
++    }
++
++    public function state($product, $now = null) {
++        $now = $now === null ? time() : $now;
++        $definitions = $this->definitions();
++        $flags = $this->flags();
++        $id = (int)$product['product_id'];
++        $start = isset($product['date_available']) ? strtotime($product['date_available']) : false;
++        $end = $start === false ? false : $start+(int)$definitions['new']['days']*86400;
++        $out = ['new'=>['enabled'=>$start !== false && $start <= $now && $end >= $now,'until'=>$end ? date('Y-m-d',$end) : '']];
++        foreach (self::MANUAL as $code) {
++            $row = isset($flags[$id][$code]) ? $flags[$id][$code] : null;
++            $out[$code] = ['enabled'=>$row ? (bool)$row['enabled'] : ($code === 'hit' && $this->legacyHit($product)),
++                          'revision'=>$row ? (int)$row['revision'] : 0,'inherited'=>$code === 'hit' && !$row];
++        }
++        return $out;
++    }
++
++    public function writeFlag($product_id, $code, $enabled, $revision) {
++        if (!is_int($product_id) || $product_id < 1 || !in_array($code,self::MANUAL,true) || !in_array($enabled,[0,1],true) || !is_int($revision) || $revision < 0) throw new InvalidArgumentException('Invalid flag change');
++        $q = $this->db->query("SELECT * FROM `".DB_PREFIX."product` WHERE product_id=".$product_id." LIMIT 1");
++        if (!$q->num_rows) throw new InvalidArgumentException('Product not found');
++        $product = $q->row;
++        if ($revision === 0) {
++            $this->db->query("INSERT IGNORE INTO `".DB_PREFIX."lavka_product_tag` SET store_id=".$this->store.", product_id=".$product_id.", code='".$code."', enabled=".$enabled.", revision=1");
++        } else {
++            $this->db->query("UPDATE `".DB_PREFIX."lavka_product_tag` SET enabled=".$enabled.",revision=revision+1 WHERE store_id=".$this->store." AND product_id=".$product_id." AND code='".$code."' AND revision=".$revision);
++        }
++        if ($this->db->countAffected() !== 1) throw new RuntimeException('TAG_CONFLICT');
++        $this->flags = null;
++        $this->registry->get('cache')->delete('product');
++        $this->registry->get('cache')->delete('product.unishop');
++        return $this->state($product);
++    }
++
++    public function stickers($product, $legacy = []) {
++        $definitions = $this->definitions();
++        $state = $this->state($product);
++        $u = $this->nativeSettings();
++        $language = (string)$this->registry->get('config')->get('config_language');
++        if ($this->registry->has('session') && isset($this->registry->get('session')->data['language'])) $language = (string)$this->registry->get('session')->data['language'];
++        $label = strpos($language,'uk') === 0 || strpos($language,'ua') === 0 ? 'label_uk' : 'label_ru';
++        $out = [];
++        foreach (self::TYPES as $code) {
++            $d = $definitions[$code];
++            if (!$d['enabled'] || !$state[$code]['enabled']) continue;
++            $out[] = ['name'=>'lavka-'.$code,'text'=>$d[$label],'value'=>'','text_after'=>'',
++                      'background'=>$d['background'],'color'=>$d['foreground'],'length'=>strlen($d[$label]),'order'=>(int)$d['sort_order']];
++        }
++        foreach ($legacy as $sticker) {
++            if (in_array($sticker['name'],['new','bestseller','sku','upc','ean','jan','isbn','mpn'],true)) continue;
++            $out[] = $this->legacyColor($sticker,$u);
++        }
++        foreach (['sku','upc','ean','jan','isbn','mpn'] as $index=>$code) {
++            if (!isset($u[$code.'_as_sticker']) || !isset($product[$code]) || trim((string)$product[$code]) === '') continue;
++            // Known old marketing MPN is represented by the single hit state; code is untouched.
++            if ($code === 'mpn' && in_array(trim($product[$code]),['Популярно','Хит продаж','Хіт продажів'],true)) continue;
++            $out[] = $this->legacyColor(['name'=>$code,'text'=>$product[$code],'value'=>'','text_after'=>'','order'=>200+$index],$u);
++        }
++        usort($out,function($a,$b) { $cmp=$a['order'] <=> $b['order']; return $cmp ?: strcmp($a['name'],$b['name']); });
++        return $out;
++    }
++
++    private function legacyColor($sticker,$u) {
++        foreach (['text','value','text_after'] as $field) if (isset($sticker[$field]) && is_string($sticker[$field])) $sticker[$field]=html_entity_decode($sticker[$field],ENT_QUOTES,'UTF-8');
++        foreach (['background'=>'background','color'=>'text'] as $output=>$key) {
++            $input = 'sticker_'.$sticker['name'].'_'.$key.'_color';
++            $sticker[$output] = self::color(isset($u[$input]) ? $u[$input] : null);
++        }
++        if (!isset($sticker['order'])) $sticker['order'] = 150;
++        if (!isset($sticker['length'])) $sticker['length'] = strlen($sticker['text']);
++        return $sticker;
++    }
++}

@@ -1,0 +1,11 @@
+<div class="lavka-tag-controls" data-product-id="{{ lavka_product_id }}" data-url="{{ lavka_tag_url|e('html_attr') }}" data-saving="{{ lavka_text.text_saving|e('html_attr') }}" data-saved="{{ lavka_text.text_saved|e('html_attr') }}" data-error="{{ lavka_text.text_error|e('html_attr') }}" data-conflict="{{ lavka_text.text_conflict|e('html_attr') }}">
+  <div class="lavka-tag-new">{{ lavka_text.text_auto_new }}: {% if lavka_state.new.enabled and lavka_definitions.new.enabled %}{{ lavka_text.text_until }} {{ lavka_state.new.until }}{% else %}—{% endif %}</div>
+  <div class="lavka-tag-checks">
+  {% for code in ['hit','fresh','brand','exclusive'] %}
+    <label title="{{ not lavka_definitions[code].enabled ? lavka_text.text_hidden : (lavka_state[code].inherited ? lavka_text.text_inherited : '') }}" class="{{ not lavka_definitions[code].enabled ? 'lavka-tag-muted' : '' }}">
+      <input type="checkbox" data-tag="{{ code }}" data-revision="{{ lavka_state[code].revision }}" {{ lavka_state[code].enabled ? 'checked' : '' }} {{ not lavka_can_modify or not lavka_product_id ? 'disabled' : '' }}> {{ lavka_definitions[code][lavka_label_key]|e }}
+    </label>
+  {% endfor %}
+  </div>
+  <small class="lavka-tag-status" role="status" aria-live="polite"></small>
+</div>

@@ -1,0 +1,165 @@
+{
+  "target": "test.lavka-speciy.com",
+  "database": "lavkasp_test",
+  "store_id": 0,
+  "source_commit": "647cb88a41cd5a66e3524f576b28c8c897f7f2d1",
+  "files": [
+    {
+      "path": "system/library/lavka_product_tags.php",
+      "before_sha256": null,
+      "allowed_before_sha256": [],
+      "after_sha256": "5e7aca98b7c8ff955f3a4a37c9a7fa59826474e9fce209dbbfc465a7c0f80665"
+    },
+    {
+      "path": "catalog/model/extension/module/lavka_product_tags.php",
+      "before_sha256": null,
+      "allowed_before_sha256": [],
+      "after_sha256": "1147d5431977040f387d0e6d2160bf203773a9ab14c6198acd559c119b54a1c0"
+    },
+    {
+      "path": "admin/model/extension/module/lavka_product_tags.php",
+      "before_sha256": null,
+      "allowed_before_sha256": [],
+      "after_sha256": "2b81fc2f0f35852449f679dc78621d8c37350c61866762ae8cba3e0fc2e8b6c1"
+    },
+    {
+      "path": "catalog/controller/extension/module/lavka_product_tags.php",
+      "before_sha256": null,
+      "allowed_before_sha256": [],
+      "after_sha256": "c27e92b7d18798e2f352ddd29ef227a9cecc2566fbd2d264e77969334ffe2075"
+    },
+    {
+      "path": "admin/view/template/extension/module/lavka_tag_controls.twig",
+      "before_sha256": null,
+      "allowed_before_sha256": [],
+      "after_sha256": "da52b69340115a126321085bb37750584c7b6266f1c030d42c3579dfa386c6b7"
+    },
+    {
+      "path": "admin/view/template/extension/module/lavka_product_tags.twig",
+      "before_sha256": null,
+      "allowed_before_sha256": [],
+      "after_sha256": "8374aa3296c803e9d962424bef5a8e047a74838f6261c36da8121f9dbcd7181e"
+    },
+    {
+      "path": "admin/view/javascript/lavka-product-tags.js",
+      "before_sha256": null,
+      "allowed_before_sha256": [],
+      "after_sha256": "07f46f4a39a65fecbb3564b6c4a2062c5ade6c311b75a8912bcdc80859918adc"
+    },
+    {
+      "path": "admin/view/stylesheet/lavka-product-tags.css",
+      "before_sha256": null,
+      "allowed_before_sha256": [],
+      "after_sha256": "642062a91b973b28e2c7346aa96ad50bbe3efe877430a0b7f54a7228ce43be6c"
+    },
+    {
+      "path": "admin/language/ru-ru/extension/module/lavka_product_tags.php",
+      "before_sha256": null,
+      "allowed_before_sha256": [],
+      "after_sha256": "2ef06030ee1419dadf7d87d27fa5580178830bf73c40a2c5c3cd7f34f52bc872"
+    },
+    {
+      "path": "admin/language/uk-ua/extension/module/lavka_product_tags.php",
+      "before_sha256": null,
+      "allowed_before_sha256": [],
+      "after_sha256": "c705794036ff8e119b707343e789232c8079669853ff0b10ee1311edc1a2008f"
+    },
+    {
+      "path": "admin/language/en-gb/extension/module/lavka_product_tags.php",
+      "before_sha256": null,
+      "allowed_before_sha256": [],
+      "after_sha256": "a9c9c6adf334dfe66e6ed1a6126f08117ec5ef90a370ba395575d135ccdbf456"
+    },
+    {
+      "path": "catalog/view/theme/unishop2/js/lavka-product-tags.js",
+      "before_sha256": null,
+      "allowed_before_sha256": [],
+      "after_sha256": "dc5da0e9b614e05bc5875bf5e6381bf9a88ac97ffad420826d3116288a5914bb"
+    },
+    {
+      "path": "catalog/view/theme/unishop2/stylesheet/lavka-product-tags.css",
+      "before_sha256": null,
+      "allowed_before_sha256": [],
+      "after_sha256": "1db59b197ce8e1fb1654b67d8486badf2f6621a677d0a3da5796c20d54347eee"
+    },
+    {
+      "path": "catalog/view/theme/unishop2/stylesheet/lavka-mobile-cards.css",
+      "before_sha256": "f0dc13bf79226dcd0859bfe5d3901fd2db23baaf564e259ce83e4d4dd1c6a08b",
+      "allowed_before_sha256": [
+        "915a3de80241f4ee5e61df4c60a419d67586cccb25904840a3d148f997535b5f",
+        "a2ab2ce2620f88c0c23d3d65dba5449512f91168284b71b7f3b73fbabd7be491",
+        "f0dc13bf79226dcd0859bfe5d3901fd2db23baaf564e259ce83e4d4dd1c6a08b"
+      ],
+      "after_sha256": "f0dc13bf79226dcd0859bfe5d3901fd2db23baaf564e259ce83e4d4dd1c6a08b"
+    },
+    {
+      "path": "catalog/view/theme/unishop2/template/extension/module/uni_stickers.twig",
+      "before_sha256": "cdd140e0b50ffca47e04ede20e391bae79e46840aeb58d38bc6da7750796f89a",
+      "allowed_before_sha256": [
+        "cdd140e0b50ffca47e04ede20e391bae79e46840aeb58d38bc6da7750796f89a",
+        "d42af7cbccad62b66f15fdd01cbe821d826a92bb85c4ca30991a30f343840076"
+      ],
+      "after_sha256": "d8553e97ba69fc110a37a1d19de5ed60029aff055157199a29c20deab01ea46d"
+    },
+    {
+      "path": "admin/controller/catalog/product.php",
+      "before_sha256": "175e8a0199ecf606cd60377bc6b6c776339bcf244a81bc10d2c7c2b8dd03feeb",
+      "allowed_before_sha256": [
+        "150578a0ff789fd6d58e3f69b287c5a576e8bcd10878e521c2697803ba0f7daa",
+        "175e8a0199ecf606cd60377bc6b6c776339bcf244a81bc10d2c7c2b8dd03feeb"
+      ],
+      "after_sha256": "4ee2fc596246aa48bce865f44d3d77d7502c88ffd3e8ae61850b0751e852756b"
+    },
+    {
+      "path": "admin/model/catalog/product.php",
+      "before_sha256": "f05d447ef5f7254ebaea51e36c0017e7f4d5c03889d99f291d4be0ed481362e2",
+      "allowed_before_sha256": [
+        "5afde635fd8cbe9deb3f1dabaf47bf2e3a9f6db3e728819998686ee020c61fc4",
+        "f05d447ef5f7254ebaea51e36c0017e7f4d5c03889d99f291d4be0ed481362e2"
+      ],
+      "after_sha256": "8cb3e08371fb92e30f0403e9d6bbbbc6c72d265f6d340872d7e9b5782db223b8"
+    },
+    {
+      "path": "admin/view/template/catalog/product_list.twig",
+      "before_sha256": "af91ecdb0f686c6cb9b9a9f7c9202db0c5ed853872bdc8c856081140e971bd05",
+      "allowed_before_sha256": [
+        "51cae3517da95f61d5b6e7e59fd83bf1bae61005785f3d6d83f4d32cbdbb7e13",
+        "af91ecdb0f686c6cb9b9a9f7c9202db0c5ed853872bdc8c856081140e971bd05"
+      ],
+      "after_sha256": "c35b22a8a79d1e13aea851b4c7638ce2bc623e07f5ab774350c3487218331a71"
+    },
+    {
+      "path": "admin/view/template/catalog/product_form.twig",
+      "before_sha256": "ae0a1efb6e91cdc8ea789aea9163e238f1d07d5ebba7e49f88a28128e3513d3f",
+      "allowed_before_sha256": [
+        "aa6405d174898eb8811baefd238d0e7e55620c391901e6590a0ee88573fea0fa",
+        "ae0a1efb6e91cdc8ea789aea9163e238f1d07d5ebba7e49f88a28128e3513d3f"
+      ],
+      "after_sha256": "ede9a24f63c9a106ab54b2d098d8ce464fc4b033992d6010983ad91d3fdca359"
+    },
+    {
+      "path": "catalog/model/extension/module/uni_new_data.php",
+      "before_sha256": "5437d0d4e3e64537733c5b1a68648f3f82ff2d8f71b877ebcaa09c8dd40bab7d",
+      "allowed_before_sha256": [
+        "5437d0d4e3e64537733c5b1a68648f3f82ff2d8f71b877ebcaa09c8dd40bab7d",
+        "a9172f4275e439c006f9d1fddd685bc5f936d916fac96b4449b7c26c077ffd37"
+      ],
+      "after_sha256": "14b74c04a7a019105c62ed393767a376fb1fb1ed254054d2a8f0934a22dcc105"
+    },
+    {
+      "path": "catalog/controller/extension/module/uni_new_data.php",
+      "before_sha256": "1eee34b7e2069869419e63af017d090a6b755002e6ef308779b077ebc16cff74",
+      "allowed_before_sha256": [
+        "1eee34b7e2069869419e63af017d090a6b755002e6ef308779b077ebc16cff74",
+        "8e40d1c962981c81f9b0a111bf4795e7b5f02daf26ddac7e149eb116b224f3c8",
+        "ab0fee0eeeae14f0589d6a19720fe9f2830318883257e5502d9a3c99f7bf0d66",
+        "d1ef60fd57dc268b0b2ec22687694eefbe4ccfc3b89c5ac9a40e7b653aaa754e"
+      ],
+      "after_sha256": "2537633f60b45d1c6b49b01d5341836e1a4d49d32ff2f89d903c0c0ba0b2331c"
+    }
+  ],
+  "deleted_files": [],
+  "database_changes": [
+    "Create only lavka_tag_definition and lavka_product_tag; initialize five definitions without modifying product identifiers."
+  ]
+}

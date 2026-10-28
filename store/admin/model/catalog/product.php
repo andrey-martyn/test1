@@ -375,11 +375,13 @@ class ModelCatalogProduct extends Model {
 			$data['product_store'] = $this->getProductStores($product_id);
 			$data['product_recurrings'] = $this->getRecurrings($product_id);
 
-			$this->addProduct($data);
+            $lavkaCopyId = $this->addProduct($data);
+            $this->db->query("INSERT INTO `".DB_PREFIX."lavka_product_tag` (store_id,product_id,code,enabled,revision) SELECT store_id,".(int)$lavkaCopyId.",code,enabled,1 FROM `".DB_PREFIX."lavka_product_tag` WHERE product_id=".(int)$product_id);
 		}
 	}
 
 	public function deleteProduct($product_id) {
+        $this->db->query("DELETE FROM `".DB_PREFIX."lavka_product_tag` WHERE product_id=".(int)$product_id);
 		$this->db->query("DELETE FROM " . DB_PREFIX . "product WHERE product_id = '" . (int)$product_id . "'");
 		$this->db->query("DELETE FROM " . DB_PREFIX . "product_attribute WHERE product_id = '" . (int)$product_id . "'");
 		$this->db->query("DELETE FROM " . DB_PREFIX . "product_description WHERE product_id = '" . (int)$product_id . "'");

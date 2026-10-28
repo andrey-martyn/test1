@@ -1,7 +1,5 @@
-{% if product.stickers %}
-	<div class="sticker">
+	<div class="sticker" data-lavka-product-id="{{ (product.product_id ? product.product_id : product_id)|e('html_attr') }}"{% if not product.stickers %} hidden{% endif %}>
 		{% for sticker in product.stickers %}
-			<div class="sticker__item {{sticker.name}}">{{ sticker.text }} {{ sticker.value }} {{ sticker.text_after }}</div>
+			<div class="sticker__item {{ sticker.name|e('html_attr') }}"{% if sticker.background or sticker.color %} style="{% if sticker.background %}--lavka-sticker-bg:{{ sticker.background|e('html_attr') }};background-color:{{ sticker.background|e('html_attr') }};{% endif %}{% if sticker.color %}color:{{ sticker.color|e('html_attr') }};{% endif %}"{% endif %}>{{ sticker.text|e }} {{ sticker.value|e }} {{ sticker.text_after|e }}</div>
 		{% endfor %}
 	</div>
-{% endif %}
