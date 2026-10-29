@@ -403,17 +403,35 @@ function simulationShopStats(\PDO $core, int $product): array
 {
     $updated = one($core, "SELECT value FROM settings WHERE key='shop_updated'")["value"] ?? null;
     if ($updated === null) {
-        return ["count" => null, "average" => null, "updated_at" => null];
+        return ["count" => null, "rating_sum" => null, "average" => null, "updated_at" => null];
     }
     $stats = one(
         $core,
-        "SELECT count(*) count,avg(rating) average FROM shop_reviews WHERE product_id=?",
+        "SELECT count(*) count,coalesce(sum(rating),0) rating_sum,avg(rating) average FROM shop_reviews WHERE product_id=?",
         [$product],
     );
     return [
         "count" => (int) $stats["count"],
+        "rating_sum" => (int) $stats["rating_sum"],
         "average" => $stats["average"] === null ? null : (float) $stats["average"],
         "updated_at" => $updated,
+    ];
+}
+/** Read-only experiment: combine exact sums and counts without merging any records. */
+function simulationCombinedStats(array $shop, array $model, ?int $currentRating = null): array
+{
+    if ($shop["count"] === null) {
+        return ["count" => null, "rating_sum" => null, "average" => null, "after_current" => null];
+    }
+    $count = (int) $shop["count"] + (int) $model["count"];
+    $sum = (int) $shop["rating_sum"] + (int) $model["rating_sum"];
+    $average = $count ? (float) $sum / $count : null;
+    return [
+        "count" => $count,
+        "rating_sum" => $sum,
+        "average" => $average,
+        "after_current" =>
+            $currentRating === null ? $average : (float) ($sum + $currentRating) / ($count + 1),
     ];
 }
 function simulationRequestSource(\PDO $core, array $user, string $id, string $source): array
@@ -469,11 +487,17 @@ function simulationEntry(\PDO $core, array $user, string $id): array
             ? ($stats["rating_sum"] + (int) $e["rating"]) / ($stats["count"] + 1)
             : $stats["average"];
     $q = one($core, "SELECT target,depth,priority FROM queue WHERE product_id=?", [$e["product_id"]]);
+    $shop = simulationShopStats($core, (int) $e["product_id"]);
     return [
         "entry" => $e,
         "product" => $p,
         "model_stats" => $stats,
-        "shop_stats" => simulationShopStats($core, (int) $e["product_id"]),
+        "shop_stats" => $shop,
+        "combined_stats" => simulationCombinedStats(
+            $shop,
+            $stats,
+            $e["state"] === "draft" ? (int) $e["rating"] : null,
+        ),
         "guidance" => $q ?? ["target" => 3, "depth" => "normal", "priority" => null],
         "sources" => simulationSources($core, (int) $e["product_id"]),
         "source_sync" => [
@@ -542,10 +566,13 @@ function simulationPreview(\PDO $core, array $user, int $product): array
         "SELECT model_author,model_city,model_date,rating,mood,registration,body,origin FROM entries WHERE product_id=? AND state='saved' ORDER BY model_date DESC,seq DESC LIMIT 200",
         [$product],
     );
+    $stats = simulationRatingStats($db, $product);
+    $shop = simulationShopStats($core, $product);
     return [
         "product" => $p,
         "entries" => $entries,
-        "stats" => simulationRatingStats($db, $product),
+        "stats" => $stats,
+        "combined_stats" => simulationCombinedStats($shop, $stats),
         "label" => SIMULATION_LABEL,
     ];
 }
@@ -557,9 +584,30 @@ function simulationSummary(\PDO $core, array $user): array
         $db,
         "SELECT count(*) total,avg(rating) average,sum(CASE WHEN registration='model_guest' THEN 1 ELSE 0 END) guests,sum(CASE WHEN model_city='' THEN 1 ELSE 0 END) no_city FROM entries WHERE state='saved'",
     );
+    $shopKnown = one($core, "SELECT value FROM settings WHERE key='shop_updated'") !== null;
+    $shops = [];
+    if ($shopKnown) {
+        foreach (
+            rows(
+                $core,
+                "SELECT product_id,count(*) count,coalesce(sum(rating),0) rating_sum FROM shop_reviews GROUP BY product_id",
+            )
+            as $row
+        ) {
+            $shops[(int) $row["product_id"]] = $row;
+        }
+    }
+    $perProduct = simulationProductStats($db);
+    foreach ($perProduct as &$row) {
+        $shop = $shopKnown
+            ? $shops[(int) $row["product_id"]] ?? ["count" => 0, "rating_sum" => 0]
+            : ["count" => null, "rating_sum" => null];
+        $row["combined_stats"] = simulationCombinedStats($shop, $row);
+    }
+    unset($row);
     return [
         "stats" => $stats,
-        "per_product" => simulationProductStats($db),
+        "per_product" => $perProduct,
         "items" => rows(
             $db,
             "SELECT id,product_id,product_name,model_author,model_city,model_date,rating,registration,state,substr(body,1,300) excerpt FROM entries WHERE operator_id=? ORDER BY seq DESC LIMIT 100",

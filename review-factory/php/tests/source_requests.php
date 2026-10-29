@@ -83,6 +83,12 @@ try {
         "Native published shop review and average are visible",
     );
     qc(
+        $card["combined_stats"]["count"] === 1 &&
+            $card["combined_stats"]["average"] === 3.0 &&
+            $card["combined_stats"]["after_current"] === 4.0,
+        "Experiment starts with native ratings and projects the synthetic draft once",
+    );
+    qc(
         $card["model_stats"]["count"] === 0 && $card["model_stats"]["average"] === null,
         "Native snapshot does not become synthetic saved records",
     );
@@ -206,6 +212,56 @@ try {
     qc(
         ReviewFactory\simulationShopStats($db, 1)["average"] === 3.0,
         "Saving a synthetic record does not change native shop average",
+    );
+    $weighted = ReviewFactory\simulationCombinedStats(
+        ["count" => 20, "rating_sum" => 90, "average" => 4.5],
+        ["count" => 5, "rating_sum" => 25, "average" => 5.0],
+        4,
+    );
+    qc(
+        $weighted["count"] === 25 &&
+            $weighted["rating_sum"] === 115 &&
+            abs($weighted["average"] - 4.6) < 1e-12,
+        "Unequal source sizes use exact sums and counts, not the average of averages",
+    );
+    qc(
+        abs($weighted["after_current"] - 119 / 26) < 1e-12,
+        "Projection adds the current draft rating and one record",
+    );
+    $unknown = ReviewFactory\simulationCombinedStats(
+        ["count" => null, "rating_sum" => null],
+        ["count" => 5, "rating_sum" => 25],
+        5,
+    );
+    qc(
+        $unknown["count"] === null && $unknown["average"] === null && $unknown["after_current"] === null,
+        "Missing native snapshot is not treated as an empty store",
+    );
+    $empty = ReviewFactory\simulationCombinedStats(
+        ["count" => 0, "rating_sum" => 0],
+        ["count" => 0, "rating_sum" => 0],
+        5,
+    );
+    qc(
+        $empty["count"] === 0 && $empty["average"] === null && $empty["after_current"] === 5.0,
+        "Empty known sources avoid division by zero and still permit a projection",
+    );
+    $finishedCard = simulationEntry($db, $u, $a);
+    qc(
+        $finishedCard["combined_stats"]["count"] === 2 &&
+            $finishedCard["combined_stats"]["average"] === 4.0 &&
+            $finishedCard["combined_stats"]["after_current"] === 4.0,
+        "Saved record appears once in combined mean and is not added again as a draft",
+    );
+    $preview = ReviewFactory\simulationPreview($db, $u, 1);
+    qc(
+        $preview["combined_stats"]["average"] === 4.0 && $preview["stats"]["count"] === 1,
+        "Private preview shows combined mean but still lists synthetic records only",
+    );
+    $summary = ReviewFactory\simulationSummary($db, $u);
+    qc(
+        $summary["per_product"][0]["combined_stats"]["average"] === 4.0,
+        "History exposes the same combined product mean",
     );
     $header =
         '<html><section class="product" data-product-id="154"><h1>QA herb</h1><a><img src="icon.svg">11 відгуків</a><div class="related-products"><div>999 відгуків</div></div><div>5 із 5</div></section></html>';

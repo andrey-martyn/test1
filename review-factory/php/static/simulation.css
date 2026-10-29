@@ -173,3 +173,23 @@
   background: #fff7e8;
   color: #715025;
 }
+
+.simulation-combined-stats {
+  background: #fff4d9;
+  border-bottom: 2px solid #c69435;
+}
+.simulation-combined-stats .eyebrow {
+  padding: 14px 16px 0;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.simulation-combined-stats .product-meta {
+  border-bottom: 0;
+}
+.simulation-combined-stats > p {
+  margin: 0;
+  padding: 0 16px 15px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
