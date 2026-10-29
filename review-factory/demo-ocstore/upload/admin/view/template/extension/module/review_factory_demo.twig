@@ -1,0 +1,16 @@
+{# ReviewFactory TEST demo #}
+{{ header }}{{ column_left }}
+<div id="content"><div class="page-header"><div class="container-fluid"><h1>{{ heading_title|escape }}</h1></div></div><div class="container-fluid">
+<div class="alert alert-warning"><strong>TEST · демонстрационные синтетические отзывы</strong><br>Все авторы и записи здесь вымышленные. Одобрение включает только отдельный демо-блок; покупательские отзывы и рейтинг магазина остаются отдельными.</div>
+{% if error %}<div class="alert alert-danger">{{ error|escape }}</div>{% endif %}
+{% if success %}<div class="alert alert-success">{{ success|escape }}</div>{% endif %}
+<p>{% for item in filters %}<a class="btn btn-default" href="{{ item.url|escape }}">{{ item.label|escape }}</a> {% endfor %}</p>
+<p>Записей: {{ total }} · страница {{ page }}. Новые сохранённые записи Комбайна ожидают отдельного решения.</p>
+{% for row in items %}<div class="panel panel-default"><div class="panel-heading"><strong>{{ row.product_name|escape }}</strong> · {{ row.state_label|escape }} · <a href="{{ row.product_url|escape }}" target="_blank" rel="noopener">Карточка TEST-магазина</a></div><div class="panel-body">
+<p><strong>ДЕМО · синтетическая запись, не отзыв покупателя</strong></p>
+<p>Вымышленный автор: {{ row.model_author|escape }} · демо-оценка {{ row.rating }}/5<br>Модельная дата: {{ row.model_date|escape }}{% if row.model_city %} · модельный город: {{ row.model_city|escape }}{% endif %}</p>
+<div style="white-space:pre-wrap;overflow-wrap:anywhere;margin:16px 0">{{ row.body|escape }}</div>
+<form action="{{ action|escape }}" method="post"><input type="hidden" name="user_token" value="{{ user_token|escape }}"><input type="hidden" name="entry_id" value="{{ row.id|escape }}"><input type="hidden" name="revision" value="{{ row.revision }}"><button class="btn btn-success" name="decision" value="approved">Одобрить для демо-витрины</button> <button class="btn btn-default" name="decision" value="hidden">Не показывать</button></form>
+</div></div>{% else %}<div class="alert alert-info">В этом списке пока нет записей. Сохраните тестовую карточку в Комбайне.</div>{% endfor %}
+<p>{% if prev %}<a class="btn btn-default" href="{{ prev|escape }}">← Назад</a>{% endif %} {% if next %}<a class="btn btn-default" href="{{ next|escape }}">Далее →</a>{% endif %}</p>
+</div></div>{{ footer }}

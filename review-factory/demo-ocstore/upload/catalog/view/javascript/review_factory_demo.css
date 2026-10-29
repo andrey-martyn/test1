@@ -1,0 +1,107 @@
+/* ReviewFactory TEST demo */
+.rf-demo-badge,
+.rf-demo-panel {
+  box-sizing: border-box;
+  background: #fff3d4;
+  color: #573b09;
+  border: 2px solid #ba841e;
+  border-radius: 9px;
+  line-height: 1.5;
+  text-align: left;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.rf-demo-badge {
+  padding: 10px;
+  margin: 10px 5px;
+  clear: both;
+  position: relative;
+  z-index: 1;
+}
+.rf-demo-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: #654206;
+}
+.rf-demo-value {
+  display: block;
+  font-size: 13px;
+  margin-top: 4px;
+}
+.rf-demo-badge small {
+  display: block;
+  font-size: 11px;
+  margin-top: 4px;
+}
+.rf-demo-panel {
+  margin: 22px 0;
+  padding: 20px;
+  clear: both;
+  width: 100%;
+}
+.rf-demo-panel h2 {
+  font-size: 21px;
+  margin: 0 0 12px;
+  color: #573b09;
+}
+.rf-demo-panel h3 {
+  font-size: 16px;
+  margin: 12px 0;
+  color: #43351c;
+}
+.rf-demo-panel .rf-demo-notice {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+.rf-demo-panel .rf-demo-summary {
+  font-size: 16px;
+  font-weight: 700;
+}
+.rf-demo-entry {
+  background: #fffaf0;
+  border: 1px solid #d5bd8c;
+  border-radius: 7px;
+  padding: 16px;
+  margin: 15px 0;
+}
+.rf-demo-score {
+  font-size: 15px;
+  color: #7b5310;
+}
+.rf-demo-meta {
+  font-size: 12px;
+  color: #645943;
+}
+.rf-demo-body {
+  font-size: 14px;
+  white-space: pre-wrap;
+  margin-top: 14px;
+}
+@media (max-width: 480px) {
+  .rf-demo-panel {
+    padding: 13px;
+  }
+  .rf-demo-panel h2 {
+    font-size: 18px;
+  }
+  .rf-demo-entry {
+    padding: 12px;
+  }
+  .rf-demo-badge {
+    padding: 8px;
+    margin: 8px 3px;
+  }
+  .rf-demo-label {
+    font-size: 11px;
+  }
+  .rf-demo-value {
+    font-size: 12px;
+  }
+}
+
+.rf-demo-has-badge {
+  height: auto !important;
+  max-height: none !important;
+}

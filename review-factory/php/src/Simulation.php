@@ -605,12 +605,19 @@ function simulationSummary(\PDO $core, array $user): array
         $row["combined_stats"] = simulationCombinedStats($shop, $row);
     }
     unset($row);
+    $hasDemo =
+        one($db, "SELECT name FROM sqlite_master WHERE type='table' AND name='demo_decisions'") !== null;
+    $demoState = $hasDemo
+        ? "CASE WHEN e.state='saved' THEN coalesce((SELECT d.decision FROM demo_decisions d WHERE d.entry_id=e.id AND d.entry_revision=e.revision),'pending') ELSE NULL END"
+        : "CASE WHEN e.state='saved' THEN 'pending' ELSE NULL END";
     return [
         "stats" => $stats,
         "per_product" => $perProduct,
         "items" => rows(
             $db,
-            "SELECT id,product_id,product_name,model_author,model_city,model_date,rating,registration,state,substr(body,1,300) excerpt FROM entries WHERE operator_id=? ORDER BY seq DESC LIMIT 100",
+            "SELECT e.id,e.product_id,e.product_name,e.model_author,e.model_city,e.model_date,e.rating,e.registration,e.state,substr(e.body,1,300) excerpt," .
+                $demoState .
+                " demo_state FROM entries e WHERE e.operator_id=? ORDER BY e.seq DESC LIMIT 100",
             [$user["id"]],
         ),
         "label" => SIMULATION_LABEL,

@@ -9,6 +9,7 @@ require_once dirname(__DIR__) . "/src/Shop.php";
 require_once dirname(__DIR__) . "/src/Competitors.php";
 require_once dirname(__DIR__) . "/src/Replies.php";
 require_once dirname(__DIR__) . "/src/Simulation.php";
+require_once __DIR__ . "/demo_install.php";
 use function ReviewFactory\json;
 use function ReviewFactory\database;
 use ReviewFactory\Problem;
@@ -250,6 +251,9 @@ function rf_run(string $command, array $a): array
             !in_array($command, ["backup", "status"], true)
         ) {
             return ["state" => "paused_for_migration"];
+        }
+        if ($command === "demo-install") {
+            return rf_demoInstall($db, $dir, $c);
         }
         if ($command === "user") {
             $user = \ReviewFactory\createUser($db, [
@@ -538,7 +542,7 @@ function rf_run(string $command, array $a): array
             return ["state" => "backup_created"];
         }
         throw new Problem(
-            "Команды: setup, user, reset-password, sync, matches-sync, collect, queue, dispatch, status, simulation-status, backup, deploy, resume, review-schema, reply-sync, reply-worker",
+            "Команды: setup, user, reset-password, sync, matches-sync, collect, queue, dispatch, status, simulation-status, demo-install, backup, deploy, resume, review-schema, reply-sync, reply-worker",
         );
     } catch (\Throwable $e) {
         if (
