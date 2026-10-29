@@ -56,7 +56,7 @@ with sync_playwright() as p:
                 assert price['x']+price['width']<=box['x'] and box['x']+box['width']<=cart['x'],(width,price,box,cart)
                 assert abs(box['y']+box['height']/2-cart['y']-cart['height']/2)<1
                 assert abs((box['x']+box['width']/2)-(price['x']+price['width']+cart['x'])/2)<1
-                assert abs(price['y']-cart['y'])<1
+                assert abs(price['y']-cart['y']-2)<1
             else: assert box['y']+box['height']<=price['y']
             page.screenshot(path='/tmp/lavka-card-reviews-'+str(width)+'.png',full_page=True)
             card.locator('.product-thumb__price').evaluate('(el)=>el.textContent="123456789 грн"')

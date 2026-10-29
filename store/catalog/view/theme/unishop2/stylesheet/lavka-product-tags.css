@@ -1,7 +1,7 @@
 .sticker__item{opacity:1!important;background-color:var(--lavka-sticker-bg,initial)}
 .sticker__item::before{border-top-color:var(--lavka-sticker-bg);border-right-color:var(--lavka-sticker-bg)}
 .product-thumb__image,.product-page__image-main{position:relative}
-.product-thumb__image>.sticker,.product-page__image-main>.sticker{left:-6px!important;top:6px;display:flex;flex-direction:column;align-items:flex-start;gap:4px;max-width:calc(100% - 44px);pointer-events:none}
+.product-thumb__image>.sticker,.product-page__image-main>.sticker{left:-4px!important;top:6px;display:flex;flex-direction:column;align-items:flex-start;gap:4px;max-width:calc(100% - 44px);pointer-events:none}
 .product-thumb__image>.sticker[hidden],.product-page__image-main>.sticker[hidden]{display:none}
 .product-thumb__image>.sticker>.sticker__item,.product-page__image-main>.sticker>.sticker__item{float:none;clear:none;max-width:100%;margin:0;padding-left:11px;padding-right:8px;border-radius:0;clip-path:none;isolation:isolate;overflow-wrap:anywhere}
 .product-thumb__image>.sticker>.sticker__item::before,.product-page__image-main>.sticker>.sticker__item::before{display:block;position:absolute;left:0;top:100%;content:'';border-width:2px;border-style:solid;border-bottom-color:transparent;border-left-color:transparent}

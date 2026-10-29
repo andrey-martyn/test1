@@ -49,7 +49,7 @@ with sync_playwright() as p:
             assert picture['y']+picture['height']>=bounds['packsBottom']-1,'Weights must stay on the image'
             page.screenshot(path='/tmp/lavka-product-tags-'+str(width)+'.png',full_page=True)
         ribbon=page.locator('.lavka-fresh').first.evaluate('e=>{const image=e.closest(".product-thumb__image").getBoundingClientRect(),box=e.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(e);return {left:box.left-image.left,top:e.parentElement.getBoundingClientRect().top-image.top,text:range.getBoundingClientRect().left-image.left};}')
-        assert ribbon['left']==-6 and ribbon['top']==6 and ribbon['text']>=5,ribbon
+        assert ribbon['left']==-4 and ribbon['top']==6 and ribbon['text']>=7,ribbon
         page.wait_for_timeout(180)
         assert page.evaluate('requests.length')==1,'Mutation/resize must not trigger request loops'
         page.evaluate('(html)=>document.querySelector(".products-block").insertAdjacentHTML("beforeend",html)',card(817))

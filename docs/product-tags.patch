@@ -478,16 +478,16 @@ index 0000000..c0a7a5a
 +    }
 +}
 diff --git a/catalog/controller/extension/module/uni_new_data.php b/catalog/controller/extension/module/uni_new_data.php
-index c3761ce..f032aac 100644
+index c3761ce..548027b 100644
 --- a/catalog/controller/extension/module/uni_new_data.php
 +++ b/catalog/controller/extension/module/uni_new_data.php
 @@ -215,6 +215,10 @@ class ControllerExtensionModuleUniNewData extends Controller {
  		// Source assets for mobile product lists; included in UniShop's normal merge.
  		$this->document->addStyle('catalog/view/theme/unishop2/stylesheet/lavka-mobile-cards.css?v=2');
  		$this->document->addScript('catalog/view/theme/unishop2/js/lavka-mobile-cards.js?v=1');
-+		$this->document->addStyle('catalog/view/theme/unishop2/stylesheet/lavka-product-tags.css?v=4');
++		$this->document->addStyle('catalog/view/theme/unishop2/stylesheet/lavka-product-tags.css?v=5');
 +		$this->document->addScript('catalog/view/theme/unishop2/js/lavka-product-tags.js?v=2');
-+		$this->document->addStyle('catalog/view/theme/unishop2/stylesheet/lavka-card-reviews.css?v=3');
++		$this->document->addStyle('catalog/view/theme/unishop2/stylesheet/lavka-card-reviews.css?v=4');
 +		$this->document->addScript('catalog/view/theme/unishop2/js/lavka-card-reviews.js?v=2');
  
  		if(isset($uniset['liveprice'])) {
@@ -853,10 +853,10 @@ index 0000000..fec8f0b
 +})(jQuery);
 diff --git a/catalog/view/theme/unishop2/stylesheet/lavka-card-reviews.css b/catalog/view/theme/unishop2/stylesheet/lavka-card-reviews.css
 new file mode 100644
-index 0000000..b86b651
+index 0000000..91beee5
 --- /dev/null
 +++ b/catalog/view/theme/unishop2/stylesheet/lavka-card-reviews.css
-@@ -0,0 +1,24 @@
+@@ -0,0 +1,25 @@
 +.lavka-card-reviews{display:none}
 +.lavka-review-stars{--lavka-stars-width:60px;--lavka-stars-height:12px;position:relative;display:inline-block;width:var(--lavka-stars-width);height:var(--lavka-stars-height);color:#d6dcd2;vertical-align:middle;flex:none}
 +.lavka-review-stars svg{display:block;width:var(--lavka-stars-width);height:var(--lavka-stars-height);max-width:none;fill:currentColor;stroke:currentColor;stroke-width:.6}
@@ -866,6 +866,7 @@ index 0000000..b86b651
 +.product-thumb__rating[hidden],.product-page__rating[hidden],.review-info__rating[hidden]{display:none!important}
 +#form-review,#tab-review{scroll-margin-top:80px}
 +@media(max-width:519px){
++ .lavka-mobile-card .product-thumb__price{position:relative;top:2px}
 + .lavka-mobile-card.lavka-has-reviews .lavka-card-reviews{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;width:60px;margin:0;padding:0;border:0;color:#58634f;font-size:11px;font-weight:400;line-height:13px;text-decoration:none;text-align:center;white-space:nowrap;justify-self:center;align-self:center}
 + .lavka-mobile-card .lavka-card-reviews:focus-visible{outline:2px solid #4f7f28;outline-offset:2px;border-radius:3px}
 + .lavka-card-reviews__count{display:flex;align-items:center;justify-content:center;gap:3px}
@@ -883,14 +884,14 @@ index 0000000..b86b651
 +}
 diff --git a/catalog/view/theme/unishop2/stylesheet/lavka-product-tags.css b/catalog/view/theme/unishop2/stylesheet/lavka-product-tags.css
 new file mode 100644
-index 0000000..1782739
+index 0000000..91ba043
 --- /dev/null
 +++ b/catalog/view/theme/unishop2/stylesheet/lavka-product-tags.css
 @@ -0,0 +1,10 @@
 +.sticker__item{opacity:1!important;background-color:var(--lavka-sticker-bg,initial)}
 +.sticker__item::before{border-top-color:var(--lavka-sticker-bg);border-right-color:var(--lavka-sticker-bg)}
 +.product-thumb__image,.product-page__image-main{position:relative}
-+.product-thumb__image>.sticker,.product-page__image-main>.sticker{left:-6px!important;top:6px;display:flex;flex-direction:column;align-items:flex-start;gap:4px;max-width:calc(100% - 44px);pointer-events:none}
++.product-thumb__image>.sticker,.product-page__image-main>.sticker{left:-4px!important;top:6px;display:flex;flex-direction:column;align-items:flex-start;gap:4px;max-width:calc(100% - 44px);pointer-events:none}
 +.product-thumb__image>.sticker[hidden],.product-page__image-main>.sticker[hidden]{display:none}
 +.product-thumb__image>.sticker>.sticker__item,.product-page__image-main>.sticker>.sticker__item{float:none;clear:none;max-width:100%;margin:0;padding-left:11px;padding-right:8px;border-radius:0;clip-path:none;isolation:isolate;overflow-wrap:anywhere}
 +.product-thumb__image>.sticker>.sticker__item::before,.product-page__image-main>.sticker>.sticker__item::before{display:block;position:absolute;left:0;top:100%;content:'';border-width:2px;border-style:solid;border-bottom-color:transparent;border-left-color:transparent}
