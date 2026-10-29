@@ -88,6 +88,25 @@ class ProductPageRelease(unittest.TestCase):
 
 
 class ProductPayload(unittest.TestCase):
+    def test_exported_override_is_reviewed_for_db_only_and_keeps_native_regions(self):
+        manifest=json.loads((ROOT/'docs/product-page-release.json').read_text())
+        active=manifest['reviewed_overrides'][0]
+        fixture=(ROOT/active['source']).read_bytes()
+        digest=hashlib.sha256(fixture).hexdigest()
+        self.assertEqual(digest,'46ac7c1c16c46d869916540d5e9723235924f0ec1701424403974c0f511dcf82')
+        self.assertIn(digest,active['allowed_sha256'])
+        self.assertNotIn(digest,manifest['required_sources'][0]['allowed_sha256'],'DB override must not broaden on-disk source hashes')
+        code=fixture.decode().replace('\r\n','\n')
+        regions=active['review']['unchanged_regions']
+        markup=code[:code.index('{% if socialbutton %}')]
+        cart=code[code.index("$('html body').on('click', '#button-cart:not(.disabled)'"):code.index("$('button[id^=\\'button-upload\\']')")]
+        for name,source in [('markup_and_gallery',markup),('native_cart',cart)]:
+            self.assertTrue(regions[name]['identical_to_ftp']);self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),regions[name]['lf_sha256'])
+        report={'db':{'product_template_overrides':1,'product_template_override_scope':{'store_id':0,'theme':'unishop2','route':'product/product'},'product_template_override_details':[{'theme_id':3,'source_bounded':True,'decoded_sha256':digest,'decoded_lf_sha256':digest}]}}
+        self.assertTrue(release.template_check(report,manifest)['ok'])
+        report['db']['product_template_override_details'][0]['decoded_sha256']='a'*64;report['db']['product_template_override_details'][0]['decoded_lf_sha256']='b'*64
+        self.assertFalse(release.template_check(report,manifest)['ok'],'Unreviewed edits must remain blocked')
+
     def test_manifest_patch_and_complete_files_agree(self):
         manifest=json.loads((ROOT/'docs/product-page-release.json').read_text());self.assertEqual(len(manifest['files']),3);self.assertEqual(manifest['database_changes'],[])
         with tempfile.TemporaryDirectory() as directory:

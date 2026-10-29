@@ -1,3 +1,5 @@
 store/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 docs/*.patch -text -whitespace
 ops/migrations/*.css -text -whitespace
+# Byte-exact reviewed export: preserve source bytes for SHA-256 verification.
+tests/fixtures/product_page_active.twig -text -whitespace

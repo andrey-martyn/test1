@@ -25,6 +25,9 @@ def template_check(report,manifest):
     expected=next((entry['allowed_sha256'] for entry in manifest.get('required_sources',[]) if entry['path']=='catalog/view/theme/unishop2/template/product/product.twig'),[])
     record=records[0]
     scope=result['scope'] or {}
+    for reviewed in manifest.get('reviewed_overrides',[]):
+        if all(scope.get(key)==reviewed.get(key) for key in ('store_id','theme','route')):
+            expected=expected+reviewed.get('allowed_sha256',[])
     matched=any(record.get(key) in expected for key in ('decoded_sha256','decoded_lf_sha256'))
     if scope.get('store_id')==0 and scope.get('theme')=='unishop2' and scope.get('route')=='product/product' and record.get('source_bounded') is True and matched:
         result.update({'ok':True,'status':'active_override_matches_reviewed_source'})

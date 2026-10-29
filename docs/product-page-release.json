@@ -36,6 +36,35 @@
       ]
     }
   ],
+  "reviewed_overrides": [
+    {
+      "store_id": 0,
+      "theme": "unishop2",
+      "route": "product/product",
+      "observed_theme_id": 3,
+      "allowed_sha256": [
+        "46ac7c1c16c46d869916540d5e9723235924f0ec1701424403974c0f511dcf82"
+      ],
+      "decoded_bytes": 52020,
+      "source": "tests/fixtures/product_page_active.twig",
+      "review": {
+        "differences": [
+          "Storefront product-view analytics events",
+          "JSON-LD offer price includes first pack option"
+        ],
+        "unchanged_regions": {
+          "markup_and_gallery": {
+            "identical_to_ftp": true,
+            "lf_sha256": "dca4e1543edda37cdfb8e665c913b68ebb7992edd9e4c3090de10ef4c58c81f9"
+          },
+          "native_cart": {
+            "identical_to_ftp": true,
+            "lf_sha256": "85f3f1fca19aa703e2bfbd47cb0d1be8d94151a01840c26eefc45f9f5c21832c"
+          }
+        }
+      }
+    }
+  ],
   "deleted_files": [],
   "database_changes": []
 }

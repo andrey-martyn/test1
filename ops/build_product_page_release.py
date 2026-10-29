@@ -21,7 +21,7 @@ for path in FILES:
 source=json.loads((ROOT/'docs/product-page-source.json').read_text())
 manifest={'feature':'mobile-product','target':'test.lavka-speciy.com','database':'lavkasp_test','store_id':0,
           'source_commit':subprocess.check_output(['git','rev-parse',BASE],cwd=ROOT,universal_newlines=True).strip(),
-          'files':entries,'required_sources':source['required_sources'],'deleted_files':[],'database_changes':[]}
+          'files':entries,'required_sources':source['required_sources'],'reviewed_overrides':source.get('reviewed_overrides',[]),'deleted_files':[],'database_changes':[]}
 (ROOT/'docs/product-page-release.json').write_text(json.dumps(manifest,indent=2)+'\n')
 (ROOT/'docs/product-page.patch').write_bytes(subprocess.check_output(['git','diff','--no-ext-diff','--relative=store',BASE,'--']+['store/'+p for p in FILES],cwd=ROOT))
 print('Mobile product manifest:',len(entries),'files; no DB changes.')
