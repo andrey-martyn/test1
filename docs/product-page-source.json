@@ -1,0 +1,19 @@
+{
+  "reviewed_archive": "222.zip",
+  "template_changes": false,
+  "required_sources": [
+    {
+      "path": "catalog/view/theme/unishop2/template/product/product.twig",
+      "allowed_sha256": [
+        "0085dea393eca7b86797835f891fc1e7105c183168c142b485ab50263c637272",
+        "140fc91da1bc48d0e207eb72b04017d5ed2bb04ad25d1c925a7211542929eaf8"
+      ]
+    }
+  ],
+  "controller_archive": "111.zip",
+  "controller_baseline": {
+    "path": "catalog/controller/product/product.php",
+    "sha256": "184f2b22b35b4335db441ae05c618e78deef33255d92783b80208eddb986176e",
+    "lf_sha256": "1e0b9abdbc3cbf81040fec92be18284b35000b23178efbbab9ef2b8716bc5ef2"
+  }
+}
