@@ -1,18 +1,20 @@
 /* Mobile product detail only. Native desktop rules and controls stay in place. */
 .lavka-product-dock,.lavka-product-meta,.lavka-product-pack-caption,.lavka-product-status{display:none}
 @media(max-width:767px){
- #product.lavka-product-mobile{color:#252a2c}
- #product.lavka-product-mobile>.breadcrumb{display:flex;align-items:center;min-height:22px;overflow:hidden;white-space:nowrap;margin:0 0 10px;padding:0;font-size:11px;line-height:18px}
+ #product.lavka-product-mobile{--lavka-radius-control:8px;--lavka-radius-panel:16px;color:#252a2c}
+ #product.lavka-product-mobile>.breadcrumb{display:flex;align-items:center;min-height:44px;width:100vw;overflow-x:auto;white-space:nowrap;margin:0 0 0 calc(50% - 50vw);padding:10px 16px;background:#f5f5f5;font-size:12px;line-height:18px;scrollbar-width:thin;scrollbar-color:#c8cec3 #f5f5f5}
+ #product.lavka-product-mobile>.breadcrumb::-webkit-scrollbar{height:3px}
+ #product.lavka-product-mobile>.breadcrumb::-webkit-scrollbar-thumb{background:#c8cec3}
  #product.lavka-product-mobile .breadcrumb li{display:inline-flex;align-items:center;flex:none;min-height:22px;margin:0;padding:0;line-height:18px}
  #product.lavka-product-mobile .breadcrumb li+li::before{display:inline-block;margin:0 7px;padding:0;content:'›';font-family:inherit;font-size:16px;line-height:18px;font-weight:400;color:#98a18f}
  #product.lavka-product-mobile .breadcrumb a{display:inline-flex;align-items:center;line-height:18px;color:#63745e}
  #product.lavka-product-mobile .breadcrumb i{font-size:12px;line-height:18px}
- #product.lavka-product-mobile .breadcrumb li:last-child{overflow:hidden;text-overflow:ellipsis;min-width:0}
+ #product.lavka-product-mobile .breadcrumb li:last-child{overflow:visible;min-width:auto}
  #product.lavka-product-mobile .heading-h1{margin:0 0 10px}
  #product.lavka-product-mobile h1{margin:0;padding:0;font-size:23px;line-height:1.25;font-weight:500;overflow-wrap:anywhere}
  #product.lavka-product-mobile .heading-h1:after{display:none}
  .lavka-product-mobile .product-page{padding-bottom:4px}
- .lavka-product-meta{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:8px;margin:0 0 12px;min-height:36px;font-size:12px}
+ .lavka-product-meta{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:8px;margin:0 0 12px;padding:0 0 10px;border-bottom:1px solid #edf0e9;font-size:12px;line-height:16px}
  .lavka-product-meta:empty{display:none}
  .lavka-product-meta .product-page__rating{grid-area:1/2;justify-self:center;display:flex;flex-wrap:wrap;align-content:center;align-items:center;justify-content:center;gap:2px 0;width:80px;min-height:36px;margin:0;font-size:0;line-height:16px}
  .lavka-product-meta .product-page__rating>i{flex:none;width:16px;font-size:14px}
@@ -20,10 +22,10 @@
  .lavka-product-meta .product-page__rating-a::before{content:'';display:block;flex:none;width:15px;height:15px;background:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2363745e' stroke-width='1.7' stroke-linejoin='round' stroke-linecap='round'%3E%3Cpath d='M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z'/%3E%3Cpath d='M7 9h10M7 13h7'/%3E%3C/svg%3E")}
  .lavka-product-meta .product-page__rating-a::after{content:attr(data-lavka-review-count);font-size:12px;line-height:16px}
  .lavka-product-meta .product-page__rating br{display:none}
- .lavka-product-meta .stock.product-data__item{grid-area:1/1;justify-self:start;display:flex;align-items:center;min-height:24px;margin:0;color:#4b5b44;font-size:12px;line-height:18px}
+ .lavka-product-meta .stock.product-data__item{grid-area:1/1;justify-self:start;display:flex;align-items:center;min-height:36px;margin:0;color:#4b5b44;font-size:12px;line-height:16px}
  .lavka-product-meta .stock>.product-data__item-div{display:none}
  .lavka-product-facts{display:contents}
- .lavka-product-meta .manufacturer.product-data__item{grid-area:1/3;justify-self:end;display:flex;flex-direction:column;align-items:flex-end;gap:0;min-width:0;max-width:100%;margin:0;font-size:11px;line-height:16px;text-align:right}
+ .lavka-product-meta .manufacturer.product-data__item{grid-area:1/3;justify-self:end;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:0;min-width:0;min-height:36px;max-width:100%;margin:0;font-size:12px;line-height:16px;font-weight:400;text-align:right}
  .lavka-product-meta .manufacturer .product-data__item-div{flex:none;width:auto;min-width:0}
  .lavka-product-meta .manufacturer a{min-width:0;color:#3d4738;font-size:12px;overflow-wrap:anywhere}
  .lavka-product-meta .lavka-product-rating-empty{display:none!important}
@@ -32,14 +34,14 @@
  .lavka-product-review-empty:focus-visible{outline:2px solid #4f7f28!important;outline-offset:2px}
  .lavka-product-empty-data{display:none}
  .lavka-product-mobile .product-page__image{position:relative;top:auto;margin-bottom:10px}
- .lavka-product-mobile .product-page__image-main{padding:0;margin:0 0 10px;border:1px solid #e3e6df;border-radius:14px;background:#fafbf8;box-shadow:none}
+ .lavka-product-mobile .product-page__image-main{padding:0;margin:0 0 10px;border:1px solid #e3e6df;border-radius:var(--lavka-radius-panel);background:#fafbf8;box-shadow:none}
  .lavka-product-mobile .product-page__image-main>.sticker{max-width:calc(100% - 68px)}
- .lavka-product-mobile .product-page__image-main-a{display:block;aspect-ratio:1;overflow:hidden;border-radius:13px}
+ .lavka-product-mobile .product-page__image-main-a{display:block;aspect-ratio:1;overflow:hidden;border-radius:calc(var(--lavka-radius-panel) - 1px)}
  .lavka-product-mobile .product-page__image-main-a img{width:100%;height:100%!important;max-height:none;object-fit:contain}
  .lavka-product-mobile .product-page__image-main-carousel{border-radius:inherit;overflow:hidden}
  .lavka-product-mobile .product-page__image-addit{margin:0}
  .lavka-product-mobile .product-page__image-addit .owl-item{padding:0 4px}
- .lavka-product-mobile .product-page__image-addit-img{width:100%;max-height:72px;object-fit:contain;padding:4px;border:1px solid #e3e6df;border-radius:9px;background:white}
+ .lavka-product-mobile .product-page__image-addit-img{width:100%;max-height:72px;object-fit:contain;padding:4px;border:1px solid #e3e6df;border-radius:var(--lavka-radius-control);background:white}
  .lavka-product-mobile .product-page__image-addit-img.selected{border:2px solid #4f7f28}
  .lavka-product-mobile .product-page__wishlist-btn,.lavka-product-mobile .product-page__compare-btn{right:10px;width:44px;height:44px;border:1px solid #ffffffab;border-radius:50%;background:rgba(255,255,255,.4);color:#63745e;backdrop-filter:blur(5px);z-index:10}
  .lavka-product-mobile .product-page__wishlist-btn{top:10px}
@@ -47,13 +49,13 @@
  .lavka-product-mobile .product-page__compare-btn{top:60px}
  .lavka-product-mobile .product-block>br{display:none}
  .lavka-product-buy{padding:0;margin:0 0 18px;border:0;border-radius:0;background:#fff;box-shadow:none}
- .lavka-product-buy-line{display:grid;grid-template-columns:minmax(0,1fr) 96px minmax(112px,1.1fr);align-items:center;gap:10px}
+ .lavka-product-buy-line{display:grid;grid-template-columns:minmax(0,1fr) 96px 96px;align-items:center;gap:8px}
  .lavka-product-totals{min-width:0;padding:0}
  .lavka-product-buy .product-page__option{margin:0 0 14px}
  .lavka-product-buy .option__group,.lavka-product-buy .form-group{padding:0;float:none;width:100%;margin-bottom:12px}
  .lavka-product-buy .option__group:last-child{margin-bottom:0}
  .lavka-product-buy .option__group-name{font-size:12px;line-height:18px;font-weight:500;color:#687164;margin:0 0 8px}
- .lavka-product-buy .option__select,.lavka-product-buy input.form-control,.lavka-product-buy textarea.form-control{min-height:44px;height:auto;border-color:#cbd2c5;border-radius:9px;font-size:16px}
+ .lavka-product-buy .option__select,.lavka-product-buy input.form-control,.lavka-product-buy textarea.form-control{min-height:44px;height:auto;border-color:#cbd2c5;border-radius:var(--lavka-radius-control);font-size:16px}
  .lavka-product-buy .option__item{min-height:44px;margin-bottom:8px}
  .lavka-product-packs{--lavka-pack-size:clamp(44px,12vw,48px);position:absolute;left:10px;right:10px;bottom:10px;z-index:9;display:flex;justify-content:center;flex-wrap:wrap;gap:6px;margin:0}
  .lavka-product-choice{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:0 0 var(--lavka-pack-size);width:var(--lavka-pack-size);min-width:0;min-height:var(--lavka-pack-size);height:var(--lavka-pack-size);padding:0;margin:0;border:1px solid #ffffff8c;border-radius:50%;background:rgba(255,255,255,.4);color:#253020;font-family:inherit;font-size:14px;line-height:17px;font-weight:500;text-align:center;text-shadow:0 1px 0 #ffffffa6;box-shadow:0 1px 4px #00000024;backdrop-filter:blur(4px)}
@@ -67,24 +69,26 @@
  .lavka-product-buy .product-page__price{display:flex;margin:0;color:#252a2c;font-size:24px;line-height:28px;font-weight:500;flex-wrap:wrap;gap:0 6px;overflow-wrap:anywhere}
  .lavka-product-buy .price-old{margin:0;color:#7a8174;font-size:12px;line-height:16px;font-weight:400}
  .lavka-product-buy .price-new{color:inherit}
- .lavka-product-pack-caption{display:block;margin:1px 0 0;color:#687164;font-size:11px;line-height:14px}
+ .lavka-product-pack-caption{display:flex;flex-wrap:wrap;margin:2px 0 0;color:#687164;font-size:11px;line-height:16px}
+ .lavka-product-pack-caption>span{white-space:pre}
+ .lavka-product-caption-eur{color:#a5af9c;font-weight:400}
  .lavka-product-pack-caption[hidden]{display:none}
- .lavka-product-buy .product-page__eur-price{margin:3px 0 0;color:#7a8174;font-size:10px;line-height:13px}
+ .lavka-product-mobile .lavka-product-native-eur{display:none!important}
  .lavka-product-buy .product-page__discount{margin:8px 0;color:#687164;font-size:12px;line-height:18px}
  .lavka-product-buy .price-tax{margin:3px 0;color:#7a8174}
  .lavka-product-buy .product-page__cart{display:contents}
  .lavka-product-mobile .product-page__cart .lavka-native-qty-icon{display:none!important}
- .lavka-product-mobile .product-page__cart>.qty-switch{display:flex;align-items:center;float:none;width:96px;height:48px;margin:0;border:1px solid #dce2d6;border-radius:10px;overflow:hidden}
+ .lavka-product-mobile .product-page__cart>.qty-switch{display:flex;align-items:center;float:none;width:96px;height:48px;margin:0;border:1px solid #dce2d6;border-radius:var(--lavka-radius-control);overflow:hidden}
  .lavka-product-mobile .product-page__cart .qty-switch>div{display:contents}
  .lavka-product-mobile .product-page__cart .qty-switch__input{flex:1;min-width:0;width:30px;height:46px;padding:0;border:0;background:white;font-size:15px;border-radius:0;box-shadow:none}
  .lavka-product-mobile .product-page__cart .lavka-product-qty-button{display:flex;align-items:center;justify-content:center;flex:0 0 30px;width:30px;height:46px;line-height:1;border:0;background:#f5f7f2;color:#3d4738;font-family:inherit;font-size:18px}
  .lavka-product-mobile .product-page__cart .lavka-product-qty-button[data-direction=minus]{order:-1}
  .lavka-product-mobile .product-page__cart .lavka-product-qty-button[data-direction=plus]{order:1}
- .lavka-product-mobile .product-page__add-to-cart,.lavka-product-dock__buy{min-width:0;width:100%;min-height:48px;height:auto;display:flex;align-items:center;justify-content:center;gap:8px;margin:0;padding:10px;border:0;border-radius:10px;background:#4f7f28;color:white;font-family:inherit;font-size:16px;line-height:22px;font-weight:700;box-shadow:none;white-space:normal}
+ .lavka-product-mobile .product-page__add-to-cart,.lavka-product-dock__buy{min-width:0;width:100%;min-height:48px;height:auto;display:flex;align-items:center;justify-content:center;gap:8px;margin:0;padding:10px;border:0;border-radius:8px;background:#4f7f28;color:white;font-family:inherit;font-size:16px;line-height:22px;font-weight:700;box-shadow:none;white-space:normal}
  .lavka-product-mobile .product-page__add-to-cart i{display:none}
- .lavka-product-mobile .product-page__add-to-cart::before,.lavka-product-dock__buy::before{content:'';display:block;flex:none;width:22px;height:22px;background:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 3h2l2.2 11h11.5L21 6H6M8 17h11'/%3E%3Ccircle cx='9' cy='21' r='1'/%3E%3Ccircle cx='18' cy='21' r='1'/%3E%3C/svg%3E")}
+ .lavka-product-mobile .product-page__add-to-cart::before,.lavka-product-dock__buy::before{display:none}
  .lavka-product-mobile .product-page__add-to-cart:active,.lavka-product-dock__buy:active{background:#375c1b}
- .lavka-product-mobile .product-page__quick-order{grid-column:1/-1;height:auto;min-height:44px;margin:0;border-radius:9px;font-size:13px}
+ .lavka-product-mobile .product-page__quick-order{grid-column:1/-1;height:auto;min-height:44px;margin:0;border-radius:var(--lavka-radius-control);font-size:13px}
  .lavka-product-mobile .product-page__quick-order span{display:inline!important}
  .lavka-product-mobile .product-page__minimum{margin:10px 0 0;font-size:12px;line-height:18px}
  .lavka-product-mobile .prod_smalldescr{margin:0 0 18px;font-size:14px;line-height:1.6}
@@ -95,10 +99,10 @@
  .lavka-product-mobile .product-data__item-div:first-child:after{display:none}
  .lavka-product-mobile .product-data__item-span{padding:0;color:#747e6d}
  .lavka-product-mobile .product-page__share{margin:16px 0}
- .lavka-product-nav-slot{height:38px;margin:0 0 8px}
- .lavka-product-nav{position:relative;z-index:980;display:flex;align-items:stretch;gap:16px;width:100vw;height:38px;margin:0 0 0 calc(50% - 50vw);padding:0 16px;overflow-x:auto;scrollbar-width:none;border:0;border-radius:8px;background:#fff;box-shadow:0 4px 15px #0000000d}
+ .lavka-product-nav-slot{width:100vw;height:38px;margin:0 0 12px calc(50% - 50vw);background:#f5f5f5}
+ .lavka-product-nav{position:relative;z-index:980;display:flex;align-items:stretch;gap:16px;width:100%;height:38px;margin:0;padding:0 16px;overflow-x:auto;scrollbar-width:none;border:0;border-radius:var(--lavka-radius-control);background:#fff;box-shadow:0 4px 15px #0000000d}
  .lavka-product-nav::-webkit-scrollbar{display:none}
- .lavka-product-nav--fixed{position:fixed;top:var(--lavka-product-top,0px);left:0;right:0;margin:0}
+ .lavka-product-nav--fixed{position:fixed;top:var(--lavka-product-top,0px);left:0;right:0;margin:0;border-radius:0 0 var(--lavka-radius-control) var(--lavka-radius-control)}
  .lavka-product-nav>button{display:flex;flex:0 0 auto;align-items:center;justify-content:center;min-width:0;height:38px;margin:0;padding:12px 0;border:0;border-radius:0;background:transparent;color:#252a2c;font-family:inherit;font-size:14px;line-height:14px;font-weight:400;white-space:nowrap;box-shadow:none}
  .lavka-product-nav>button[aria-current=true]{background:transparent;color:#4f7f28;box-shadow:inset 0 -2px #4f7f28}
  .lavka-product-nav>button:focus-visible{outline:2px solid #4f7f28!important;outline-offset:-2px}
@@ -120,13 +124,13 @@
  .lavka-product-mobile .lavka-product-pending .product-page__add-to-cart{opacity:.7;cursor:wait}
  .lavka-product-mobile .product-page__add-to-cart:disabled,.lavka-product-mobile .product-page__add-to-cart.disabled{background:#7f8878;cursor:default}
  .lavka-product-mobile .product-page__add-to-cart:focus-visible,.lavka-product-dock button:focus-visible,.lavka-product-mobile .lavka-product-qty-button:focus-visible,.lavka-product-delivery button:focus-visible{outline:2px solid #244514!important;outline-offset:2px}
- .lavka-product-dock{position:fixed;left:0;right:0;bottom:0;z-index:990;display:flex;align-items:center;gap:8px;max-width:none;min-height:72px;margin:0;padding:16px max(12px,env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));border:0;border-radius:0;background:#fff;box-shadow:0 -2px 8px #00000026}
+ .lavka-product-dock{position:fixed;left:0;right:0;bottom:0;z-index:990;display:flex;align-items:center;gap:8px;max-width:none;min-height:72px;margin:0;padding:16px max(16px,env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));border:0;border-radius:16px 16px 0 0;background:#fff;box-shadow:0 -2px 8px #00000026}
  .lavka-product-dock[hidden]{display:none}
  .lavka-product-dock__totals{display:flex;flex:1;align-items:center;min-width:0;min-height:40px;padding:0}
- .lavka-product-dock__price{font-size:20px;line-height:20px;font-weight:700;color:#252a2c;overflow-wrap:anywhere}
+ .lavka-product-dock__price{position:relative;top:1px;font-size:20px;line-height:24px;font-weight:700;color:#252a2c;overflow-wrap:anywhere}
  .lavka-product-dock__actions{display:flex;align-items:center;gap:0}
  .lavka-product-dock__actions:empty{display:none}
- .lavka-product-dock__action{display:flex;align-items:center;justify-content:center;flex:none;width:40px;height:40px;margin:0;padding:8px;border:0;border-radius:4px;background:transparent;color:#63745e}
+ .lavka-product-dock__action{display:flex;align-items:center;justify-content:center;flex:none;width:40px;height:40px;margin:0;padding:8px;border:0;border-radius:8px;background:transparent;color:#63745e}
  .lavka-product-dock__action svg{display:block;width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
  .lavka-product-dock__action[data-action=heart][aria-pressed=true] svg{fill:#63745e33}
  .lavka-product-dock__buy{flex:none;width:auto;height:40px;min-height:40px;margin:0;padding:1px 16px;border-radius:8px;font-size:16px;line-height:20px;font-weight:500;white-space:nowrap}
@@ -134,33 +138,13 @@
  .lavka-product-dock button:disabled{opacity:.6;cursor:wait}
  body.lavka-product-dock-visible{padding-bottom:calc(80px + env(safe-area-inset-bottom))}
  body.lavka-product-dock-visible .fly-block{bottom:90px}
- .lavka-product-delivery{position:fixed;inset:auto 0 0;max-width:560px;width:100%;max-height:85vh;max-height:85dvh;margin:0 auto;padding:0;border:0;border-radius:18px 18px 0 0;background:#fff;color:#252a2c;box-shadow:0 -6px 30px #25302024}
+ .lavka-product-delivery{position:fixed;inset:auto 0 0;max-width:560px;width:100%;max-height:85vh;max-height:85dvh;margin:0 auto;padding:0;border:0;border-radius:16px 16px 0 0;background:#fff;color:#252a2c;box-shadow:0 -6px 30px #25302024}
  .lavka-product-delivery::backdrop{background:#18211070;backdrop-filter:blur(2px)}
- .lavka-product-delivery__header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 20px;border-bottom:1px solid #e3e6df}
- .lavka-product-delivery__header>h2{margin:0;font-size:18px;line-height:24px;font-weight:500}
- .lavka-product-delivery__close{flex:none;width:44px;height:44px;padding:0;border:0;border-radius:50%;background:#f2f5ee;color:#63745e;font-size:28px;line-height:40px}
- .lavka-product-delivery .lavka-product-delivery__body{max-height:calc(85vh - 70px);max-height:calc(85dvh - 70px);overflow-y:auto;overscroll-behavior:contain;padding:0;font-size:14px;line-height:1.6;overflow-wrap:anywhere}
- .lavka-product-delivery .lavka-product-terms{padding:18px 20px calc(24px + env(safe-area-inset-bottom));font-size:14px;line-height:1.6;font-weight:400;color:#3d4047;text-align:left}
- .lavka-product-delivery .lavka-product-terms p{margin:0 0 12px;padding:0}
- .lavka-product-delivery .lavka-product-terms ul,.lavka-product-delivery .lavka-product-terms ol{margin:6px 0 16px;padding:0 0 0 20px;list-style-position:outside}
- .lavka-product-delivery .lavka-product-terms ul{list-style-type:disc}
- .lavka-product-delivery .lavka-product-terms ol{list-style-type:decimal}
- .lavka-product-delivery .lavka-product-terms li{margin:0 0 8px;padding:0 0 0 2px;line-height:1.6}
- .lavka-product-delivery .lavka-product-terms li>p{margin:0 0 6px}
- .lavka-product-delivery .lavka-product-terms li>p:last-child{margin-bottom:0}
- .lavka-product-delivery .lavka-product-terms h2,.lavka-product-delivery .lavka-product-terms h3,.lavka-product-delivery .lavka-product-terms h4,.lavka-product-delivery .lavka-product-terms h5,.lavka-product-delivery .lavka-product-terms h6{margin:20px 0 8px;padding:0;font-size:16px;line-height:22px;font-weight:500;color:#252a2c}
- .lavka-product-delivery .lavka-product-terms>:first-child{margin-top:0}
- .lavka-product-delivery .lavka-product-terms>:last-child{margin-bottom:0}
- .lavka-product-delivery .lavka-product-terms a{color:#3d6420;text-decoration:underline}
- .lavka-product-delivery .lavka-product-terms table{display:block;max-width:100%;overflow:auto;margin:0 0 14px}
- .lavka-product-delivery .lavka-product-terms td,.lavka-product-delivery .lavka-product-terms th{padding:5px}
- .lavka-product-delivery__body[aria-busy=true]{padding:18px 20px}
- .lavka-product-delivery__retry{display:block;min-height:44px;margin:14px 0 0;padding:8px 14px;border:0;border-radius:9px;background:#4f7f28;color:#fff;font-family:inherit;font-size:14px;font-weight:500}
+
 }
 @media(max-width:359px){
- .lavka-product-buy-line{grid-template-columns:minmax(0,1fr) 88px 48px;gap:8px}
+ .lavka-product-buy-line{grid-template-columns:minmax(0,1fr) 88px 84px;gap:8px}
  .lavka-product-mobile .product-page__cart>.qty-switch{width:88px}
  .lavka-product-mobile .product-page__cart .lavka-product-qty-button{flex-basis:28px;width:28px}
  .lavka-product-mobile .product-page__add-to-cart{padding:10px;gap:0}
- .lavka-product-mobile .product-page__add-to-cart>span{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 }

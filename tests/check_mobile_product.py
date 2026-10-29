@@ -96,6 +96,12 @@ with sync_playwright() as p:
             assert page.locator('#button-cart').bounding_box()['y']<page.locator('.prod_smalldescr').bounding_box()['y']
             assert page.locator('.product-page__add-to-cart').bounding_box()['height']>=48
             assert page.locator('input[value="50"]').is_checked()
+            assert page.locator('.breadcrumb').evaluate('(e)=>getComputedStyle(e).backgroundColor')=='rgb(245, 245, 245)'
+            assert page.locator('.lavka-product-nav').evaluate('(e)=>getComputedStyle(e).borderTopLeftRadius')=='8px'
+            assert page.locator('#button-cart span').is_visible(),'Main buy button must retain its text at every mobile width'
+            assert page.locator('#button-cart').evaluate('(e)=>getComputedStyle(e,"::before").display')=='none'
+            assert page.locator('.lavka-product-caption-eur').inner_text().strip()=='/ 0.9 €'
+            assert not page.locator('.product-page__eur-price').is_visible(),'Old separate euro line is hidden only on mobile'
             boxes=page.locator('.lavka-product-choice').evaluate_all('(els)=>els.map(e=>({x:e.getBoundingClientRect().x,y:e.getBoundingClientRect().y,width:e.offsetWidth,height:e.offsetHeight}))')
             assert len(boxes)==5 and max(b['y'] for b in boxes)-min(b['y'] for b in boxes)<=1.5,'Five pack buttons must fit one photo row'
             assert min(b['width'] for b in boxes)>=44
@@ -116,11 +122,13 @@ with sync_playwright() as p:
             assert max(line)-min(line)<1,'Price, quantity and buy button must share a center line'
             assert page.locator('.product-data .manufacturer').count()==0
             assert page.locator('.lavka-product-nav button').all_text_contents()==['Про товар','Відгуки','Доставка й оплата']
-            assert page.locator('.breadcrumb').bounding_box()['x']==page.locator('.heading-h1').bounding_box()['x'],'Breadcrumb and product title left edges must agree'
+            assert abs(page.locator('.breadcrumb a').first.bounding_box()['x']-page.locator('.heading-h1').bounding_box()['x'])<=1,'Breadcrumb and product title left edges must agree'
             assert page.locator('#button-cart').evaluate('(e)=>getComputedStyle(e).fontWeight')=='700'
             page.get_by_role('button',name='200 г',exact=True).click();page.wait_for_function('document.querySelector(".product-page__price").textContent.trim()==="160 грн"')
             page.locator('.lavka-product-qty-button[data-direction=plus]').press('Enter');page.wait_for_function('document.querySelector(".product-page__price").textContent.trim()==="320 грн"')
-            assert page.locator('.lavka-product-pack-caption').inner_text()=='за 2 × 200 г'
+            assert page.locator('.lavka-product-pack-caption').text_content()=='за 2 × 200 г / 6.4 €'
+            caption_y=page.locator('.lavka-product-pack-caption>span').evaluate_all('(els)=>els.map(e=>e.getBoundingClientRect().y)')
+            assert max(caption_y)-min(caption_y)<1,'Pack and euro belong on the same caption line'
             page.locator('.product-page__image-addit-img').nth(1).press('Enter');page.wait_for_timeout(300)
             assert page.locator('.product-page__image-addit-img').nth(1).evaluate('(e)=>e.classList.contains("selected")')
             page.locator('.product-page__image-main-carousel .owl-item.active a').click();assert len(page.evaluate('popups[0]'))==2
@@ -248,7 +256,7 @@ with sync_playwright() as p:
     page.get_by_role('button',name='200 г',exact=True).click();page.wait_for_timeout(350)
     page.locator('.lavka-product-nav [data-section=delivery]').click()
     page.locator('.lavka-product-delivery').wait_for(state='visible')
-    page.wait_for_function('document.querySelector(".lavka-product-delivery__body").textContent.includes("Чинні умови")')
+    page.wait_for_function('document.querySelector(".lavka-product-delivery-shell").shadowRoot.querySelector(".lavka-product-delivery__body").textContent.includes("Чинні умови")')
     page.screenshot(path='/tmp/lavka-product-delivery-v3.png')
     assert page.url=='https://fixture.invalid/product' and len(page.terms_requests)==1,'Delivery opens current public terms without leaving product'
     assert page.locator('.lavka-product-delivery li').inner_text()=='Нова пошта'
@@ -282,7 +290,7 @@ with sync_playwright() as p:
     page.unroute('https://fixture.invalid/terms')
     page.route('https://fixture.invalid/terms',lambda route:route.fulfill(status=200,content_type='text/html',body='<div id="content"><div class="article_description"><p>Умови магазину</p></div></div>'))
     page.locator('.lavka-product-delivery__retry').click()
-    page.wait_for_function('document.querySelector(".lavka-product-delivery__body").textContent==="Умови магазину"')
+    page.wait_for_function('document.querySelector(".lavka-product-delivery-shell").shadowRoot.querySelector(".lavka-product-delivery__body").textContent==="Умови магазину"')
     page.locator('.lavka-product-delivery__close').click()
     assert page.locator('#input-quantity').input_value()=='1' and page.locator('input[value="50"]').is_checked()
     assert not page.errors,page.errors
@@ -303,8 +311,10 @@ with sync_playwright() as p:
         assert page.locator('.lavka-product-nav').evaluate('(e)=>parseFloat(getComputedStyle(e).paddingLeft)')==PANEL_REFERENCE['nav']['padding_x']
         assert page.locator('.lavka-product-nav').evaluate('(e)=>parseFloat(getComputedStyle(e).gap)')==PANEL_REFERENCE['nav']['gap']
         assert page.locator('.lavka-product-nav button').first.evaluate('(e)=>parseFloat(getComputedStyle(e).fontSize)')==PANEL_REFERENCE['nav']['font_size']
-        assert page.locator('.lavka-product-nav').evaluate('(e)=>parseFloat(getComputedStyle(e).borderRadius)')==PANEL_REFERENCE['nav']['radius']
-        assert page.locator('.lavka-product-dock').evaluate('(e)=>parseFloat(getComputedStyle(e).paddingLeft)')==PANEL_REFERENCE['dock']['padding_x']
+        assert page.locator('.lavka-product-nav').evaluate('(e)=>parseFloat(getComputedStyle(e).borderBottomLeftRadius)')==8
+        assert page.locator('.lavka-product-nav').evaluate('(e)=>getComputedStyle(e).borderTopLeftRadius')=='0px','Docked top corners must be square'
+        assert page.locator('.lavka-product-dock').evaluate('(e)=>getComputedStyle(e).borderRadius')=='16px 16px 0px 0px'
+        assert page.locator('.lavka-product-dock').evaluate('(e)=>parseFloat(getComputedStyle(e).paddingLeft)')==16
         assert page.locator('.lavka-product-dock__buy').bounding_box()['height']==PANEL_REFERENCE['dock']['button_height']
         assert page.locator('.lavka-product-dock__buy').evaluate('(e)=>parseFloat(getComputedStyle(e).paddingRight)')==PANEL_REFERENCE['dock']['button_padding_x']
         assert page.locator('.lavka-product-dock__buy').evaluate('(e)=>getComputedStyle(e).backgroundColor')=='rgb(79, 127, 40)','Keep shop green'
@@ -333,20 +343,44 @@ with sync_playwright() as p:
     page=start(browser)
     noisy=(ROOT/'tests/fixtures/product_delivery_editor.html').read_text()
     page.route('https://fixture.invalid/terms',lambda route:route.fulfill(status=200,content_type='text/html; charset=utf-8',body=noisy))
+    page.add_style_tag(content='.lavka-product-terms,.terms-section__body{padding:0!important;background:red!important}.lavka-product-delivery p,.lavka-product-delivery summary{margin:0!important;font-size:30px!important;line-height:3!important}')
     page.locator('.lavka-product-nav [data-section=delivery]').click()
     page.locator('.lavka-product-terms').wait_for(state='visible')
-    assert page.locator('.lavka-product-terms h3').all_text_contents()==["Ми з вами на зв'язку:",'Як розмістити замовлення?','Оплата']
+    assert page.locator('.lavka-product-terms summary').all_text_contents()==['Доставка','Оплата',"Ми з вами на зв'язку:",'Як розмістити замовлення?']
+    assert page.locator('.lavka-product-terms details[open] summary').all_text_contents()==['Доставка','Оплата']
+    assert page.evaluate('document.querySelector(".lavka-product-terms")') is None,'Popup content must be isolated inside its shadow root'
+    assert page.locator('.lavka-product-delivery').get_attribute('data-lavka-product-version')=='6'
+    assert page.locator('.terms-section[data-kind=delivery] p').first.evaluate('(e)=>getComputedStyle(e).fontSize')=='14px','Theme styles cannot override popup paragraphs'
+    page.locator('.terms-section[data-kind=contacts]>summary').click()
+    assert page.locator('.terms-section[data-kind=contacts] p').first.is_visible(),'Contact information remains available on demand'
     assert page.locator('.lavka-product-terms').evaluate('(e)=>!Array.from(e.querySelectorAll("p,li,ul,ol")).some(n=>!n.textContent.trim())'),'No editor spacer paragraphs/lists'
-    assert page.locator('.lavka-product-terms div,.lavka-product-terms span,.lavka-product-terms [style]').count()==0,'Editor layout and inline styling do not leak into popup'
+    assert page.locator('.lavka-product-terms div:not(.terms-section__body),.lavka-product-terms span,.lavka-product-terms [style]').count()==0,'Editor layout and inline styling do not leak into popup'
     assert page.locator('.lavka-product-terms ul').count()==2 and page.locator('.lavka-product-terms li').count()==3,'Manual bullet paragraphs form a real compact list'
     assert page.locator('.lavka-product-terms a').get_attribute('href')=='mailto:store@example.invalid'
     assert page.locator('.lavka-product-terms table').inner_text().replace('\t',' ').replace('\n',' ').strip()=='Спосіб Умови Перевізник За чинними тарифами.'
-    metrics=page.locator('.lavka-product-terms').evaluate('(e)=>({padding:getComputedStyle(e).paddingLeft,first:e.firstElementChild.getBoundingClientRect().x-e.getBoundingClientRect().x,paragraphMargins:Array.from(e.querySelectorAll("p")).map(n=>parseFloat(getComputedStyle(n).marginBottom))})')
-    assert metrics['padding']=='20px' and metrics['first']>=20 and max(metrics['paragraphMargins'])<=12
+    metrics=page.locator('.terms-section[data-kind=delivery] .terms-section__body').evaluate('(e)=>({padding:getComputedStyle(e).paddingLeft,paragraphMargins:Array.from(e.querySelectorAll("p")).map(n=>parseFloat(getComputedStyle(n).marginBottom))})')
+    assert metrics['padding']=='16px' and max(metrics['paragraphMargins'])<=10
     assert page.locator('.lavka-product-terms').evaluate('(e)=>e.scrollWidth<=e.clientWidth')
     assert page.evaluate('window.unexpectedTermsScript') is None
-    page.screenshot(path='/tmp/lavka-product-delivery-v4.png')
+    page.screenshot(path='/tmp/lavka-product-delivery-v6.png')
     assert not page.errors,page.errors
     page.close()
     print('PASS editor-rich delivery terms: headings, paragraphs, real lists, tables and links retained; empty lines and desktop layout removed',flush=True)
+
+    page=start(browser)
+    page.evaluate('$(".product-page__price").data("special",30).data("old-special",30).html("<span class=price-old>45 грн</span><span class=price-new>30 грн</span>")')
+    page.get_by_role('button',name='200 г',exact=True).click()
+    page.wait_for_function('document.querySelector(".product-page__price .price-new").textContent==="145 грн"')
+    assert page.locator('.lavka-product-pack-caption').text_content()=='за 200 г / 2.9 €','Euro must follow the selected special total, not the old base price'
+    assert not page.errors,page.errors
+    page.close()
+
+    page=start(browser)
+    page.evaluate('$(".product-page__price").data("discount",JSON.stringify([{quantity:3,price:40}]))')
+    page.locator('#input-quantity').fill('3');page.locator('#input-quantity').dispatch_event('change')
+    page.wait_for_function('document.querySelector(".product-page__price").textContent==="120 грн"')
+    assert page.locator('.lavka-product-pack-caption').text_content()=='за 3 × 50 г / 2.4 €','Euro must follow the native quantity-discount total'
+    assert not page.errors,page.errors
+    page.close()
+    print('PASS euro caption uses native special/quantity-discount totals and configured exchange rate',flush=True)
     browser.close()

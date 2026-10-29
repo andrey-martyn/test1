@@ -7,7 +7,7 @@ import subprocess
 
 ROOT=Path(__file__).resolve().parents[1]
 BASE='e3e565d'
-PREVIOUS_RELEASES=['4c9719c','f30a4fc','75c5e5f','485e1fc']
+PREVIOUS_RELEASES=['4c9719c','f30a4fc','75c5e5f','485e1fc','0d04893']
 FILES=['catalog/view/theme/unishop2/stylesheet/lavka-mobile-product.css',
        'catalog/view/theme/unishop2/js/lavka-mobile-product.js',
        'catalog/controller/product/product.php']
