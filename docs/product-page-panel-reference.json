@@ -1,0 +1,37 @@
+{
+  "source_file": "Відгуки про Куркума вищого сорту 500г _ ROZETKA.mhtml",
+  "source_sha256": "345028e8a9c3209ef68397d495337b804923260180f3f8a2c2f2a382c38b77dd",
+  "inspection": "Read-only offline rendering of the attached MHTML at widths 320, 390, 432, 600 and 767; archived scripts and all network requests blocked. Archive and page content are not distributed.",
+  "nav": {
+    "height": 38,
+    "padding_x": 16,
+    "gap": 16,
+    "radius": 8,
+    "font_size": 14,
+    "font_weight": 400,
+    "line_height": 14,
+    "active_underline": 2,
+    "background": "#ffffff",
+    "shadow": "0 4px 15px rgba(0,0,0,.05)"
+  },
+  "dock": {
+    "height": 72,
+    "padding_x": 12,
+    "padding_y": 16,
+    "radius": 0,
+    "price_font_size": 20,
+    "price_font_weight": 700,
+    "button_height": 40,
+    "button_padding_x": 16,
+    "button_font_size": 16,
+    "button_font_weight": 500,
+    "button_radius": 8,
+    "background": "#ffffff",
+    "shadow": "0 -2px 8px rgba(0,0,0,.15)"
+  },
+  "adaptation": [
+    "Native Rubik and shop colors retained; primary labels and delivery popup retained.",
+    "Bottom actions use existing wishlist/compare controls only; quantity stays in the main purchase block.",
+    "Stock, centered rating or write-review action, and manufacturer sit below the gallery and above the price."
+  ]
+}

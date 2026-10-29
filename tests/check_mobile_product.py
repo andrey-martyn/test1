@@ -1,5 +1,6 @@
 """Real UniShop cart/gallery handlers with local HTTP only; never touches a shop."""
 import os
+import json
 import re
 from pathlib import Path
 from urllib.parse import parse_qs
@@ -28,6 +29,7 @@ CSS=''.join((THEME/'stylesheet'/name).read_text() for name in ('bootstrap.min.cs
 CSS+=(NATIVE/'stylesheet/font-awesome.min.css').read_text()+(NATIVE/'stylesheet/generated.0.css').read_text()
 CSS+=(NATIVE/'stylesheet/flymenu.css').read_text()
 CSS+=''.join((THEME/'stylesheet'/name).read_text() for name in ('lavka-mobile-cards.css','lavka-product-tags.css','lavka-card-reviews.css','lavka-mobile-product.css'))
+PANEL_REFERENCE=json.loads((ROOT/'docs/product-page-panel-reference.json').read_text())
 PHOTO='data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="600" height="600"%3E%3Crect width="600" height="600" fill="%23f1f4e9"/%3E%3C/svg%3E'
 PHOTO2=PHOTO.replace('f1f4e9','ede6d7')
 
@@ -89,7 +91,7 @@ with sync_playwright() as p:
             assert page.locator('.lavka-product-dock').count()==0
         else:
             assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'),'Horizontal overflow'
-            assert page.locator('.product-block .stock').count()==0 and page.locator('.lavka-product-meta .stock').count()==1
+            assert page.locator('.product-data .stock').count()==0 and page.locator('.lavka-product-meta .stock').count()==1
             assert page.locator('.lavka-product-buy .product-page__option').count()==1
             assert page.locator('#button-cart').bounding_box()['y']<page.locator('.prod_smalldescr').bounding_box()['y']
             assert page.locator('.product-page__add-to-cart').bounding_box()['height']>=48
@@ -103,15 +105,16 @@ with sync_playwright() as p:
             assert page.locator('.owl-item .lavka-product-choice').count()==0,'Owl must not clone pack controls'
             assert page.locator('.product-page__image-main .lavka-product-packs').count()==1
             assert page.locator('.product-page__rating-a').get_attribute('data-lavka-review-count')=='12'
-            meta=page.locator('.lavka-product-meta').evaluate('(e)=>Array.from(e.children).map(n=>n.getBoundingClientRect().y+n.getBoundingClientRect().height/2)')
-            if width>=360:assert abs(meta[0]-meta[1])<1,'Rating and stock vertical centers must agree'
-            facts=page.locator('.lavka-product-facts').evaluate('(e)=>Array.from(e.children).map(n=>n.getBoundingClientRect().y+n.getBoundingClientRect().height/2)')
-            assert abs(facts[0]-facts[1])<1,'Stock and manufacturer must share one baseline'
+            meta=page.locator('.lavka-product-meta').bounding_box()
+            rating=page.locator('.product-page__rating').bounding_box()
+            assert abs(rating['x']+rating['width']/2-meta['x']-meta['width']/2)<1,'Rating must be horizontally centered'
+            assert page.locator('.product-page__image').bounding_box()['y']+page.locator('.product-page__image').bounding_box()['height']<=meta['y'],'Metadata belongs below gallery'
+            assert meta['y']+meta['height']<page.locator('.product-page__price').bounding_box()['y'],'Metadata belongs above price'
+            stock=page.locator('.lavka-product-meta .stock').bounding_box();brand=page.locator('.manufacturer').bounding_box()
+            assert stock['x']<rating['x'] and brand['x']>rating['x']+rating['width']
             line=page.locator('.lavka-product-totals,.product-page__cart>.qty-switch,#button-cart').evaluate_all('(els)=>els.map(n=>n.getBoundingClientRect().y+n.getBoundingClientRect().height/2)')
             assert max(line)-min(line)<1,'Price, quantity and buy button must share a center line'
-            manufacturer=page.locator('.manufacturer').evaluate('(e)=>e.lastElementChild.getBoundingClientRect().x-e.firstElementChild.getBoundingClientRect().right')
-            assert 0<=manufacturer<=10,'Manufacturer value must be adjacent to its label'
-            assert page.locator('.product-block .manufacturer').count()==0
+            assert page.locator('.product-data .manufacturer').count()==0
             assert page.locator('.lavka-product-nav button').all_text_contents()==['Про товар','Відгуки','Доставка й оплата']
             assert page.locator('.breadcrumb').bounding_box()['x']==page.locator('.heading-h1').bounding_box()['x'],'Breadcrumb and product title left edges must agree'
             assert page.locator('#button-cart').evaluate('(e)=>getComputedStyle(e).fontWeight')=='700'
@@ -146,12 +149,15 @@ with sync_playwright() as p:
     page.locator('.lavka-product-dock').wait_for(state='visible')
     assert page.locator('.lavka-product-dock__price').inner_text()=='350 грн'
     page.screenshot(path='/tmp/lavka-product-dock-v3.png')
-    page.locator('.lavka-product-dock__quantity [data-direction=plus]').click()
+    assert page.locator('.lavka-product-dock__quantity').count()==0,'Reference dock keeps quantity in main purchase area'
+    page.locator('.lavka-product-qty-button[data-direction=plus]').evaluate('(e)=>e.click()')
     page.wait_for_function('document.querySelector(".lavka-product-dock__price").textContent==="700 грн"')
     assert page.locator('#input-quantity').input_value()=='2'
-    assert page.locator('.lavka-product-dock__value').inner_text()=='2'
-    page.locator('.lavka-product-dock__quantity [data-direction=minus]').click()
+    assert 'за 2 × 500 г' in page.locator('.lavka-product-dock__price').get_attribute('aria-label')
+    page.locator('.lavka-product-qty-button[data-direction=minus]').evaluate('(e)=>e.click()')
     page.wait_for_function('document.querySelector(".lavka-product-dock__price").textContent==="350 грн"')
+    page.locator('.lavka-product-dock__action[data-action=heart]').click()
+    assert page.evaluate('favorites')==1,'Dock wishlist invokes original control once'
     page.locator('.lavka-product-dock__buy').click();page.wait_for_timeout(150)
     assert len(page.posts)==1 and page.posts[0]['option[70]']==['500'] and page.posts[0]['quantity']==['1'],page.posts
     assert page.locator('#button-cart').is_disabled()
@@ -202,16 +208,23 @@ with sync_playwright() as p:
 
     page=start(browser)
     page.evaluate('document.querySelector(".product-page__image-main").dispatchEvent(new CustomEvent("lavka:review-summary",{bubbles:true,detail:{enabled:true,summary:{total:0,rating:0}}}))')
-    assert not page.locator('.product-page__rating').is_visible(),'No rating, icon or invitation without published reviews'
+    assert not page.locator('.product-page__rating').is_visible(),'No invented rating without published reviews'
+    page.locator('.lavka-product-review-empty').wait_for(state='visible')
+    assert page.locator('.lavka-product-review-empty').inner_text()=='Написати відгук'
+    meta=page.locator('.lavka-product-meta').bounding_box();empty=page.locator('.lavka-product-review-empty').bounding_box()
+    assert abs(empty['x']+empty['width']/2-meta['x']-meta['width']/2)<1
+    page.locator('.lavka-product-review-empty').click();page.wait_for_timeout(700)
+    assert page.locator('#tab-review').is_visible() and len(page.review_requests)==1,'Write-review link opens native review section once'
     page.evaluate('document.querySelector(".product-page__image-main").dispatchEvent(new CustomEvent("lavka:review-summary",{bubbles:true,detail:{enabled:true,summary:{total:3,rating:4.6}}}))')
     page.wait_for_function('document.querySelector(".product-page__rating-a").dataset.lavkaReviewCount==="3"')
     assert page.locator('.lavka-review-stars__fill').get_attribute('style')=='width: 92%;'
+    assert page.locator('.product-page__rating').is_visible() and not page.locator('.lavka-product-review-empty').is_visible()
     page.evaluate('var fly=document.createElement("div");fly.id="fly-menu";fly.className="show";fly.style="position:fixed;top:0;left:0;right:0;height:40px;z-index:999;background:white";document.body.appendChild(fly);window.scrollTo(0,350)')
     page.wait_for_timeout(150)
     assert abs(page.locator('.lavka-product-nav').bounding_box()['y']-40)<1,'Sticky tabs must sit below the actual floating shop menu'
     page.locator('.nav-tabs a[href="#tab-specification"]').click();page.wait_for_timeout(700)
     assert page.locator('#tab-specification').is_visible()
-    assert page.locator('#tab-specification').bounding_box()['y']>=page.locator('.lavka-product-nav').bounding_box()['y']+44,'Tab content must not be hidden behind navigation'
+    assert page.locator('#tab-specification').bounding_box()['y']>=page.locator('.lavka-product-nav').bounding_box()['y']+38,'Tab content must not be hidden behind navigation'
     page.locator('.lavka-product-nav [data-section=about]').click();page.wait_for_timeout(700)
     assert page.locator('#tab-description').is_visible()
     page.set_viewport_size({'width':1280,'height':844});page.wait_for_timeout(80)
@@ -220,7 +233,7 @@ with sync_playwright() as p:
     assert page.locator('.product-page__rating-a').inner_text()=='Відгуки: 3'
     assert not page.errors,page.errors
     page.close()
-    print('PASS sticky native sections below shop menu, live review counts, zero-review hiding and desktop restoration',flush=True)
+    print('PASS sticky native sections, centered live stars/write-review fallback below photo and desktop restoration',flush=True)
 
     page=start(browser)
     page.locator('.lavka-product-nav [data-section=reviews]').click();page.wait_for_timeout(700)
@@ -286,12 +299,20 @@ with sync_playwright() as p:
         assert abs(nav['y']-fly['y']-fly['height'])<1,'Navigation stays glued below shop menu even beyond product/footer'
         assert nav['x']==fly['x']==dock['x']==0
         assert nav['width']==fly['width']==dock['width']==width
-        assert page.locator('.lavka-product-nav,.lavka-product-dock,.lavka-product-dock__quantity,.lavka-product-dock__buy').evaluate_all('(els)=>els.every(e=>getComputedStyle(e).borderRadius==="0px")'),'Straight strips, no rounded corners'
-        centers=page.locator('.lavka-product-dock__totals,.lavka-product-dock__quantity,.lavka-product-dock__buy').evaluate_all('(els)=>els.map(e=>e.getBoundingClientRect().y+e.getBoundingClientRect().height/2)')
+        assert nav['height']==PANEL_REFERENCE['nav']['height'] and dock['height']==PANEL_REFERENCE['dock']['height']
+        assert page.locator('.lavka-product-nav').evaluate('(e)=>parseFloat(getComputedStyle(e).paddingLeft)')==PANEL_REFERENCE['nav']['padding_x']
+        assert page.locator('.lavka-product-nav').evaluate('(e)=>parseFloat(getComputedStyle(e).gap)')==PANEL_REFERENCE['nav']['gap']
+        assert page.locator('.lavka-product-nav button').first.evaluate('(e)=>parseFloat(getComputedStyle(e).fontSize)')==PANEL_REFERENCE['nav']['font_size']
+        assert page.locator('.lavka-product-nav').evaluate('(e)=>parseFloat(getComputedStyle(e).borderRadius)')==PANEL_REFERENCE['nav']['radius']
+        assert page.locator('.lavka-product-dock').evaluate('(e)=>parseFloat(getComputedStyle(e).paddingLeft)')==PANEL_REFERENCE['dock']['padding_x']
+        assert page.locator('.lavka-product-dock__buy').bounding_box()['height']==PANEL_REFERENCE['dock']['button_height']
+        assert page.locator('.lavka-product-dock__buy').evaluate('(e)=>parseFloat(getComputedStyle(e).paddingRight)')==PANEL_REFERENCE['dock']['button_padding_x']
+        assert page.locator('.lavka-product-dock__buy').evaluate('(e)=>getComputedStyle(e).backgroundColor')=='rgb(79, 127, 40)','Keep shop green'
+        centers=page.locator('.lavka-product-dock__totals,.lavka-product-dock__actions,.lavka-product-dock__buy').evaluate_all('(els)=>els.map(e=>e.getBoundingClientRect().y+e.getBoundingClientRect().height/2)')
         assert max(centers)-min(centers)<1
-        assert page.locator('.lavka-product-dock__buy').evaluate('(e)=>getComputedStyle(e).fontSize')=='16px','Buy label remains readable on narrow screens'
-        assert page.locator('.lavka-product-nav').evaluate('(e)=>getComputedStyle(e).backgroundColor')==page.locator('.lavka-product-dock').evaluate('(e)=>getComputedStyle(e).backgroundColor')
-        page.screenshot(path='/tmp/lavka-product-bars-v4-'+str(width)+'.png')
+        assert page.locator('.lavka-product-nav').evaluate('(e)=>getComputedStyle(e).backgroundColor')=='rgb(255, 255, 255)'
+        assert page.locator('.lavka-product-dock').evaluate('(e)=>getComputedStyle(e).backgroundColor')=='rgb(255, 255, 255)'
+        page.screenshot(path='/tmp/lavka-product-bars-v5-'+str(width)+'.png')
         footer_scroll=page.evaluate('scrollY')
         page.locator('.lavka-product-nav [data-section=delivery]').click();page.locator('.lavka-product-terms').wait_for(state='visible')
         page.locator('.lavka-product-delivery__close').click();page.wait_for_timeout(80)
@@ -307,7 +328,7 @@ with sync_playwright() as p:
         assert abs(page.locator('.lavka-product-nav').bounding_box()['y']-40)<1
         assert not page.errors,page.errors
         page.close()
-    print('PASS full-width square header/footer strips, exact stacked edges, footer persistence, centered purchase and native-header transition',flush=True)
+    print('PASS attached Rozetka reference dimensions/spacing, shop colors, footer persistence and native-header transition',flush=True)
 
     page=start(browser)
     noisy=(ROOT/'tests/fixtures/product_delivery_editor.html').read_text()
