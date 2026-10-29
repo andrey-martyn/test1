@@ -7,6 +7,7 @@ import subprocess
 
 ROOT=Path(__file__).resolve().parents[1]
 BASE='e3e565d'
+PREVIOUS_RELEASES=['4c9719c']
 FILES=['catalog/view/theme/unishop2/stylesheet/lavka-mobile-product.css',
        'catalog/view/theme/unishop2/js/lavka-mobile-product.js',
        'catalog/controller/product/product.php']
@@ -16,6 +17,12 @@ for path in FILES:
     found=subprocess.run(['git','show',BASE+':store/'+path],cwd=ROOT,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     before=found.stdout if found.returncode==0 else None
     variants=[] if before is None else sorted({sha(before),sha(before.replace(b'\r\n',b'\n')),sha(before.replace(b'\r\n',b'\n').replace(b'\n',b'\r\n'))})
+    # Permit exact previously shipped versions as well as a fresh category install.
+    # Keep the original base for a complete standalone patch; no arbitrary overwrite.
+    for revision in PREVIOUS_RELEASES:
+        previous=subprocess.check_output(['git','show',revision+':store/'+path],cwd=ROOT)
+        variants.extend([sha(previous),sha(previous.replace(b'\r\n',b'\n'))])
+    variants=sorted(set(variants))
     entries.append({'path':path,'before_sha256':sha(before) if before is not None else None,'allowed_before_sha256':variants,'after_sha256':sha((ROOT/'store'/path).read_bytes())})
 # Exact reviewed source hashes are recorded separately; templates are not payload.
 source=json.loads((ROOT/'docs/product-page-source.json').read_text())

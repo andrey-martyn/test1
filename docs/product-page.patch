@@ -1,5 +1,5 @@
 diff --git a/catalog/controller/product/product.php b/catalog/controller/product/product.php
-index 7605fcc..93212cf 100644
+index 7605fcc..28ee898 100644
 --- a/catalog/controller/product/product.php
 +++ b/catalog/controller/product/product.php
 @@ -463,6 +463,10 @@ class ControllerProductProduct extends Controller {
@@ -7,24 +7,24 @@ index 7605fcc..93212cf 100644
  			$data['content_bottom'] = $this->load->controller('common/content_bottom');
  			$data['footer'] = $this->load->controller('common/footer');
 +			// Mobile detail enhancement; native product template and desktop remain unchanged.
-+			$this->document->addStyle('catalog/view/theme/unishop2/stylesheet/lavka-mobile-product.css?v=1');
-+			$this->document->addScript('catalog/view/theme/unishop2/js/lavka-mobile-product.js?v=1');
++			$this->document->addStyle('catalog/view/theme/unishop2/stylesheet/lavka-mobile-product.css?v=2');
++			$this->document->addScript('catalog/view/theme/unishop2/js/lavka-mobile-product.js?v=2');
 +
  			$data['header'] = $this->load->controller('common/header');
  
  			$this->response->setOutput($this->load->view('product/product', $data));
 diff --git a/catalog/view/theme/unishop2/js/lavka-mobile-product.js b/catalog/view/theme/unishop2/js/lavka-mobile-product.js
 new file mode 100644
-index 0000000..9e5bccc
+index 0000000..5d0854f
 --- /dev/null
 +++ b/catalog/view/theme/unishop2/js/lavka-mobile-product.js
-@@ -0,0 +1,206 @@
+@@ -0,0 +1,256 @@
 +/* Enhance the installed UniShop product page; keep native options, gallery and cart. */
 +(function ($) {
 +    'use strict';
 +    var media=matchMedia('(max-width:767px)'), root, page, block, state;
 +    var lang=(document.documentElement.lang || 'uk').toLowerCase();
-+    var text=lang.indexOf('ru')===0 ? {quantity:'Количество упаковок',plus:'Увеличить количество',minus:'Уменьшить количество',added:'Добавлено в корзину',failed:'Не удалось подтвердить добавление. Проверьте корзину перед повторной попыткой.',pack:'за ',pending:'Добавляем…'} : lang.indexOf('en')===0 ? {quantity:'Number of packs',plus:'Increase quantity',minus:'Decrease quantity',added:'Added to cart',failed:'Could not confirm adding. Check your cart before trying again.',pack:'for ',pending:'Adding…'} : {quantity:'Кількість упаковок',plus:'Збільшити кількість',minus:'Зменшити кількість',added:'Додано до кошика',failed:'Не вдалося підтвердити додавання. Перевірте кошик перед повторною спробою.',pack:'за ',pending:'Додаємо…'};
++    var text=lang.indexOf('ru')===0 ? {about:'О товаре',quantity:'Количество упаковок',plus:'Увеличить количество',minus:'Уменьшить количество',added:'Добавлено в корзину',failed:'Не удалось подтвердить добавление. Проверьте корзину перед повторной попыткой.',pack:'за ',pending:'Добавляем…'} : lang.indexOf('en')===0 ? {about:'About',quantity:'Number of packs',plus:'Increase quantity',minus:'Decrease quantity',added:'Added to cart',failed:'Could not confirm adding. Check your cart before trying again.',pack:'for ',pending:'Adding…'} : {about:'Про товар',quantity:'Кількість упаковок',plus:'Збільшити кількість',minus:'Зменшити кількість',added:'Додано до кошика',failed:'Не вдалося підтвердити додавання. Перевірте кошик перед повторною спробою.',pack:'за ',pending:'Додаємо…'};
 +    var packPattern=/^\s*(\d+(?:[.,]\d+)?)\s*(кг|kg|гр\.?|г|g|мл|ml|л|l|шт\.?|pcs?)\s*$/i;
 +
 +    function move(node,parent) {
@@ -56,13 +56,14 @@ index 0000000..9e5bccc
 +        state.dockButton.textContent=state.pending ? text.pending : state.buttonLabel;
 +        state.dockButton.disabled=state.pending || state.buy.disabled || state.buy.classList.contains('disabled');
 +        state.proxies.forEach(function (item) {
-+            item.button.setAttribute('aria-pressed',String(item.option.selected));
-+            item.button.disabled=item.option.disabled || state.select.disabled;
++            item.button.setAttribute('aria-pressed',String(state.select ? item.option.selected : item.option.checked));
++            item.button.disabled=state.pending || item.option.disabled || !!(state.select && state.select.disabled);
 +        });
 +    }
 +    function setupPacks() {
 +        var groups=block.querySelectorAll('.product-page__option .option__group');
-+        if (groups.length!==1) return;
++        var image=page.querySelector('.product-page__image-main');
++        if (groups.length!==1 || !image) return;
 +        var group=groups[0], select=group.querySelector('select');
 +        var fields=select ? Array.from(select.options).filter(function (field) { return field.value!==''; }) : Array.from(group.querySelectorAll('input[type=radio]'));
 +        if (!fields.length || group.querySelector('input[type=checkbox],input[type=text],textarea,.option__img')) return;
@@ -73,32 +74,63 @@ index 0000000..9e5bccc
 +            state.values.set(field,value);
 +        }
 +        state.group=group; state.select=select;
-+        if (select) {
-+            select.classList.add('lavka-product-select-native');
-+            var choices=document.createElement('div'); choices.className='lavka-product-pack-grid';
-+            choices.setAttribute('role','group'); choices.setAttribute('aria-label',group.querySelector('.option__group-name').textContent);
-+            state.generated.push(choices); group.appendChild(choices);
-+            state.values.forEach(function (value,option) {
-+                var button=document.createElement('button'); button.type='button'; button.className='lavka-product-choice'; button.textContent=value;
-+                button.addEventListener('click',function () { select.value=option.value; $(select).trigger('change'); });
-+                choices.appendChild(button); state.proxies.push({button:button,option:option});
++        // Only visual buttons live on the photo. Native fields stay inside product-block:
++        // the installed live-price handler scopes its price/options lookup to that block.
++        group.classList.add('lavka-product-pack-native');
++        var choices=document.createElement('div'); choices.className='lavka-product-packs';
++        choices.style.setProperty('--lavka-pack-columns',String(Math.min(fields.length,5)));
++        choices.setAttribute('role','group'); choices.setAttribute('aria-label',group.querySelector('.option__group-name').textContent);
++        state.generated.push(choices); image.appendChild(choices);
++        state.values.forEach(function (value,option) {
++            var button=document.createElement('button'), amount=document.createElement('span'), unit=document.createElement('span'), parts=value.split(' ');
++            button.type='button'; button.className='lavka-product-choice'; button.setAttribute('aria-label',value);
++            amount.textContent=parts[0]; unit.textContent=parts[1]; button.appendChild(amount); button.appendChild(unit);
++            button.addEventListener('click',function () {
++                if (select) { select.value=option.value; $(select).trigger('change'); }
++                else { option.checked=true; $(option).trigger('change'); }
 +            });
++            choices.appendChild(button); state.proxies.push({button:button,option:option});
++        });
++        if (select) {
 +            if (!select.value) {
 +                var first=fields.find(function (option) { return !option.disabled && !select.disabled; });
 +                if (first) { select.value=first.value; $(select).trigger('change'); }
 +            }
 +        } else {
-+            var grid=fields[0].closest('label').parentElement;
-+            grid.classList.add('lavka-product-pack-grid'); state.packGrid=grid;
 +            if (!group.querySelector('input:checked')) {
 +                var firstRadio=fields.find(function (input) { return !input.disabled; });
 +                if (firstRadio) { firstRadio.checked=true; $(firstRadio).trigger('change'); }
 +            }
 +        }
 +    }
++    function reviewCount() {
++        if (!state || !state.mounted || !state.ratingLink) return;
++        var label=state.ratingLink.textContent.trim(), numbers=label.match(/\d+/g);
++        state.ratingLink.setAttribute('data-lavka-review-count',numbers ? numbers[numbers.length-1] : '');
++        state.ratingLink.setAttribute('aria-label',label);
++    }
++    function topOffset() {
++        var fly=document.querySelector('#fly-menu.show');
++        return fly ? Math.ceil(fly.getBoundingClientRect().height) : 0;
++    }
++    function navigate(event) {
++        if (!state || !state.mounted || !state.tabs) return;
++        var link=event.target.closest('a[data-toggle="tab"]');
++        if (!link || !state.tabs.contains(link) || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
++        var target=document.getElementById((link.getAttribute('href') || '').slice(1));
++        if (target) setTimeout(function () {
++            if (!state || !state.mounted) return;
++            // Bootstrap and the native lazy review loader retain their own click handlers.
++            var offset=Math.max(topOffset(),document.querySelector('#fly-menu') ? document.querySelector('#fly-menu').getBoundingClientRect().height : 0);
++            $('html, body').stop(true);
++            window.scrollTo({top:Math.max(0,target.getBoundingClientRect().top+scrollY-offset-state.tabs.offsetHeight-12),behavior:'smooth'});
++        },0);
++    }
 +    function dockVisibility() {
 +        if (!state || !state.mounted) return;
-+        var visible=state.cart.getBoundingClientRect().bottom<0;
++        var offset=topOffset();
++        root.style.setProperty('--lavka-product-top',offset+'px');
++        var visible=state.buy.getBoundingClientRect().bottom<offset;
 +        var focused=document.activeElement;
 +        if (focused && (focused.matches('textarea,select,[contenteditable=true]') || (focused.tagName==='INPUT' && !/^(radio|checkbox|button|submit|hidden)$/.test(focused.type)))) visible=false;
 +        if (document.querySelector('.modal.in,.mfp-wrap,.magnific-open')) visible=false;
@@ -141,11 +173,26 @@ index 0000000..9e5bccc
 +            if (heading && heading.tagName==='H3') move(heading,panel);
 +            move(group,panel);
 +        }
-+        move(price,panel);
-+        var caption=document.createElement('div');caption.className='lavka-product-pack-caption';caption.hidden=true;panel.appendChild(caption);state.caption=caption;
-+        move(block.querySelector('.product-page__eur-price'),panel);
++        var line=document.createElement('div'), totals=document.createElement('div');
++        line.className='lavka-product-buy-line';totals.className='lavka-product-totals';panel.appendChild(line);line.appendChild(totals);state.generated.push(line,totals);
++        move(price,totals);
++        var caption=document.createElement('div');caption.className='lavka-product-pack-caption';caption.hidden=true;totals.appendChild(caption);state.caption=caption;
++        move(block.querySelector('.product-page__eur-price'),totals);
 +        move(block.querySelector('.product-page__discount'),panel);move(block.querySelector('.price-tax'),panel);
-+        move(cart,panel);move(block.querySelector('.product-page__minimum'),panel);
++        move(cart,line);move(block.querySelector('.product-page__minimum'),panel);
++        var tabs=root.querySelector('#content>.nav-tabs'), heading=root.querySelector('.heading-h1');
++        if (tabs && heading) {
++            move(tabs,heading.parentElement);heading.before(tabs);state.tabs=tabs;
++            var about=tabs.querySelector('a[href="#tab-description"]');
++            if (about) { state.about=about;state.aboutNodes=Array.from(about.childNodes);about.textContent=text.about; }
++            tabs.addEventListener('click',navigate);
++        }
++        state.topBefore=root.style.getPropertyValue('--lavka-product-top');
++        state.ratingLink=meta.querySelector('.product-page__rating-a');
++        if (state.ratingLink) {
++            attribute(state.ratingLink,'data-lavka-review-count','');attribute(state.ratingLink,'aria-label',state.ratingLink.textContent.trim());
++            reviewCount();state.reviewObserver=new MutationObserver(reviewCount);state.reviewObserver.observe(state.ratingLink,{subtree:true,childList:true,characterData:true});
++        }
 +        var status=document.createElement('div');status.className='lavka-product-status';status.setAttribute('role','status');status.setAttribute('aria-live','polite');panel.appendChild(status);state.status=status;
 +        state.quantity=cart.querySelector('.qty-switch__input');
 +        if (state.quantity) { attribute(state.quantity,'inputmode','numeric'); attribute(state.quantity,'aria-label',text.quantity); }
@@ -172,15 +219,18 @@ index 0000000..9e5bccc
 +        dockButton.addEventListener('click',function () { if (!state.pending && !buy.disabled && !buy.classList.contains('disabled')) buy.click(); });
 +        state.observer=new MutationObserver(sync);state.observer.observe(price,{subtree:true,childList:true,characterData:true});state.observer.observe(buy,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['disabled','class']});
 +        root.classList.add('lavka-product-mobile');setupPacks();sync();dockVisibility();
-+        if (window.IntersectionObserver) { state.intersection=new IntersectionObserver(dockVisibility);state.intersection.observe(cart); }
++        if (window.IntersectionObserver) { state.intersection=new IntersectionObserver(dockVisibility);state.intersection.observe(buy); }
 +    }
 +    function unmount() {
 +        if (!state || !state.mounted) return;
 +        state.mounted=false;state.observer.disconnect();if (state.intersection) state.intersection.disconnect();
++        if (state.reviewObserver) state.reviewObserver.disconnect();
++        if (state.tabs) state.tabs.removeEventListener('click',navigate);
++        if (state.about) state.about.replaceChildren.apply(state.about,state.aboutNodes);
 +        state.moves.slice().reverse().forEach(function (item) { item.marker.replaceWith(item.node); });
 +        state.attributes.forEach(function (item) { if (item.value===null) item.node.removeAttribute(item.name); else item.node.setAttribute(item.name,item.value); });
-+        if (state.select) state.select.classList.remove('lavka-product-select-native');
-+        if (state.packGrid) state.packGrid.classList.remove('lavka-product-pack-grid');
++        if (state.group) state.group.classList.remove('lavka-product-pack-native');
++        if (state.topBefore) root.style.setProperty('--lavka-product-top',state.topBefore); else root.style.removeProperty('--lavka-product-top');
 +        state.qtyIcons.forEach(function (icon) { icon.classList.remove('lavka-native-qty-icon'); });
 +        state.generated.forEach(function (node) { node.remove(); });
 +        root.classList.remove('lavka-product-mobile');document.body.classList.remove('lavka-product-dock-visible');
@@ -227,10 +277,10 @@ index 0000000..9e5bccc
 +})(jQuery);
 diff --git a/catalog/view/theme/unishop2/stylesheet/lavka-mobile-product.css b/catalog/view/theme/unishop2/stylesheet/lavka-mobile-product.css
 new file mode 100644
-index 0000000..aa923e6
+index 0000000..46cc7d7
 --- /dev/null
 +++ b/catalog/view/theme/unishop2/stylesheet/lavka-mobile-product.css
-@@ -0,0 +1,96 @@
+@@ -0,0 +1,109 @@
 +/* Mobile product detail only. Native desktop rules and controls stay in place. */
 +.lavka-product-dock,.lavka-product-meta,.lavka-product-pack-caption,.lavka-product-status{display:none}
 +@media(max-width:767px){
@@ -242,13 +292,17 @@ index 0000000..aa923e6
 + #product.lavka-product-mobile h1{margin:0;padding:0;font-size:23px;line-height:1.25;font-weight:500;overflow-wrap:anywhere}
 + #product.lavka-product-mobile .heading-h1:after{display:none}
 + .lavka-product-mobile .product-page{padding-bottom:4px}
-+ .lavka-product-meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin:0 0 14px;min-height:20px;font-size:12px}
++ .lavka-product-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;margin:0 0 12px;min-height:24px;font-size:12px}
 + .lavka-product-meta:empty{display:none}
-+ .lavka-product-meta .product-page__rating{display:block;margin:0;font-size:12px;line-height:20px}
++ .lavka-product-meta .product-page__rating{display:flex;align-items:center;gap:8px;min-height:24px;margin:0;font-size:0;line-height:24px}
++ .lavka-product-meta .product-page__rating>i{font-size:14px}
++ .lavka-product-meta .product-page__rating-a{display:inline-flex;align-items:center;justify-content:center;gap:4px;min-width:32px;min-height:24px;border:0;color:#63745e;font-size:0;line-height:0;cursor:pointer}
++ .lavka-product-meta .product-page__rating-a::before{content:'';display:block;flex:none;width:15px;height:15px;background:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2363745e' stroke-width='1.7' stroke-linejoin='round' stroke-linecap='round'%3E%3Cpath d='M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z'/%3E%3Cpath d='M7 9h10M7 13h7'/%3E%3C/svg%3E")}
++ .lavka-product-meta .product-page__rating-a::after{content:attr(data-lavka-review-count);font-size:12px;line-height:20px}
 + .lavka-product-meta .product-page__rating br{display:none}
-+ .lavka-product-meta .stock{display:block;margin:0;color:#4b5b44;font-size:12px;line-height:20px}
++ .lavka-product-meta .stock.product-data__item{display:flex;align-items:center;min-height:24px;margin:0;color:#4b5b44;font-size:12px;line-height:24px}
 + .lavka-product-meta .stock>.product-data__item-div{display:none}
-+ .lavka-product-mobile .product-page__image{position:relative;top:auto;margin-bottom:16px}
++ .lavka-product-mobile .product-page__image{position:relative;top:auto;margin-bottom:10px}
 + .lavka-product-mobile .product-page__image-main{padding:0;margin:0 0 10px;border:1px solid #e3e6df;border-radius:14px;background:#fafbf8;box-shadow:none}
 + .lavka-product-mobile .product-page__image-main>.sticker{max-width:calc(100% - 68px)}
 + .lavka-product-mobile .product-page__image-main-a{display:block;aspect-ratio:1;overflow:hidden;border-radius:13px}
@@ -263,53 +317,62 @@ index 0000000..aa923e6
 + .lavka-product-mobile .product-page__wishlist-btn i{font-size:20px}
 + .lavka-product-mobile .product-page__compare-btn{top:60px}
 + .lavka-product-mobile .product-block>br{display:none}
-+ .lavka-product-buy{padding:16px;margin:0 0 18px;border:1px solid #e0e5da;border-radius:14px;background:#fff;box-shadow:0 2px 8px #25302005}
++ .lavka-product-buy{padding:0;margin:0 0 18px;border:0;border-radius:0;background:#fff;box-shadow:none}
++ .lavka-product-buy-line{display:grid;grid-template-columns:minmax(0,1fr) 100px minmax(84px,1fr);align-items:center;gap:8px}
++ .lavka-product-totals{min-width:0;padding:0}
 + .lavka-product-buy .product-page__option{margin:0 0 14px}
 + .lavka-product-buy .option__group,.lavka-product-buy .form-group{padding:0;float:none;width:100%;margin-bottom:12px}
 + .lavka-product-buy .option__group:last-child{margin-bottom:0}
 + .lavka-product-buy .option__group-name{font-size:12px;line-height:18px;font-weight:500;color:#687164;margin:0 0 8px}
 + .lavka-product-buy .option__select,.lavka-product-buy input.form-control,.lavka-product-buy textarea.form-control{min-height:44px;height:auto;border-color:#cbd2c5;border-radius:9px;font-size:16px}
 + .lavka-product-buy .option__item{min-height:44px;margin-bottom:8px}
-+ .lavka-product-pack-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(56px,1fr));gap:8px}
-+ .lavka-product-pack-grid .option__item{position:relative;display:block;margin:0;min-width:0;min-height:48px}
-+ .lavka-product-pack-grid .option__item input.hidden{display:block!important;position:absolute;inset:0;width:100%;height:100%;opacity:0;margin:0;cursor:pointer}
-+ .lavka-product-pack-grid .option__name,.lavka-product-choice{display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;height:auto;padding:8px 3px;margin:0;border:1px solid #cbd2c5;border-radius:9px;background:#fff;color:#3d4738;font-size:14px;line-height:18px;font-weight:500;text-align:center;white-space:normal}
-+ .lavka-product-pack-grid input:checked+.option__name,.lavka-product-choice[aria-pressed=true]{background:#4f7f28;border-color:#4f7f28;color:#fff;box-shadow:0 2px 5px #4f7f2820}
-+ .lavka-product-pack-grid input:disabled+.option__name,.lavka-product-choice:disabled{opacity:.45;cursor:default}
-+ .lavka-product-pack-grid .option__item:focus-within,.lavka-product-choice:focus-visible{outline:2px solid #244514;outline-offset:2px;border-radius:9px}
-+ .lavka-product-select-native{display:none!important}
-+ .lavka-product-buy .product-page__price{margin:0;color:#252a2c;font-size:30px;line-height:36px;font-weight:500;flex-wrap:wrap;gap:0 9px}
-+ .lavka-product-buy .price-old{margin:0;color:#7a8174;font-size:15px;line-height:22px;font-weight:400}
++ .lavka-product-packs{position:absolute;left:10px;right:10px;bottom:10px;z-index:9;display:grid;grid-template-columns:repeat(var(--lavka-pack-columns),minmax(0,1fr));gap:6px;margin:auto;max-width:380px}
++ .lavka-product-choice{display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;min-width:0;min-height:44px;height:44px;padding:3px;margin:0;border:1px solid #ffffffd9;border-radius:14px;background:#ffffffb8;color:#35452d;font-size:14px;line-height:17px;font-weight:500;text-align:center;box-shadow:0 1px 4px #2530201f;backdrop-filter:blur(5px)}
++ .lavka-product-choice>span+span{font-size:11px;line-height:13px;font-weight:400}
++ .lavka-product-choice[aria-pressed=true]{background:#4f7f28ed;border-color:#ffffffe6;color:#fff;box-shadow:0 0 0 1px #4f7f2873}
++ .lavka-product-choice:disabled{opacity:.45;cursor:default}
++ .lavka-product-choice:focus-visible{outline:2px solid #244514;outline-offset:2px}
++ .lavka-product-buy .lavka-product-pack-native{margin:0}
++ .lavka-product-pack-native>:not(.text-danger){display:none!important}
++ .lavka-product-buy .product-page__option:has(.lavka-product-pack-native){margin:0}
++ .lavka-product-buy .product-page__price{display:flex;margin:0;color:#252a2c;font-size:clamp(19px,5.9vw,26px);line-height:1.2;font-weight:500;flex-wrap:wrap;gap:0 6px;overflow-wrap:anywhere}
++ .lavka-product-buy .price-old{margin:0;color:#7a8174;font-size:12px;line-height:16px;font-weight:400}
 + .lavka-product-buy .price-new{color:inherit}
-+ .lavka-product-pack-caption{display:block;margin:2px 0 0;color:#687164;font-size:12px;line-height:18px}
++ .lavka-product-pack-caption{display:block;margin:3px 0 0;color:#687164;font-size:11px;line-height:14px}
 + .lavka-product-pack-caption[hidden]{display:none}
-+ .lavka-product-buy .product-page__eur-price{margin:1px 0 0;color:#7a8174;font-size:11px;line-height:16px}
++ .lavka-product-buy .product-page__eur-price{margin:1px 0 0;color:#7a8174;font-size:10px;line-height:13px}
 + .lavka-product-buy .product-page__discount{margin:8px 0;color:#687164;font-size:12px;line-height:18px}
 + .lavka-product-buy .price-tax{margin:3px 0;color:#7a8174}
-+ .lavka-product-buy .product-page__cart{display:flex;flex-wrap:wrap;align-items:stretch;gap:10px;margin-top:15px}
++ .lavka-product-buy .product-page__cart{display:contents}
 + .lavka-product-mobile .product-page__cart .lavka-native-qty-icon{display:none!important}
-+ .lavka-product-mobile .product-page__cart>.qty-switch{display:flex;float:none;flex:0 0 132px;margin:0;border:1px solid #cbd2c5;border-radius:10px;overflow:hidden}
++ .lavka-product-mobile .product-page__cart>.qty-switch{display:flex;align-items:center;float:none;width:100px;height:48px;margin:0;border:1px solid #dce2d6;border-radius:10px;overflow:hidden}
 + .lavka-product-mobile .product-page__cart .qty-switch>div{display:contents}
-+ .lavka-product-mobile .product-page__cart .qty-switch__input{flex:1;min-width:0;width:32px;height:50px;border:0;background:white;font-size:16px;border-radius:0}
-+ .lavka-product-mobile .product-page__cart .lavka-product-qty-button{display:flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;height:50px;line-height:1;border:0;background:#f5f7f2;color:#3d4738;font-size:18px}
++ .lavka-product-mobile .product-page__cart .qty-switch__input{flex:1;min-width:0;width:30px;height:46px;padding:0;border:0;background:white;font-size:15px;border-radius:0;box-shadow:none}
++ .lavka-product-mobile .product-page__cart .lavka-product-qty-button{display:flex;align-items:center;justify-content:center;flex:0 0 32px;width:32px;height:46px;line-height:1;border:0;background:#f5f7f2;color:#3d4738;font-size:18px}
 + .lavka-product-mobile .product-page__cart .lavka-product-qty-button[data-direction=minus]{order:-1}
 + .lavka-product-mobile .product-page__cart .lavka-product-qty-button[data-direction=plus]{order:1}
-+ .lavka-product-mobile .product-page__add-to-cart{flex:1;min-width:110px;min-height:52px;height:auto;display:flex;align-items:center;justify-content:center;gap:9px;margin:0;padding:10px;border:0;border-radius:10px;background:#4f7f28;color:white;font-size:16px;line-height:22px;font-weight:500;box-shadow:none}
-+ .lavka-product-mobile .product-page__add-to-cart i{font-size:20px}
-+ .lavka-product-mobile .product-page__quick-order{flex-basis:100%;height:auto;min-height:44px;margin:0;border-radius:9px;font-size:13px}
++ .lavka-product-mobile .product-page__add-to-cart{min-width:0;width:100%;min-height:48px;height:auto;display:flex;align-items:center;justify-content:center;gap:6px;margin:0;padding:10px 6px;border:0;border-radius:10px;background:#4f7f28;color:white;font-size:14px;line-height:20px;font-weight:500;box-shadow:none;white-space:normal}
++ .lavka-product-mobile .product-page__add-to-cart i{font-size:18px}
++ .lavka-product-mobile .product-page__quick-order{grid-column:1/-1;height:auto;min-height:44px;margin:0;border-radius:9px;font-size:13px}
 + .lavka-product-mobile .product-page__quick-order span{display:inline!important}
 + .lavka-product-mobile .product-page__minimum{margin:10px 0 0;font-size:12px;line-height:18px}
 + .lavka-product-mobile .prod_smalldescr{margin:0 0 18px;font-size:14px;line-height:1.6}
 + .lavka-product-mobile .product-data{margin:0 0 16px}
-+ .lavka-product-mobile .product-data__item{margin-bottom:7px;font-size:12px;line-height:18px;gap:8px}
++ .lavka-product-mobile .product-data__item{margin-bottom:7px;font-size:12px;line-height:18px;gap:8px;overflow-wrap:anywhere}
++ .lavka-product-mobile .product-block .product-data__item-div{flex:0 0 auto;min-width:0;width:auto}
++ .lavka-product-mobile .product-block .product-data__item>a{min-width:0}
 + .lavka-product-mobile .product-data__item-div:first-child:after{display:none}
 + .lavka-product-mobile .product-data__item-span{padding:0;color:#747e6d}
 + .lavka-product-mobile .product-page__share{margin:16px 0}
-+ #product.lavka-product-mobile #content>.nav-tabs{display:flex;overflow-x:auto;white-space:nowrap;gap:16px;margin-top:8px;border-bottom:1px solid #dce2d6;scrollbar-width:thin}
-+ #product.lavka-product-mobile #content>.nav-tabs>li{flex:none;float:none;margin:0}
-+ #product.lavka-product-mobile #content>.nav-tabs>li>a{display:flex;align-items:center;min-height:46px;padding:10px 0;font-size:13px;color:#5b6654;border:0;border-bottom:2px solid transparent;background:transparent}
++ #product.lavka-product-mobile #content>.nav-tabs{position:sticky;top:var(--lavka-product-top,0px);z-index:980;display:flex;overflow-x:auto;white-space:nowrap;gap:0;margin:0 0 14px;padding:0 4px;border:1px solid #e3e6df;border-radius:10px;background:#fffffff5;backdrop-filter:blur(8px);scrollbar-width:none;box-shadow:0 2px 6px #25302008}
++ #product.lavka-product-mobile #content>.nav-tabs::before,#product.lavka-product-mobile #content>.nav-tabs::after{display:none}
++ #product.lavka-product-mobile #content>.nav-tabs>li{flex:1 0 auto;float:none;margin:0;text-align:center}
++ #product.lavka-product-mobile #content>.nav-tabs>li>a{display:flex;align-items:center;justify-content:center;gap:4px;min-height:44px;margin:0;padding:10px 8px;font-size:12px;color:#5b6654;border:0;border-bottom:2px solid transparent;background:transparent}
++ #product.lavka-product-mobile #content>.nav-tabs>li>a>i{display:none}
++ #product.lavka-product-mobile #content>.nav-tabs .uni-badge{margin:0}
 + #product.lavka-product-mobile #content>.nav-tabs>li.active>a{color:#365d21;border-bottom-color:#4f7f28}
 + #product.lavka-product-mobile .tab-content{font-size:14px;line-height:1.6;overflow-wrap:anywhere}
++ #product.lavka-product-mobile .tab-pane,#product.lavka-product-mobile #form-review{scroll-margin-top:calc(var(--lavka-product-top,0px) + 60px)}
 + #product.lavka-product-mobile .tab-content img{max-width:100%;height:auto}
 + #product.lavka-product-mobile .tab-content table{display:block;max-width:100%;overflow-x:auto}
 + .lavka-product-status{display:block;margin:10px 0 0;font-size:12px;line-height:18px;color:#4b6b37}
@@ -318,11 +381,11 @@ index 0000000..aa923e6
 + .lavka-product-mobile .lavka-product-pending .product-page__add-to-cart{opacity:.7;cursor:wait}
 + .lavka-product-mobile .product-page__add-to-cart:disabled,.lavka-product-mobile .product-page__add-to-cart.disabled{background:#7f8878;cursor:default}
 + .lavka-product-mobile .product-page__add-to-cart:focus-visible,.lavka-product-dock button:focus-visible,.lavka-product-mobile .lavka-product-qty-button:focus-visible{outline:2px solid #244514;outline-offset:2px}
-+ .lavka-product-dock{position:fixed;left:0;right:0;bottom:0;z-index:1025;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px max(14px,env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));border-top:1px solid #dce2d6;background:#fffffff5;box-shadow:0 -3px 16px #2530200a;backdrop-filter:blur(8px)}
++ .lavka-product-dock{position:fixed;left:0;right:0;bottom:0;z-index:990;display:grid;grid-template-columns:minmax(0,1fr) minmax(120px,180px);align-items:center;gap:16px;padding:10px max(14px,env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));border-top:1px solid #dce2d6;background:#fffffff5;box-shadow:0 -3px 16px #2530200a;backdrop-filter:blur(8px)}
 + .lavka-product-dock[hidden]{display:none}
-+ .lavka-product-dock__price{font-size:21px;line-height:26px;font-weight:500;color:#252a2c}
++ .lavka-product-dock__price{font-size:23px;line-height:28px;font-weight:500;color:#252a2c;overflow-wrap:anywhere}
 + .lavka-product-dock__pack{font-size:11px;line-height:16px;color:#687164}
-+ .lavka-product-dock button{flex:0 1 180px;min-width:120px;min-height:46px;padding:10px 18px;border:0;border-radius:10px;background:#4f7f28;color:white;font-size:15px;font-weight:500}
++ .lavka-product-dock button{min-width:0;min-height:48px;padding:10px 16px;border:0;border-radius:10px;background:#4f7f28;color:white;font-size:15px;line-height:20px;font-weight:500}
 + .lavka-product-dock button:disabled{opacity:.6;cursor:wait}
 + body.lavka-product-dock-visible{padding-bottom:calc(80px + env(safe-area-inset-bottom))}
 + body.lavka-product-dock-visible .fly-block{bottom:90px}
