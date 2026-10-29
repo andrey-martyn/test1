@@ -210,8 +210,43 @@ try {
     }
     $r = $db->query("SELECT COUNT(*) AS n FROM `".$p."theme` WHERE route LIKE '%product/category%' OR route LIKE '%common/header%' OR route LIKE '%uni_options%'");
     $out['relevant_template_overrides'] = $r ? (int)$r->fetch_assoc()['n'] : null;
-    $r = $db->query("SELECT COUNT(*) AS n FROM `".$p."theme` WHERE store_id = ".$store_id." AND route LIKE '%product/product%'");
-    $out['product_template_overrides'] = $r ? (int)$r->fetch_assoc()['n'] : null;
+    // Match catalog/controller/event/theme.php and model/design/theme.php:
+    // only the active theme, exact route and current store can override this view.
+    $theme_name = isset($out['settings']['config_theme']) ? $out['settings']['config_theme'] : null;
+    if ($theme_name === 'default') $theme_name = isset($out['settings']['theme_default_directory']) ? $out['settings']['theme_default_directory'] : null;
+    $out['product_template_overrides'] = null;
+    $out['product_template_override_details'] = array();
+    $out['product_template_override_scope'] = array('store_id'=>$store_id,'theme'=>null,'route'=>'product/product');
+    if (!is_string($theme_name) || !preg_match('/^[a-zA-Z0-9_-]{1,64}$/', $theme_name)) {
+        $out['product_template_override_diagnostics'] = array('code'=>'ACTIVE_THEME_UNVERIFIED');
+    } else {
+        $out['product_template_override_scope']['theme'] = $theme_name;
+        $product_where = "store_id = ".$store_id." AND theme = '".$db->real_escape_string($theme_name)."' AND route = 'product/product'";
+        $r = $db->query("SELECT COUNT(*) AS n FROM `".$p."theme` WHERE ".$product_where);
+        if (!$r) {
+            $out['product_template_override_diagnostics'] = array('stage'=>'active_template_count','sql_errno'=>(int)$db->errno);
+        } else {
+            $out['product_template_overrides'] = (int)$r->fetch_assoc()['n'];
+            if ($out['product_template_overrides'] > 0) {
+                // Read bounded template source solely to hash the same entity decode
+                // used by the native theme loader. Never return code or SQL errors.
+                $r = $db->query("SELECT theme_id, OCTET_LENGTH(code) AS stored_bytes, CASE WHEN OCTET_LENGTH(code) <= 2097152 THEN code ELSE NULL END AS source_code FROM `".$p."theme` WHERE ".$product_where." LIMIT 3");
+                if (!$r) {
+                    $out['product_template_override_diagnostics'] = array('stage'=>'active_template_source','sql_errno'=>(int)$db->errno);
+                } else while ($row = $r->fetch_assoc()) {
+                    $item = array('theme_id'=>(int)$row['theme_id'],'stored_bytes'=>(int)$row['stored_bytes'],'source_bounded'=>is_string($row['source_code']));
+                    if (is_string($row['source_code'])) {
+                        $decoded = html_entity_decode($row['source_code'], ENT_QUOTES, 'UTF-8');
+                        $item['stored_sha256'] = hash('sha256', $row['source_code']);
+                        $item['decoded_bytes'] = strlen($decoded);
+                        $item['decoded_sha256'] = hash('sha256', $decoded);
+                        $item['decoded_lf_sha256'] = hash('sha256', str_replace("\r\n", "\n", $decoded));
+                    }
+                    $out['product_template_override_details'][] = $item;
+                }
+            }
+        }
+    }
     $db->close();
     echo json_encode($out);
 } catch (Exception $e) { fail_probe('DATABASE_PROBE_FAILED'); }

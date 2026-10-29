@@ -1,5 +1,6 @@
 """Execute the actual PHP probe against a fixture mysqli adapter, without network/DB."""
 import importlib.util
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -42,6 +43,27 @@ class PhpProbe(unittest.TestCase):
         self.assertEqual(status, 0, report)
         self.assertEqual(report['runtime_store_id'], 3)
         self.assertEqual(report['unishop_settings_source']['store_id'], 3)
+
+    def test_product_override_matches_native_active_theme_store_and_route(self):
+        rows=[{'theme_id':1,'store_id':0,'theme':'default','route':'product/product','code':'inactive'},
+              {'theme_id':2,'store_id':3,'theme':'unishop2','route':'product/product','code':'other-store'},
+              {'theme_id':3,'store_id':0,'theme':'unishop2','route':'product/product_extra','code':'other-route'}]
+        status,report=self.probe(fixture_theme_rows=rows)
+        self.assertEqual(status,0);self.assertEqual(report['product_template_overrides'],0)
+        encoded='&lt;h1&gt;fixture-secret&lt;/h1&gt;\r\n'
+        rows.append({'theme_id':4,'store_id':0,'theme':'unishop2','route':'product/product','code':encoded})
+        status,report=self.probe(fixture_theme_rows=rows)
+        self.assertEqual(status,0);self.assertEqual(report['product_template_overrides'],1)
+        self.assertEqual(report['product_template_override_scope'],{'store_id':0,'theme':'unishop2','route':'product/product'})
+        metadata=report['product_template_override_details'][0]
+        self.assertEqual(metadata['decoded_sha256'],hashlib.sha256(b'<h1>fixture-secret</h1>\r\n').hexdigest())
+        self.assertEqual(metadata['decoded_lf_sha256'],hashlib.sha256(b'<h1>fixture-secret</h1>\n').hexdigest())
+        self.assertNotIn('code',metadata)
+
+    def test_product_override_query_failure_has_stage_and_errno(self):
+        status,report=self.probe(fixture_theme_count_error=True)
+        self.assertEqual(status,0);self.assertIsNone(report['product_template_overrides'])
+        self.assertEqual(report['product_template_override_diagnostics'],{'stage':'active_template_count','sql_errno':1142})
 
     def test_ambiguous_mapping_preserves_confirmed_database(self):
         status, report = self.probe(fixture_stores=[1,2])

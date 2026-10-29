@@ -62,6 +62,24 @@ class ProductPageRelease(unittest.TestCase):
             self.preflight.return_value=report
             status,out=self.run_action('--apply');self.assertEqual(status,2,out);self.assertFalse(list(release.store.BACKUPS.iterdir()))
 
+    def test_reviewed_effective_override_is_accepted_without_db_writes(self):
+        self.preflight.return_value['db'].update({'product_template_overrides':1,
+            'product_template_override_scope':{'store_id':0,'theme':'unishop2','route':'product/product'},
+            'product_template_override_details':[{'theme_id':4,'source_bounded':True,'decoded_sha256':release.store.sha(self.template)}]})
+        status,out=self.run_action('--apply');self.assertEqual(status,0,out)
+        self.assertEqual(json.loads(out)['template_check']['status'],'active_override_matches_reviewed_source')
+
+    def test_different_override_diagnosis_is_readonly_and_apply_stays_blocked(self):
+        self.preflight.return_value['db'].update({'product_template_overrides':1,
+            'product_template_override_scope':{'store_id':0,'theme':'unishop2','route':'product/product'},
+            'product_template_override_details':[{'theme_id':9,'source_bounded':True,'decoded_sha256':'a'*64}]})
+        status,out=self.run_action('--diagnose');self.assertEqual(status,0,out)
+        diagnostic=json.loads(out);self.assertFalse(diagnostic['shop_writes']);self.assertFalse(diagnostic['database_writes'])
+        self.assertEqual(diagnostic['template_check']['status'],'active_override_differs')
+        status,out=self.run_action('--apply');self.assertEqual(status,2,out)
+        self.assertEqual(json.loads(out)['template_check']['records'][0]['theme_id'],9)
+        self.assertFalse(list(release.store.BACKUPS.iterdir()))
+
     def test_modified_installed_file_blocks_rollback(self):
         status,out=self.run_action('--apply');self.assertEqual(status,0,out)
         (self.shop/self.asset).write_bytes(b'changed later')

@@ -18,8 +18,9 @@ MARIADB = os.environ.get('LAVKA_TEST_SQL_ENGINE') or shutil.which('mariadbd')
 
 @unittest.skipUnless(PHP and MARIADB, 'Set LAVKA_TEST_PHP_CLI and LAVKA_TEST_SQL_ENGINE to validate emitted SQL with MariaDB.')
 class ProbeSql(unittest.TestCase):
-    def emitted_queries(self, ssl):
+    def emitted_queries(self, ssl, **scenario):
         config = {'DB_HOSTNAME':'fixture','DB_USERNAME':'fixture','DB_PASSWORD':'fixture-secret','DB_DATABASE':'lavkasp_test','DB_PORT':'3306','DB_PREFIX':'oc_','HTTP_SERVER':'https://test.lavka-speciy.com/','HTTPS_SERVER':'https://test.lavka-speciy.com/','fixture_columns':['store_id','name','url']+(['ssl'] if ssl else [])}
+        config.update(scenario)
         fixture = (ROOT/'tests/fixtures/probe_database.php').read_text().split('<?php',1)[1]
         marker = 'echo json_encode($out);'
         self.assertEqual(ops.PHP_PROBE.count(marker), 1)
@@ -42,7 +43,7 @@ class ProbeSql(unittest.TestCase):
                 'CREATE TABLE `oc_setting` (`store_id` INT, `code` VARCHAR(100), `key` VARCHAR(100), `value` VARCHAR(4096), `serialized` INT) ENGINE=MEMORY;',
                 'CREATE TABLE `oc_modification` (`code` VARCHAR(100), `name` VARCHAR(100), `version` VARCHAR(32), `xml` VARCHAR(4096), `status` INT) ENGINE=MEMORY;',
                 'CREATE TABLE `oc_uni_setting` (`store_id` INT, `data` VARCHAR(4096)) ENGINE=MEMORY;',
-                'CREATE TABLE `oc_theme` (`store_id` INT DEFAULT 0, `route` VARCHAR(100)) ENGINE=MEMORY;'
+                'CREATE TABLE `oc_theme` (`theme_id` INT, `store_id` INT DEFAULT 0, `theme` VARCHAR(64), `route` VARCHAR(100), `code` VARCHAR(4096)) ENGINE=MEMORY;'
             ]
             sql = '\n'.join(setup+[query.rstrip(';')+';' for query in queries])+'\n'
             command = [MARIADB,'--no-defaults','--bootstrap','--skip-networking','--skip-innodb','--default-storage-engine=MEMORY','--skip-log-bin','--datadir='+directory,'--log-error='+str(root/'error.log'),'--open-files-limit=1024']
@@ -61,6 +62,11 @@ class ProbeSql(unittest.TestCase):
     def test_emitted_queries_execute_without_ssl_column(self):
         status, log = self.execute(self.emitted_queries(False),False)
         self.assertEqual(status,0,log)
+
+    def test_active_product_template_source_query_executes(self):
+        queries=self.emitted_queries(False,fixture_theme_rows=[{'theme_id':1,'store_id':0,'theme':'unishop2','route':'product/product','code':'&lt;h1&gt;Product&lt;/h1&gt;'}])
+        self.assertTrue(any(query.startswith('SELECT theme_id, OCTET_LENGTH(code)') for query in queries))
+        status,log=self.execute(queries,False);self.assertEqual(status,0,log)
 
     def test_engine_rejects_original_unquoted_ssl_query(self):
         query = "SELECT store_id FROM `oc_store` WHERE url IN ('https://test.lavka-speciy.com/') OR ssl IN ('https://test.lavka-speciy.com/') LIMIT 2"

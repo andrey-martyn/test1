@@ -76,6 +76,18 @@ class FixtureDatabase {
             if (!empty($this->config['fixture_duplicate_settings'])) $rows[] = array('data'=>$data);
             return new FixtureResult($rows);
         }
+        if ((strpos($sql, 'SELECT COUNT(*) AS n FROM `oc_theme`') === 0 && strpos($sql, "AND theme = '") !== false) || strpos($sql, 'SELECT theme_id, OCTET_LENGTH(code)') === 0) {
+            $source = strpos($sql, 'SELECT theme_id,') === 0;
+            if (!$source && !empty($this->config['fixture_theme_count_error'])) return $this->error(1142);
+            if ($source && !empty($this->config['fixture_theme_source_error'])) return $this->error(1142);
+            if (!preg_match("/store_id = ([0-9]+) AND theme = '([a-zA-Z0-9_-]+)' AND route = 'product\/product'/", $sql, $match)) return $this->error(9001);
+            $rows = array();
+            foreach (isset($this->config['fixture_theme_rows']) ? $this->config['fixture_theme_rows'] : array() as $row) {
+                if ((int)$row['store_id'] !== (int)$match[1] || $row['theme'] !== $match[2] || $row['route'] !== 'product/product') continue;
+                $rows[] = array('theme_id'=>$row['theme_id'],'stored_bytes'=>strlen($row['code']),'source_code'=>strlen($row['code'])<=2097152 ? $row['code'] : null);
+            }
+            return new FixtureResult($source ? array_slice($rows,0,3) : array(array('n'=>count($rows))));
+        }
         if (strpos($sql, 'SELECT COUNT(*) AS n FROM `oc_theme`') === 0) return new FixtureResult(array(array('n'=>0)));
         return $this->error(9003);
     }
