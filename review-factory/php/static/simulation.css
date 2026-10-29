@@ -138,3 +138,38 @@
 #simulation-sources .source {
   overflow-wrap: anywhere;
 }
+
+.simulation-shop-stats {
+  padding: 18px;
+  background: #eaf2e8;
+  border-bottom: 1px solid var(--line);
+}
+.simulation-shop-stats .eyebrow {
+  font-size: 11px;
+  line-height: 1.6;
+  margin: 0 0 12px;
+}
+.simulation-shop-numbers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.simulation-shop-numbers strong {
+  font-size: 26px;
+  display: block;
+  color: var(--ink);
+}
+.simulation-shop-numbers span {
+  font-size: 12px;
+}
+.simulation-shop-stats p {
+  margin-bottom: 0;
+  line-height: 1.6;
+}
+.simulation-model-heading {
+  font-size: 10px;
+  letter-spacing: 1px;
+  padding: 12px 16px;
+  background: #fff7e8;
+  color: #715025;
+}

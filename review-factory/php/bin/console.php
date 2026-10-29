@@ -393,6 +393,9 @@ function rf_run(string $command, array $a): array
                 $dir,
                 (int) ($a["limit"] ?? 5),
                 (int) ($a["seconds"] ?? 55),
+                null,
+                isset($a["url"]) ? \ReviewFactory\text($a["url"], 2048, true) : null,
+                isset($a["capture"]),
             );
             \ReviewFactory\rebuildQueue($db);
             return ["state" => "checked"] + $summary;

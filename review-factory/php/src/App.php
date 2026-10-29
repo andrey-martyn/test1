@@ -34,6 +34,17 @@ function api(\PDO $db, string $path, string $method, array $body, ?array $user):
     if ($path === "simulation/claim" && $method === "POST") {
         return simulationClaim($db, $user, integer($body["count"] ?? 1, 1, 10));
     }
+    if (
+        preg_match('~^simulation/entries/([a-f0-9]{32})/sources/request$~D', $path, $m) &&
+        $method === "POST"
+    ) {
+        return simulationRequestSource(
+            $db,
+            $user,
+            $m[1],
+            enum($body["source_id"] ?? "", ["deluxe", "spicery", "banka", "specii"]),
+        );
+    }
     if ($path === "simulation/summary" && $method === "GET") {
         return simulationSummary($db, $user);
     }

@@ -24,6 +24,43 @@ function publicProductUrl(string $url): string
         rtrim($p["path"] ?? "/", "/") .
         (!empty($p["query"]) ? "?" . $p["query"] : "");
 }
+/** Banka's existing primary product wrapper is also used by its catalog parser. */
+function bankaReviewHeader(\DOMXPath $xpath, string $url): ?int
+{
+    if (preg_replace("/^www\./i", "", parse_url($url, PHP_URL_HOST) ?: "") !== "banka-speciy.in.ua") {
+        return null;
+    }
+    $blocks = $xpath->query(
+        '//section[contains(concat(" ",normalize-space(@class)," ")," product ") and @data-product-id and .//h1]',
+    );
+    if ($blocks->length !== 1) {
+        return null;
+    }
+    $block = $blocks->item(0);
+    if (
+        !preg_match('/^[1-9][0-9]{0,11}$/D', $block->getAttribute("data-product-id")) ||
+        $xpath->query(".//h1", $block)->length !== 1
+    ) {
+        return null;
+    }
+    $counts = [];
+    foreach (
+        $xpath->query(".//*[self::a or self::span or self::button or self::div]", $block)
+        as $node
+    ) {
+        if (\Lavka\competitor_related_node($node, $block, $block)) {
+            continue;
+        }
+        $label = \Lavka\competitor_text($node->textContent);
+        if (mb_strlen($label) > 80) {
+            continue;
+        }
+        if (preg_match('/^([0-9]{1,7})\s*(?:відгук(?:ів|и)?|отзыв(?:ов|а)?|reviews?)$/iu', $label, $m)) {
+            $counts[(int) $m[1]] = true;
+        }
+    }
+    return count($counts) === 1 ? (int) array_key_first($counts) : null;
+}
 /** Structured review count, not a guess from text or ratingCount. No scripts execute. */
 function parseReviews(string $html, string $url): array
 {
@@ -167,6 +204,13 @@ function parseReviews(string $html, string $url): array
             }
         }
     }
+    if ($result["review_count"] === null) {
+        $header = bankaReviewHeader($xpath, $url);
+        if ($header !== null) {
+            $result["review_count"] = $header;
+            $result["method"] = "banka_header";
+        }
+    }
     $result["samples"] = array_values(array_unique($result["samples"]));
     if ($result["review_count"] === null && $result["average_rating"] === null && !$result["samples"]) {
         throw new Problem("reviews_unrecognized");
@@ -260,20 +304,77 @@ function importMatches(\PDO $db, string $analyticsDirectory): array
     });
     return $summary;
 }
+/** Optional diagnostic capture of a public page; kept outside the web root. */
+function captureCompetitorPage(string $directory, array $target, string $html): string
+{
+    $folder = $directory . "/competitor-pages";
+    if (is_link($folder) || (!is_dir($folder) && !mkdir($folder, 0700))) {
+        throw new Problem("capture_directory_failed");
+    }
+    chmod($folder, 0700);
+    $path =
+        $folder .
+        "/" .
+        preg_replace("/[^a-z]/", "", $target["source_id"]) .
+        "-" .
+        hash("sha256", $target["url"]) .
+        ".html";
+    if (is_link($path)) {
+        throw new Problem("capture_path_rejected");
+    }
+    $tmp = tempnam($folder, ".page-");
+    if ($tmp === false) {
+        throw new Problem("capture_failed");
+    }
+    try {
+        if (
+            file_put_contents($tmp, $html, LOCK_EX) === false ||
+            !chmod($tmp, 0600) ||
+            !rename($tmp, $path)
+        ) {
+            throw new Problem("capture_failed");
+        }
+    } finally {
+        if (is_file($tmp)) {
+            unlink($tmp);
+        }
+    }
+    return $path;
+}
 function collectReviews(
     \PDO $db,
     string $directory,
     int $limit = 5,
     int $seconds = 55,
-    ?callable $transport = null
+    ?callable $transport = null,
+    ?string $targetUrl = null,
+    bool $capture = false
 ): array {
     if ($limit < 1 || $limit > 30 || $seconds < 30 || $seconds > 55) {
         throw new Problem("Допустимо limit 1–30, seconds 30–55");
     }
+    if ($capture && $targetUrl === null) {
+        throw new Problem("Для сохранения диагностической страницы укажите --url");
+    }
     require_once analyticsLibrary() . "/CompetitorHttp.php";
     $started = microtime(true);
     $deadline = $started + $seconds;
-    $summary = ["checked" => 0, "succeeded" => 0, "failed" => 0, "deferred" => 0];
+    $summary = ["checked" => 0, "succeeded" => 0, "failed" => 0, "deferred" => 0, "pages" => []];
+    execute(
+        $db,
+        "DELETE FROM monitoring_requests WHERE NOT EXISTS(SELECT 1 FROM competitors c JOIN products p ON p.id=c.product_id WHERE c.product_id=monitoring_requests.product_id AND c.source_id=monitoring_requests.source_id AND c.url=monitoring_requests.url AND c.confirmed=1 AND p.active=1)",
+    );
+    if ($targetUrl !== null) {
+        $target = one(
+            $db,
+            "SELECT c.next_check FROM competitors c JOIN products p ON p.id=c.product_id WHERE c.url=? AND c.confirmed=1 AND p.active=1",
+            [$targetUrl],
+        );
+        if (!$target) {
+            throw new Problem("Для этого адреса нет активного подтверждённого соответствия");
+        }
+        $summary["target_next_check"] = $target["next_check"];
+    }
     $guard = function (string $url) use ($directory, $transport, $deadline): void {
         $policy = \Lavka\competitors_robots_policy($url, $directory, $transport);
         if (!$policy["allowed"]) {
@@ -294,17 +395,23 @@ function collectReviews(
     };
     $targets = rows(
         $db,
-        "SELECT c.* FROM competitors c JOIN products p ON p.id=c.product_id WHERE c.confirmed=1 AND p.active=1 AND c.next_check<=? ORDER BY c.next_check,c.product_id,c.source_id LIMIT " .
+        "SELECT c.* FROM competitors c JOIN products p ON p.id=c.product_id LEFT JOIN monitoring_requests r ON r.product_id=c.product_id AND r.source_id=c.source_id AND r.url=c.url WHERE c.confirmed=1 AND p.active=1 AND c.next_check<=?" .
+            ($targetUrl === null ? "" : " AND c.url=?") .
+            " ORDER BY CASE WHEN r.requested_at IS NULL THEN 1 ELSE 0 END,r.requested_at,c.next_check,c.product_id,c.source_id LIMIT " .
             max(1, min(30, $limit)),
-        [now()],
+        $targetUrl === null ? [now()] : [now(), $targetUrl],
     );
     foreach ($targets as $target) {
         if (microtime(true) + 27 > $deadline) {
             ++$summary["deferred"];
             break;
         }
+        $captured = null;
         try {
             $response = \Lavka\competitors_http_fetch($target["url"], $transport, $guard);
+            if ($capture) {
+                $captured = captureCompetitorPage($directory, $target, $response["body"]);
+            }
             $parsed = parseReviews($response["body"], $response["url"]);
             execute(
                 $db,
@@ -325,6 +432,15 @@ function collectReviews(
                     $target["source_id"],
                 ],
             );
+            $summary["pages"][] = [
+                "product_id" => (int) $target["product_id"],
+                "source_id" => $target["source_id"],
+                "state" => "succeeded",
+                "review_count" => $parsed["review_count"],
+                "average_rating" => $parsed["average_rating"],
+                "samples" => count($parsed["samples"]),
+                "method" => $parsed["method"],
+            ];
             ++$summary["succeeded"];
         } catch (\Throwable $e) {
             $code =
@@ -351,8 +467,25 @@ function collectReviews(
                     $target["source_id"],
                 ],
             );
+            $summary["pages"][] = [
+                "product_id" => (int) $target["product_id"],
+                "source_id" => $target["source_id"],
+                "state" => "failed",
+                "error" => $code,
+            ];
             ++$summary["failed"];
         }
+        if ($captured !== null) {
+            $last = count($summary["pages"]) - 1;
+            if ($last >= 0) {
+                $summary["pages"][$last]["capture_file"] = $captured;
+            }
+        }
+        execute($db, "DELETE FROM monitoring_requests WHERE product_id=? AND source_id=? AND url=?", [
+            $target["product_id"],
+            $target["source_id"],
+            $target["url"],
+        ]);
         ++$summary["checked"];
     }
     execute($db, "INSERT OR REPLACE INTO settings VALUES('competitors_last_run',?)", [

@@ -140,6 +140,7 @@ function migrateCopy(\PDO $source, string $destination, array $mapping): array
                 $copy->exec(
                     "DELETE FROM sessions; DELETE FROM attempts; DELETE FROM outbox; DELETE FROM shop_reviews; DELETE FROM queue; DELETE FROM settings WHERE key IN ('shop_updated','queue_updated','matches_updated','competitors_last_run','sync_error','maintenance'); UPDATE drafts SET state='historical',review_id=NULL,revision=revision+1 WHERE state<>'draft'; UPDATE products SET active=0,stock=NULL,customer_count=NULL,customer_rating=NULL,sales90=NULL,views30=NULL,cooldown_until=NULL; UPDATE settings SET value='0' WHERE key='bridge_ready';UPDATE settings SET value='production' WHERE key='environment'",
                 );
+                execute($copy, "DELETE FROM monitoring_requests");
                 foreach ($mapping as $old => $new) {
                     execute($copy, "UPDATE products SET id=? WHERE id=?", [-(int) $old, (int) $old]);
                     foreach (["drafts", "assignments", "competitors", "competitor_history"] as $table) {

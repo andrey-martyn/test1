@@ -387,7 +387,7 @@ function simulationSources(\PDO $core, int $product): array
 {
     $sources = rows(
         $core,
-        "SELECT source_id,url,review_count,average_rating,last_success,last_attempt,error,confirmed,samples FROM competitors WHERE product_id=? AND confirmed=1 ORDER BY source_id",
+        "SELECT c.source_id,c.url,c.review_count,c.average_rating,c.last_success,c.last_attempt,c.error,c.confirmed,c.samples,c.next_check,r.requested_at FROM competitors c LEFT JOIN monitoring_requests r ON r.product_id=c.product_id AND r.source_id=c.source_id AND r.url=c.url WHERE c.product_id=? AND c.confirmed=1 ORDER BY c.source_id",
         [$product],
     );
     foreach ($sources as &$source) {
@@ -399,6 +399,47 @@ function simulationSources(\PDO $core, int $product): array
     unset($source);
     return $sources;
 }
+function simulationShopStats(\PDO $core, int $product): array
+{
+    $updated = one($core, "SELECT value FROM settings WHERE key='shop_updated'")["value"] ?? null;
+    if ($updated === null) {
+        return ["count" => null, "average" => null, "updated_at" => null];
+    }
+    $stats = one(
+        $core,
+        "SELECT count(*) count,avg(rating) average FROM shop_reviews WHERE product_id=?",
+        [$product],
+    );
+    return [
+        "count" => (int) $stats["count"],
+        "average" => $stats["average"] === null ? null : (float) $stats["average"],
+        "updated_at" => $updated,
+    ];
+}
+function simulationRequestSource(\PDO $core, array $user, string $id, string $source): array
+{
+    $card = simulationEntry($core, $user, $id);
+    return transaction($core, function () use ($core, $user, $card, $source) {
+        $product = (int) $card["entry"]["product_id"];
+        $target = one(
+            $core,
+            "SELECT c.* FROM competitors c JOIN products p ON p.id=c.product_id WHERE c.product_id=? AND c.source_id=? AND c.confirmed=1 AND p.active=1",
+            [$product, $source],
+        );
+        if (!$target) {
+            throw new Problem("Подтверждённая страница этого товара не найдена", 404);
+        }
+        if ($target["next_check"] > now()) {
+            return ["state" => "not_due", "next_check" => $target["next_check"]];
+        }
+        execute(
+            $core,
+            "INSERT OR IGNORE INTO monitoring_requests(product_id,source_id,url,requested_by,requested_at) VALUES(?,?,?,?,?)",
+            [$product, $source, $target["url"], $user["id"], now()],
+        );
+        return ["state" => "queued"];
+    });
+}
 function simulationEntry(\PDO $core, array $user, string $id): array
 {
     requireSimulationUser($user);
@@ -407,9 +448,11 @@ function simulationEntry(\PDO $core, array $user, string $id): array
     if (!$e) {
         throw new Problem("Тестовая карточка не найдена", 404);
     }
-    $p = one($core, "SELECT id,name,description,category,image,url FROM products WHERE id=?", [
-        $e["product_id"],
-    ]);
+    $p = one(
+        $core,
+        "SELECT id,name,description,category,image,url,customer_count,customer_rating FROM products WHERE id=?",
+        [$e["product_id"]],
+    );
     if (!$p) {
         $p = [
             "id" => (int) $e["product_id"],
@@ -430,6 +473,7 @@ function simulationEntry(\PDO $core, array $user, string $id): array
         "entry" => $e,
         "product" => $p,
         "model_stats" => $stats,
+        "shop_stats" => simulationShopStats($core, (int) $e["product_id"]),
         "guidance" => $q ?? ["target" => 3, "depth" => "normal", "priority" => null],
         "sources" => simulationSources($core, (int) $e["product_id"]),
         "source_sync" => [

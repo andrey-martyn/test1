@@ -1,5 +1,6 @@
 "use strict";
 const simulationState = { ids: [], current: null, count: 1 };
+let simulationSourceTimer = null;
 const simulationMark = "ТЕСТОВЫЕ ДАННЫЕ · не отзывы покупателей";
 function simulationBanner() {
   return `<div class="simulation-banner"><strong>${simulationMark}</strong><span>Закрытый стенд: вымышленные авторы и модельные даты/оценки. Эти записи хранятся отдельно и не публикуются в магазине.</span></div>`;
@@ -12,29 +13,62 @@ function simulationAverage(value) {
     ? "—"
     : Number(value).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+function simulationShopMetrics(data) {
+  const shop = data.shop_stats;
+  return `<section class="simulation-shop-stats" aria-label="Отзывы магазина"><div class="eyebrow">ОПУБЛИКОВАННЫЕ ОТЗЫВЫ В ВАШЕМ TEST-МАГАЗИНЕ</div><div class="simulation-shop-numbers"><div><strong id="shop-review-count">${num(shop.count)}</strong><span>отзывов в магазине</span></div><div><strong id="shop-review-average">${simulationAverage(shop.average)}</strong><span>средняя оценка в магазине</span></div></div><p class="caption">${shop.updated_at ? "Снимок магазина: " + date(shop.updated_at) + ". Оценки из опубликованных записей; фильтры витрины могут исключать отзывы сотрудников." : "Данные магазина ещё не синхронизированы."} Тестовые карточки Комбайна сюда не входят.</p></section>`;
+}
 function simulationMetrics(data) {
   const stats = data.model_stats;
-  return `<div class="product-meta"><div><strong id="model-count">${num(stats.count)}</strong>сохранено для этого товара</div><div><strong id="model-average">${simulationAverage(stats.average)}</strong>среднее этого товара</div><div><strong id="model-projected-average">${simulationAverage(stats.after_current)}</strong>после этой карточки</div></div><p class="caption simulation-math">${stats.count ? `Расчёт: ${num(stats.rating_sum)} ÷ ${num(stats.count)} = ${simulationAverage(stats.average)}.` : "У этого товара пока нет сохранённых тестовых записей."} Черновик учитывается только в прогнозе. Ориентир 4,4–4,8; первая целая оценка может быть вне диапазона.</p>`;
+  return `<div class="simulation-model-heading">СИНТЕТИЧЕСКИЕ ЗАПИСИ КОМБАЙНА · ОТДЕЛЬНЫЙ РАСЧЁТ</div><div class="product-meta"><div><strong id="model-count">${num(stats.count)}</strong>сохранено для этого товара</div><div><strong id="model-average">${simulationAverage(stats.average)}</strong>среднее этого товара</div><div><strong id="model-projected-average">${simulationAverage(stats.after_current)}</strong>после этой карточки</div></div><p class="caption simulation-math">${stats.count ? `Расчёт: ${num(stats.rating_sum)} ÷ ${num(stats.count)} = ${simulationAverage(stats.average)}.` : "У этого товара пока нет сохранённых тестовых записей."} Черновик учитывается только в прогнозе. Ориентир 4,4–4,8; первая целая оценка может быть вне диапазона.</p>`;
 }
 function simulationSourceContent(data) {
   const sync = data.source_sync || {};
   const freshness = sync.updated_at
     ? "Ссылки обновлены: " + date(sync.updated_at) + "."
     : "Ссылки из аналитики ещё не загружены в Комбайн.";
-  return `<p class="caption">${esc(freshness)}${sync.error ? " Последнее обновление ссылок завершилось ошибкой." : ""}</p>${data.sources.map((source) => `<div class="source"><strong>${esc(sourceNames[source.source_id] || source.source_id)}</strong><p>${safeLink(source.url, "Открыть страницу товара")}</p><small>${source.review_count === null ? "Число отзывов пока неизвестно" : num(source.review_count) + " отзывов"}${source.average_rating === null ? "" : " · оценка источника " + simulationAverage(source.average_rating)}</small><p class="caption">${source.last_success ? "Данные получены: " + date(source.last_success) + "." : "Данные отзывов ещё не получены."}${source.error ? " Последняя попытка не удалась; отсутствие данных не означает отсутствие отзывов." : !source.last_attempt && !source.last_success ? " Ожидается запуск сборщика." : ""}</p>${(source.samples || []).map((sample) => `<blockquote>${esc(sample)}</blockquote>`).join("")}</div>`).join("") || `<p class="caption">${sync.updated_at ? "Для этого товара подтверждённых страниц в загруженном списке нет. Ссылки других товаров сюда не подставляются." : "Подтверждённые ссылки ещё не загружены. Обновление выполняет администратор."}</p>`}`;
+  return `<p class="caption">${esc(freshness)}${sync.error ? " Последнее обновление ссылок завершилось ошибкой." : ""}</p>${data.sources.map((source) => `<div class="source"><strong>${esc(sourceNames[source.source_id] || source.source_id)}</strong><p>${safeLink(source.url, "Открыть страницу товара")}</p><small>${source.review_count === null ? "Число отзывов пока неизвестно" : num(source.review_count) + " отзывов"}${source.average_rating === null ? "" : " · оценка источника " + simulationAverage(source.average_rating)}</small><p class="caption">${source.last_success ? "Данные получены: " + date(source.last_success) + "." : "Данные отзывов ещё не получены."}${source.error ? " Последняя попытка не удалась; отсутствие данных не означает отсутствие отзывов." : !source.last_attempt && !source.last_success ? " Ожидается запуск сборщика." : ""}</p>${source.error ? `<p class="caption">Причина: ${esc({ reviews_unrecognized: "разметка отзывов не распознана", blocked: "сайт ограничил доступ", rate_limited: "сайт просит уменьшить частоту запросов", robots_disallowed: "чтение запрещено robots.txt", timeout: "истекло время ожидания", robots_unavailable: "не удалось проверить robots.txt" }[source.error] || source.error)}</p>` : ""}<p class="caption">${source.requested_at ? "Запрос принят. Ожидаем фоновый сбор." : source.next_check && Date.parse(source.next_check) > Date.now() ? "Следующая проверка: " + date(source.next_check) + "." : ""}</p><button class="small" data-monitor-source="${esc(source.source_id)}" ${source.requested_at || (source.next_check && Date.parse(source.next_check) > Date.now()) ? "disabled" : ""}>${source.requested_at ? "Загрузка запрошена" : "Загрузить отзывы"}</button>${source.last_success && Number(source.review_count) > 0 && !(source.samples || []).length ? '<p class="caption">Счётчик получен, но тексты отзывов в ответе страницы не распознаны.</p>' : ""}${(source.samples || []).map((sample) => `<blockquote>${esc(sample)}</blockquote>`).join("")}</div>`).join("") || `<p class="caption">${sync.updated_at ? "Для этого товара подтверждённых страниц в загруженном списке нет. Ссылки других товаров сюда не подставляются." : "Подтверждённые ссылки ещё не загружены. Обновление выполняет администратор."}</p>`}`;
 }
-async function simulationRefresh() {
-  if (state.busy || state.saving) return;
+function simulationPollSources() {
+  clearTimeout(simulationSourceTimer);
+  if (state.view === "simulation" && simulationState.current?.sources.some((s) => s.requested_at))
+    simulationSourceTimer = setTimeout(
+      () => simulationRefresh(true).catch((err) => notice(err.message, true)),
+      10000,
+    );
+}
+async function simulationLoadSource(source, button) {
+  const id = simulationState.current.entry.id;
+  button.disabled = true;
+  try {
+    const result = await request("simulation/entries/" + id + "/sources/request", { source_id: source });
+    await simulationRefresh(true);
+    notice(
+      result.state === "queued"
+        ? "Запрос принят. Этот запрос получит приоритет при следующем сборе."
+        : "Сохранённые данные ещё свежие. Следующая проверка: " + date(result.next_check),
+    );
+  } finally {
+    if (button.isConnected) button.disabled = false;
+  }
+}
+async function simulationRefresh(quiet = false) {
+  if (state.busy || state.saving) {
+    if (quiet) simulationPollSources();
+    return;
+  }
   const current = simulationState.current,
     id = current.entry.id;
   const fresh = await request("simulation/entries/" + id);
   if (state.view !== "simulation" || simulationState.current.entry.id !== id) return;
   current.model_stats = fresh.model_stats;
+  current.shop_stats = fresh.shop_stats;
   current.sources = fresh.sources;
   current.source_sync = fresh.source_sync;
+  $("#simulation-shop-metrics").innerHTML = simulationShopMetrics(current);
   $("#simulation-metrics").innerHTML = simulationMetrics(current);
   $("#simulation-source-content").innerHTML = simulationSourceContent(current);
-  notice("Показатели и сохранённые источники обновлены.");
+  simulationPollSources();
+  if (!quiet) notice("Показатели и сохранённые источники обновлены.");
 }
 async function simulationWork(count = simulationState.count) {
   if (state.busy || state.saving) return;
@@ -70,8 +104,9 @@ function simulationPaint() {
       "Текст и все поля уже заполнены автоматически. При желании текст можно изменить.",
     ) +
     simulationBanner() +
-    `<div class="simulation-toolbar"><span class="caption">Оператор: ${esc(state.user.name)} · в работе ${simulationState.ids.length}</span><label>Взять пакет<select id="simulation-batch">${[1, 5, 10].map((n) => `<option value="${n}" ${n === simulationState.count ? "selected" : ""}>${n} ${n === 1 ? "товар" : "товаров"}</option>`).join("")}</select></label><button id="simulation-refresh">Обновить данные</button><button id="simulation-preview">Закрытый предпросмотр</button>${simulationState.ids.length > 1 ? '<button id="simulation-packet" class="primary">Сохранить весь тестовый пакет</button>' : ""}</div><div class="assignment-strip">${simulationState.ids.map((id, i) => `<button data-simulation-open="${id}" class="${id === e.id ? "active" : ""}">Карточка ${i + 1}</button>`).join("")}</div><div class="workspace simulation-workspace" data-pane="write"><div class="mobile-pane-nav" role="tablist" aria-label="Работа с товаром"><button role="tab" aria-selected="true" data-pane="write">Пишу тестовый текст</button><button role="tab" aria-selected="false" data-pane="reference">Подсказки</button></div><section class="panel"><div class="product-heading">${p.image ? `<img src="${esc(p.image)}" alt="">` : ""}<div><div class="eyebrow">${esc(p.category || "ТОВАР ТЕСТОВОГО КАТАЛОГА")}</div><h2>${esc(p.name)}</h2>${safeLink(p.url, "Исходная карточка товара")}</div></div><div id="simulation-metrics">${simulationMetrics(d)}</div><div class="panel-body"><dl class="simulation-fields"><div><dt>Вымышленный автор</dt><dd id="model-author">${esc(e.model_author)}</dd></div><div><dt>Модельная группа</dt><dd id="model-registration">${esc(simulationRegistration(e.registration))}</dd></div><div><dt>Модельный город</dt><dd id="model-city">${esc(e.model_city || "Без города")}</dd></div><div><dt>Модельная дата</dt><dd id="model-date">${esc(e.model_date)}</dd></div><div><dt>Автоматические звёзды</dt><dd id="model-rating" aria-label="Модельная оценка ${e.rating} из 5">${"★".repeat(Number(e.rating))}${"☆".repeat(5 - Number(e.rating))} · ${num(e.rating)}/5</dd></div><div><dt>Автоматическое настроение</dt><dd id="model-mood">${esc(e.mood)}</dd></div></dl><div class="writing-tip"><div><strong>${esc(depths[d.guidance.depth] || depths.normal)}</strong>Можно проверить описание вкуса, аромата, упаковки или способа применения. Это подсказка, не обязательная квота.</div></div><form id="simulation-writer" method="post"><label for="simulation-body">Текст тестового отзыва</label><textarea id="simulation-body" maxlength="10000" placeholder="Введите текст для проверки карточки…">${esc(e.body)}</textarea><div class="writer-footer"><span id="simulation-words">0 слов</span><span id="simulation-saved">${e.body ? "Тестовый черновик загружен" : "Тестовый текст и автополя заполнены"}</span></div><div class="actions"><button type="button" id="simulation-draft">Сохранить черновик</button><button class="primary" type="submit">Сохранить тестовый отзыв →</button></div><p class="after-note">Запись появится в закрытом предпросмотре, затем откроется следующий товар. В отзывы магазина она не передаётся.</p><button type="button" id="simulation-skip" class="quiet small">Пропустить товар</button></form></div></section><aside class="panel references"><div class="aside-title"><h2>Подсказки по товару</h2></div><div class="panel-body"><details id="simulation-sources" open><summary>Источники мониторинга</summary><div id="simulation-source-content">${simulationSourceContent(d)}</div></details><details><summary>Описание и характеристики</summary><p>${esc(p.description || "Описание не загружено.")}</p></details><details><summary>Что проверяет этот режим</summary><p>Очередь товаров, автоматическое заполнение, сохранение текста и отображение тестовых записей. Имена не берутся из базы клиентов. Рейтинг покупателей не меняется.</p></details></div></aside></div>`;
+    `<div class="simulation-toolbar"><span class="caption">Оператор: ${esc(state.user.name)} · в работе ${simulationState.ids.length}</span><label>Взять пакет<select id="simulation-batch">${[1, 5, 10].map((n) => `<option value="${n}" ${n === simulationState.count ? "selected" : ""}>${n} ${n === 1 ? "товар" : "товаров"}</option>`).join("")}</select></label><button id="simulation-refresh">Обновить данные</button><button id="simulation-preview">Закрытый предпросмотр</button>${simulationState.ids.length > 1 ? '<button id="simulation-packet" class="primary">Сохранить весь тестовый пакет</button>' : ""}</div><div class="assignment-strip">${simulationState.ids.map((id, i) => `<button data-simulation-open="${id}" class="${id === e.id ? "active" : ""}">Карточка ${i + 1}</button>`).join("")}</div><div class="workspace simulation-workspace" data-pane="write"><div class="mobile-pane-nav" role="tablist" aria-label="Работа с товаром"><button role="tab" aria-selected="true" data-pane="write">Пишу тестовый текст</button><button role="tab" aria-selected="false" data-pane="reference">Подсказки</button></div><section class="panel"><div class="product-heading">${p.image ? `<img src="${esc(p.image)}" alt="">` : ""}<div><div class="eyebrow">${esc(p.category || "ТОВАР ТЕСТОВОГО КАТАЛОГА")}</div><h2>${esc(p.name)}</h2>${safeLink(p.url, "Исходная карточка товара")}</div></div><div id="simulation-shop-metrics">${simulationShopMetrics(d)}</div><div id="simulation-metrics">${simulationMetrics(d)}</div><div class="panel-body"><dl class="simulation-fields"><div><dt>Вымышленный автор</dt><dd id="model-author">${esc(e.model_author)}</dd></div><div><dt>Модельная группа</dt><dd id="model-registration">${esc(simulationRegistration(e.registration))}</dd></div><div><dt>Модельный город</dt><dd id="model-city">${esc(e.model_city || "Без города")}</dd></div><div><dt>Модельная дата</dt><dd id="model-date">${esc(e.model_date)}</dd></div><div><dt>Автоматические звёзды</dt><dd id="model-rating" aria-label="Модельная оценка ${e.rating} из 5">${"★".repeat(Number(e.rating))}${"☆".repeat(5 - Number(e.rating))} · ${num(e.rating)}/5</dd></div><div><dt>Автоматическое настроение</dt><dd id="model-mood">${esc(e.mood)}</dd></div></dl><div class="writing-tip"><div><strong>${esc(depths[d.guidance.depth] || depths.normal)}</strong>Можно проверить описание вкуса, аромата, упаковки или способа применения. Это подсказка, не обязательная квота.</div></div><form id="simulation-writer" method="post"><label for="simulation-body">Текст тестового отзыва</label><textarea id="simulation-body" maxlength="10000" placeholder="Введите текст для проверки карточки…">${esc(e.body)}</textarea><div class="writer-footer"><span id="simulation-words">0 слов</span><span id="simulation-saved">${e.body ? "Тестовый черновик загружен" : "Тестовый текст и автополя заполнены"}</span></div><div class="actions"><button type="button" id="simulation-draft">Сохранить черновик</button><button class="primary" type="submit">Сохранить тестовый отзыв →</button></div><p class="after-note">Запись появится в закрытом предпросмотре, затем откроется следующий товар. В отзывы магазина она не передаётся.</p><button type="button" id="simulation-skip" class="quiet small">Пропустить товар</button></form></div></section><aside class="panel references"><div class="aside-title"><h2>Подсказки по товару</h2></div><div class="panel-body"><details id="simulation-sources" open><summary>Источники мониторинга</summary><div id="simulation-source-content">${simulationSourceContent(d)}</div></details><details><summary>Описание и характеристики</summary><p>${esc(p.description || "Описание не загружено.")}</p></details><details><summary>Что проверяет этот режим</summary><p>Очередь товаров, автоматическое заполнение, сохранение текста и отображение тестовых записей. Имена не берутся из базы клиентов. Рейтинг покупателей не меняется.</p></details></div></aside></div>`;
   simulationWords();
+  simulationPollSources();
 }
 function simulationWords() {
   const n = ($("#simulation-body")?.value.match(/[\p{L}\p{N}]+(?:[’'-][\p{L}\p{N}]+)*/gu) || []).length;
@@ -231,6 +266,7 @@ document.addEventListener("click", async (e) => {
     if (b.id === "simulation-preview")
       await simulationPreview(Number(simulationState.current.entry.product_id));
     if (b.id === "simulation-refresh") await simulationRefresh();
+    if (b.dataset.monitorSource) await simulationLoadSource(b.dataset.monitorSource, b);
     if (b.id === "simulation-packet") await simulationSavePacket();
     if (b.id === "simulation-draft") {
       await simulationSaveDraft();
