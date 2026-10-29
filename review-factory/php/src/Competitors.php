@@ -100,7 +100,7 @@ function parseReviews(string $html, string $url): array
                 if (count($result["samples"]) >= 3) {
                     break;
                 }
-            };
+            }
         }
     }
     // Only a single primary Product scope is accepted. Related products never supply a count.
@@ -164,7 +164,7 @@ function parseReviews(string $html, string $url): array
                 if (count($result["samples"]) >= 3) {
                     break;
                 }
-            };
+            }
         }
     }
     $result["samples"] = array_values(array_unique($result["samples"]));
@@ -182,21 +182,35 @@ function importMatches(\PDO $db, string $analyticsDirectory): array
     }
     $source = new \SQLite3($path, SQLITE3_OPEN_READONLY);
     $source->enableExceptions(true);
+    $source->busyTimeout(5000);
+    $source->exec("PRAGMA query_only=ON");
     $mappings = [];
+    $summary = [
+        "confirmed_pages" => 0,
+        "mappings" => 0,
+        "products_with_sources" => 0,
+        "unknown_product_pages" => 0,
+        "invalid_group_pages" => 0,
+        "duplicate_pages" => 0,
+    ];
     try {
         $result = $source->query(
-            "SELECT id,source_id,url,match_group,match_confirmed,match_method FROM competitor_targets WHERE enabled=1 AND kind='product' AND source_id IN ('deluxe','spicery','banka','specii') ORDER BY match_confirmed DESC,id",
+            "SELECT id,source_id,url,match_group,match_confirmed,match_method FROM competitor_targets WHERE enabled=1 AND kind='product' AND match_confirmed=1 AND TRIM(match_group)<>'' AND source_id IN ('deluxe','spicery','banka','specii') ORDER BY match_confirmed DESC,id",
         );
         while ($r = $result->fetchArray(SQLITE3_ASSOC)) {
-            if (!preg_match('/^lavka-([1-9][0-9]{0,9})$/D', $r["match_group"], $m)) {
+            ++$summary["confirmed_pages"];
+            if (!preg_match('/^lavka-([1-9][0-9]{0,9})$/D', trim($r["match_group"]), $m)) {
+                ++$summary["invalid_group_pages"];
                 continue;
             }
             $id = (int) $m[1];
             if (!one($db, "SELECT id FROM products WHERE id=?", [$id])) {
+                ++$summary["unknown_product_pages"];
                 continue;
             }
             $key = $id . ":" . $r["source_id"];
             if (isset($mappings[$key])) {
+                ++$summary["duplicate_pages"];
                 continue;
             }
             $mappings[$key] = [
@@ -210,7 +224,9 @@ function importMatches(\PDO $db, string $analyticsDirectory): array
     } finally {
         $source->close();
     }
-    transaction($db, function () use ($db, $mappings) {
+    $summary["mappings"] = count($mappings);
+    $summary["products_with_sources"] = count(array_unique(array_column($mappings, 0)));
+    transaction($db, function () use ($db, $mappings, $summary) {
         execute($db, "UPDATE competitors SET confirmed=0");
         foreach ($mappings as $m) {
             $old = one($db, "SELECT url FROM competitors WHERE product_id=? AND source_id=?", [
@@ -239,8 +255,10 @@ function importMatches(\PDO $db, string $analyticsDirectory): array
             );
         }
         execute($db, "INSERT OR REPLACE INTO settings VALUES('matches_updated',?)", [now()]);
+        execute($db, "INSERT OR REPLACE INTO settings VALUES('matches_report',?)", [json($summary)]);
+        execute($db, "DELETE FROM settings WHERE key='mapping_error'");
     });
-    return ["mappings" => count($mappings)];
+    return $summary;
 }
 function collectReviews(
     \PDO $db,

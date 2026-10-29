@@ -282,6 +282,29 @@ function rf_run(string $command, array $a): array
             \ReviewFactory\audit($db, null, "password.reset", (string) $user["id"]);
             return ["state" => "password_reset"];
         }
+        if ($command === "matches-sync") {
+            $source = $a["analytics-data"] ?? ($c["analytics_data"] ?? "");
+            if (!is_string($source) || $source === "") {
+                throw new Problem("Укажите --analytics-data с закрытым каталогом SQLite аналитики");
+            }
+            try {
+                $source = rf_canonical($source);
+                $summary = \ReviewFactory\importMatches($db, $source);
+            } catch (\Throwable $error) {
+                \ReviewFactory\execute(
+                    $db,
+                    "INSERT OR REPLACE INTO settings VALUES('mapping_error',?)",
+                    [\ReviewFactory\now()],
+                );
+                throw $error;
+            }
+            if (isset($a["analytics-data"])) {
+                $c["analytics_data"] = $source;
+                rf_write($dir . "/instance.json", json($c));
+            }
+            \ReviewFactory\rebuildQueue($db);
+            return ["state" => "matches_synced"] + $summary;
+        }
         if ($command === "simulation-status") {
             $sim = \ReviewFactory\simulationDb($db);
             return [
@@ -293,6 +316,16 @@ function rf_run(string $command, array $a): array
                     "SELECT count(*) n FROM products WHERE active=1",
                 )["n"],
                 "entries" => (int) \ReviewFactory\one($sim, "SELECT count(*) n FROM entries")["n"],
+                "saved_stats" => \ReviewFactory\simulationRatingStats($sim),
+                "per_product" => \ReviewFactory\simulationProductStats($sim, 20),
+                "confirmed_sources" => (int) \ReviewFactory\one(
+                    $db,
+                    "SELECT count(*) n FROM competitors WHERE confirmed=1",
+                )["n"],
+                "products_with_sources" => (int) \ReviewFactory\one(
+                    $db,
+                    "SELECT count(DISTINCT product_id) n FROM competitors WHERE confirmed=1",
+                )["n"],
             ];
         }
         if ($command === "status") {
@@ -502,7 +535,7 @@ function rf_run(string $command, array $a): array
             return ["state" => "backup_created"];
         }
         throw new Problem(
-            "Команды: setup, user, reset-password, sync, collect, queue, dispatch, status, simulation-status, backup, deploy, resume, review-schema, reply-sync, reply-worker",
+            "Команды: setup, user, reset-password, sync, matches-sync, collect, queue, dispatch, status, simulation-status, backup, deploy, resume, review-schema, reply-sync, reply-worker",
         );
     } catch (\Throwable $e) {
         if (

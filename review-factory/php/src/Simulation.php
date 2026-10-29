@@ -360,6 +360,45 @@ function simulationClaim(\PDO $core, array $user, int $count = 1): array
         return ["ids" => array_column($drafts, "id"), "label" => SIMULATION_LABEL];
     });
 }
+/** Only saved synthetic records count; drafts and native shop reviews are excluded. */
+function simulationRatingStats(\PDO $db, ?int $product = null): array
+{
+    $r = one(
+        $db,
+        "SELECT count(*) count,coalesce(sum(rating),0) rating_sum,avg(rating) average FROM entries WHERE state='saved'" .
+            ($product === null ? "" : " AND product_id=?"),
+        $product === null ? [] : [$product],
+    );
+    return [
+        "count" => (int) $r["count"],
+        "rating_sum" => (int) $r["rating_sum"],
+        "average" => $r["average"] === null ? null : (float) $r["average"],
+    ];
+}
+function simulationProductStats(\PDO $db, int $limit = 200): array
+{
+    return rows(
+        $db,
+        "SELECT product_id,max(product_name) product_name,count(*) count,sum(rating) rating_sum,avg(rating) average FROM entries WHERE state='saved' GROUP BY product_id ORDER BY count(*) DESC,product_id LIMIT " .
+            max(1, min(200, $limit)),
+    );
+}
+function simulationSources(\PDO $core, int $product): array
+{
+    $sources = rows(
+        $core,
+        "SELECT source_id,url,review_count,average_rating,last_success,last_attempt,error,confirmed,samples FROM competitors WHERE product_id=? AND confirmed=1 ORDER BY source_id",
+        [$product],
+    );
+    foreach ($sources as &$source) {
+        $samples = json_decode($source["samples"], true);
+        $source["samples"] = is_array($samples)
+            ? array_slice(array_values(array_filter($samples, "is_string")), 0, 3)
+            : [];
+    }
+    unset($source);
+    return $sources;
+}
 function simulationEntry(\PDO $core, array $user, string $id): array
 {
     requireSimulationUser($user);
@@ -381,22 +420,23 @@ function simulationEntry(\PDO $core, array $user, string $id): array
             "url" => "",
         ];
     }
-    $stats = one(
-        $db,
-        "SELECT count(*) count,avg(rating) average FROM entries WHERE product_id=? AND state='saved'",
-        [$e["product_id"]],
-    );
+    $stats = simulationRatingStats($db, (int) $e["product_id"]);
+    $stats["after_current"] =
+        $e["state"] === "draft"
+            ? ($stats["rating_sum"] + (int) $e["rating"]) / ($stats["count"] + 1)
+            : $stats["average"];
     $q = one($core, "SELECT target,depth,priority FROM queue WHERE product_id=?", [$e["product_id"]]);
     return [
         "entry" => $e,
         "product" => $p,
         "model_stats" => $stats,
         "guidance" => $q ?? ["target" => 3, "depth" => "normal", "priority" => null],
-        "sources" => rows(
-            $core,
-            "SELECT source_id,url,review_count,average_rating,last_success,error,confirmed FROM competitors WHERE product_id=? ORDER BY source_id",
-            [$e["product_id"]],
-        ),
+        "sources" => simulationSources($core, (int) $e["product_id"]),
+        "source_sync" => [
+            "updated_at" =>
+                one($core, "SELECT value FROM settings WHERE key='matches_updated'")["value"] ?? null,
+            "error" => (bool) one($core, "SELECT value FROM settings WHERE key='mapping_error'"),
+        ],
         "label" => SIMULATION_LABEL,
     ];
 }
@@ -458,7 +498,12 @@ function simulationPreview(\PDO $core, array $user, int $product): array
         "SELECT model_author,model_city,model_date,rating,mood,registration,body,origin FROM entries WHERE product_id=? AND state='saved' ORDER BY model_date DESC,seq DESC LIMIT 200",
         [$product],
     );
-    return ["product" => $p, "entries" => $entries, "label" => SIMULATION_LABEL];
+    return [
+        "product" => $p,
+        "entries" => $entries,
+        "stats" => simulationRatingStats($db, $product),
+        "label" => SIMULATION_LABEL,
+    ];
 }
 function simulationSummary(\PDO $core, array $user): array
 {
@@ -470,6 +515,7 @@ function simulationSummary(\PDO $core, array $user): array
     );
     return [
         "stats" => $stats,
+        "per_product" => simulationProductStats($db),
         "items" => rows(
             $db,
             "SELECT id,product_id,product_name,model_author,model_city,model_date,rating,registration,state,substr(body,1,300) excerpt FROM entries WHERE operator_id=? ORDER BY seq DESC LIMIT 100",

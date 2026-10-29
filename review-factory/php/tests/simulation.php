@@ -96,6 +96,15 @@ try {
     sc(simulationClaim($db, $u, 1)["ids"] === $a, "Reload retains packet");
     $first = simulationEntry($db, $u, $a[0]);
     $entry = $first["entry"];
+    sc(
+        $first["model_stats"]["count"] === 0 && $first["model_stats"]["average"] === null,
+        "An unsaved first card has no saved average",
+    );
+    sc(
+        $first["model_stats"]["after_current"] === (float) $entry["rating"] ||
+            $first["model_stats"]["after_current"] === (int) $entry["rating"],
+        "Projection includes the current draft once",
+    );
     sc(strpos($entry["body"], "[ТЕСТОВЫЙ ОТЗЫВ") === 0, "Text is prefilled and labelled");
     sd(function () use ($db, $b, $a) {
         simulationEntry($db, $b, $a[0]);
@@ -130,6 +139,17 @@ try {
         count(ReviewFactory\simulationPreview($db, $u, (int) $entry["product_id"])["entries"]) === 1,
         "Preview shows saved synthetic entry",
     );
+    $stats = simulationEntry($db, $u, $a[0])["model_stats"];
+    sc(
+        $stats["count"] === 1 &&
+            $stats["rating_sum"] === (int) $entry["rating"] &&
+            $stats["average"] === (float) $entry["rating"],
+        "Saved card average is calculated for its own product",
+    );
+    sc(
+        $stats["after_current"] === $stats["average"],
+        "Saved entry is not counted a second time in projection",
+    );
     $sim = simulationDb($db);
     foreach (rows($sim, "SELECT id,operator_id,body,revision FROM entries WHERE state='draft'") as $e) {
         simulationSave(
@@ -146,7 +166,26 @@ try {
         $e = simulationEntry($db, $u, $id)["entry"];
         simulationSave($db, $u, $id, ["body" => $e["body"], "revision" => (int) $e["revision"]], true);
     }
-    $stats = ReviewFactory\simulationSummary($db, $u)["stats"];
+    $summary = ReviewFactory\simulationSummary($db, $u);
+    $stats = $summary["stats"];
+    $allRatings = array_column(rows($sim, "SELECT rating FROM entries WHERE state='saved'"), "rating");
+    sc(
+        abs((float) $stats["average"] - array_sum($allRatings) / count($allRatings)) < 1e-12,
+        "Global mean equals a hand calculation from saved ratings",
+    );
+    foreach ($summary["per_product"] as $p) {
+        $ratings = array_column(
+            rows($sim, "SELECT rating FROM entries WHERE product_id=? AND state='saved'", [
+                $p["product_id"],
+            ]),
+            "rating",
+        );
+        sc(
+            (int) $p["count"] === count($ratings) &&
+                abs((float) $p["average"] - array_sum($ratings) / count($ratings)) < 1e-12,
+            "Product mean agrees with independent count and sum",
+        );
+    }
     sc(
         (int) $stats["total"] === 100 && (int) $stats["guests"] === 15 && (int) $stats["no_city"] === 20,
         "100 issues produce exactly 15 model guests and 20 blank cities",

@@ -75,6 +75,24 @@ try {
         "INSERT INTO events(operator_id,entry_id,action,created_at) VALUES(1,'fixture','backup_test',?)",
         [\ReviewFactory\now()],
     );
+    mkdir($base . "/analytics", 0700);
+    $monitor = new SQLite3($base . "/analytics/competitors.sqlite3");
+    $monitor->exec(
+        "CREATE TABLE competitor_targets(id INTEGER,source_id TEXT,url TEXT,match_group TEXT,match_confirmed INTEGER,match_method TEXT,enabled INTEGER,kind TEXT)",
+    );
+    $monitor->close();
+    $matchResult = rf_run("matches-sync", [
+        "data" => $a["data"],
+        "analytics-data" => $base . "/analytics",
+    ]);
+    dc(
+        $matchResult["state"] === "matches_synced" && $matchResult["mappings"] === 0,
+        "Match-only sync works with no shop config or MySQL connection",
+    );
+    dc(
+        rf_instance($a["data"])["analytics_data"] === $base . "/analytics",
+        "Explicit valid analytics path is retained for future synchronizations",
+    );
     $backup = $base . "/backup";
     rf_run("backup", ["data" => $a["data"], "destination" => $backup]);
     $copy = \ReviewFactory\database($backup);

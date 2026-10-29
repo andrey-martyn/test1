@@ -119,6 +119,7 @@ foreach (["deluxe" => 72, "spicery" => 48, "banka" => 19, "specii" => 8] as $sou
     5,
     gmdate("Y-m-d H:i:s"),
 ]);
+\ReviewFactory\execute($db, "INSERT INTO settings VALUES('matches_updated',?)", [\ReviewFactory\now()]);
 \ReviewFactory\rebuildQueue($db);
 $review = [
     "id" => 17,
