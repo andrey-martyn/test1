@@ -9,13 +9,14 @@
       "path": "catalog/view/theme/unishop2/stylesheet/lavka-mobile-product.css",
       "before_sha256": null,
       "allowed_before_sha256": [
+        "2e9e3abdca78dc96767720be85bdaa89bde686207b96b67583ae40192137ff03",
         "5ed0d1a773b37107151d9f5c1a36ec0807bb9385c87ca49114e689335d2dca85",
         "6ac36346960c5106b0f3e4a3e2200494e230ece0e1a12e33d56baea914a79193",
         "db1d17a306de179dde65902c08a0bc3d5bd49c861b1cdf7ffd09d28d8ec83ba6",
         "e96c859641ec5f820b4e4da01a6eff6fde72869efef82929060405ae02f497b8",
         "ee1b73348fb60da7ec8d6bb25c0ed5406cff35d024394cfd0f01bf28586cc792"
       ],
-      "after_sha256": "2e9e3abdca78dc96767720be85bdaa89bde686207b96b67583ae40192137ff03"
+      "after_sha256": "9119db1e17b94910bea8b77e42c4a7caed2dc2a074b65d035958c82eb52d51fd"
     },
     {
       "path": "catalog/view/theme/unishop2/js/lavka-mobile-product.js",
@@ -25,9 +26,10 @@
         "4321871a611d0608683d92c9ec30195c6f1d5331f2b4f75cc014a9186f6f2586",
         "8170efa0339909633528ddb5fcf1308c919347b3e0512ac4a3b369fe7502d50f",
         "aecc39cc034acff2e5fdb8066640a76822c96dd071d3c4a9362fbdea20d75f16",
-        "f3c1c3e8918540c8050b520c06984c8d603b67101509135e1856445139504c01"
+        "f3c1c3e8918540c8050b520c06984c8d603b67101509135e1856445139504c01",
+        "f683760f48710e9ae0e03a8ea2a89edab83b9073247de618ebed28fb906353de"
       ],
-      "after_sha256": "f683760f48710e9ae0e03a8ea2a89edab83b9073247de618ebed28fb906353de"
+      "after_sha256": "cce5a62f6755ab970f09d3ff5b7657a42cdea8246f5a2bbba348c27136dd118f"
     },
     {
       "path": "catalog/controller/product/product.php",
@@ -39,14 +41,16 @@
         "1f21af857b539175c1c4bb306f9eaff07d2ccf7166b84e68803f3f93ac1c1c39",
         "3a7ed64190a6b15d1d63731c7ff7a32c74bea62d59f598e03c6d993fc5c0310d",
         "752bed5232ef09c1f2eabf119b405df2955ca12c3180e8265cf0deff36d87bd4",
+        "7b3c90f29bf886aa318bcadbcaf7023e841a3c622e625c099592e50a433ebf64",
         "9f5aa1235efc4188b52972bb8b0235ba3ada4334a53f7a210f9fe571f22e8b6d",
         "abb325599caad2754a60af278de1db133bbfd54f4d77ded3e5d6daf99850f0ff",
         "d01d560543676fc0de1dfee2f316f283b0f154a427adeb6b0e8ddb4c4f4ff94e",
         "d6b945a4ebbac60b73ce08b3f3dea8cdf3039e290a3a7ee24e4628a5648aa993",
         "e2af9227dc4177090fdd5e9fcfcd34bc4c89e850fc3f5b3d82b948f39b658e34",
+        "f9b1d6fd38c1f1b2458cf21e225f29717a4cc5f92f234d46f4b981696d6e5a1c",
         "ffb438253761396c84c8e7d1e82988e51a693cf5d554a0141d45f4cfe28122f5"
       ],
-      "after_sha256": "7b3c90f29bf886aa318bcadbcaf7023e841a3c622e625c099592e50a433ebf64"
+      "after_sha256": "fb25e8c73ac04d3528ee5be02acb473b834973635dd670f5693d94c5310a7079"
     }
   ],
   "required_sources": [

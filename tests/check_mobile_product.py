@@ -2,6 +2,7 @@
 import os
 import json
 import re
+import subprocess
 from pathlib import Path
 from urllib.parse import parse_qs
 from playwright.sync_api import sync_playwright
@@ -30,10 +31,22 @@ CSS+=(NATIVE/'stylesheet/font-awesome.min.css').read_text()+(NATIVE/'stylesheet/
 CSS+=(NATIVE/'stylesheet/flymenu.css').read_text()
 CSS+=''.join((THEME/'stylesheet'/name).read_text() for name in ('lavka-mobile-cards.css','lavka-product-tags.css','lavka-card-reviews.css','lavka-mobile-product.css'))
 PANEL_REFERENCE=json.loads((ROOT/'docs/product-page-panel-reference.json').read_text())
+
+def merged_css(css):
+    # Exercise the actual installed UniShop regex compressor, not a replacement.
+    tool=(NATIVE.parents[3]/'catalog/controller/extension/module/uni_tool.php').read_text()
+    begin=tool.index("$contents = preg_replace( '!/\\*[^*]")
+    end=tool.index('$contents = trim($contents);',begin)+len('$contents = trim($contents);')
+    compressor=tool[begin:end]
+    assert compressor.count('$contents = preg_replace')==8
+    program='$contents=file_get_contents("php://stdin");'+compressor+'echo $contents;'
+    return subprocess.run([os.environ.get('LAVKA_TEST_PHP_CLI','php'),'-r',program],input=css,
+                          stdout=subprocess.PIPE,universal_newlines=True,check=True).stdout
+
 PHOTO='data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="600" height="600"%3E%3Crect width="600" height="600" fill="%23f1f4e9"/%3E%3C/svg%3E'
 PHOTO2=PHOTO.replace('f1f4e9','ede6d7')
 
-def html(kind='radio',extra=False,disabled=False):
+def html(kind='radio',extra=False,disabled=False,css=CSS):
     weights=[('50','50 г',0),('100','100 г',45),('200','200 г',115),('500','500 г',305),('1000','1 кг',575)]
     if kind=='select':
         fields='<select name="option[70]" id="input-option70" class="option__select"><option value="">Оберіть</option>'+''.join('<option value="%s" data-prefix="+" data-price="%s">%s</option>'%(value,delta,label) for value,label,delta in weights)+'</select>'
@@ -42,12 +55,12 @@ def html(kind='radio',extra=False,disabled=False):
     option='<div class="product-page__option option row"><div class="option__group col-xs-12"><label class="option__group-name">* Фасовка:</label>'+fields+'</div>'
     if extra:option+='<div class="option__group col-xs-12"><label class="option__group-name">Напис</label><input type="text" name="option[71]" id="input-option71" class="form-control"></div>'
     option+='</div>'
-    return '''<!doctype html><html lang="uk"><head><meta charset="utf-8"><style>'''+CSS+'''</style></head><body><header style="height:64px;padding:16px;color:#4f7f28;border-bottom:1px solid #eee">☰　Лавка Спецій<a href="/terms" hidden>Замовлення, оплата та доставка</a></header><main><div id="product" class="container"><ul class="breadcrumb mobile"><li><a href="/">Головна</a></li><li>Суміші прянощів</li></ul><div class="row"><div id="content" class="col-sm-12"><div class="heading-h1"><h1>Часникова сіль з травами</h1></div><div class="row"><div class="product-page col-xs-12"><div class="row"><div class="product-page__image col-sm-6 col-lg-5"><div class="product-page__image-main uni-item"><div class="sticker"><div class="sticker__item lavka-hit" style="--lavka-sticker-bg:#fff100;background:#fff100;color:black">Хіт продажів</div></div><div class="product-page__image-main-carousel"><a class="product-page__image-main-a" href="/photo1"><img class="img-responsive" src='''+"'"+PHOTO+"'"+'''></a><a class="product-page__image-main-a" href="/photo2"><img class="img-responsive" src='''+"'"+PHOTO2+"'"+'''></a></div><button type="button" class="product-page__wishlist-btn wishlist" title="В обране" onclick="window.favorites++">♡</button></div><div class="product-page__image-addit owl-carousel"><img class="product-page__image-addit-img selected" data-thumb='''+"'"+PHOTO+"'"+''' data-full="/photo1" src='''+"'"+PHOTO+"'"+'''><img class="product-page__image-addit-img" data-thumb='''+"'"+PHOTO2+"'"+''' data-full="/photo2" src='''+"'"+PHOTO2+"'"+'''></div></div><div class="col-sm-6 col-lg-6 col-lg-push-1 product-block"><div class="product-page__rating rating"><i class="fa fa-star"></i><i class="fa fa-star"></i><i class="fa fa-star"></i><i class="fa fa-star"></i><i class="fa fa-star"></i> &nbsp; <a class="product-page__rating-a" onclick="$('a[href=\\'#tab-review\\']').click();scroll_to('#tab-review');return false;">Відгуки: 1</a><br></div><div class="prod_smalldescr">З нашою приправою дуже просто приготувати смачний соус: додайте чайну ложку в сметану. Підходить до свіжих овочів, печеної картоплі та домашніх грінок.</div><div class="product-data"><div class="product-data__item manufacturer"><div class="product-data__item-div"><span class="product-data__item-span">Виробник:</span></div><a href="/brand">Єгипет</a></div><div class="product-data__item stock"><div class="product-data__item-div"><span class="product-data__item-span">Наявність:</span></div>'''+('Немає в наявності' if disabled else 'В наявності')+'''</div></div><br><div class="product-page__price price" data-price="45" data-special="0" data-eurcurr="50">45 грн</div><div class="product-page__eur-price"><span class="eur-price">0.9 €</span> *</div>'''+option+'''<div class="product-page__cart"><input type="hidden" name="product_id" value="816"><div class="qty-switch"><input type="text" name="quantity" value="1" data-minimum="1" id="input-quantity" class="qty-switch__input form-control"><div><i class="qty-switch__btn fa fa-plus btn-default">+</i><i class="qty-switch__btn fa fa-minus btn-default">−</i></div></div><button type="button" class="product-page__add-to-cart add_to_cart btn btn-lg'''+(' disabled' if disabled else '')+'''" data-pid="816" id="button-cart"'''+(' disabled' if disabled else '')+'''><i>🛒</i><span>Купити</span></button></div><div class="product-page__share">Поділитися</div></div></div></div></div><ul class="nav nav-tabs"><li class="active"><a href="#tab-description" data-toggle="tab">Опис</a></li><li><a href="#tab-specification" data-toggle="tab">Характеристики</a></li><li><a class="tab-review" href="#tab-review" data-toggle="tab">Відгуки</a></li></ul><div class="tab-content"><div class="tab-pane active" id="tab-description" style="min-height:1300px"><p>Про товар. Повний опис і поради щодо використання.</p></div><div class="tab-pane" id="tab-specification" style="min-height:900px">Склад: прянощі.</div><div class="tab-pane" id="tab-review" style="min-height:900px"><div id="review"></div><form id="form-review">Штатна форма</form></div></div></div></div></div></main><footer style="height:150px">Лавка Спецій</footer></body></html>'''
+    return '''<!doctype html><html lang="uk"><head><meta charset="utf-8"><style>'''+css+'''</style></head><body><header style="height:64px;padding:16px;color:#4f7f28;border-bottom:1px solid #eee">☰　Лавка Спецій<a href="/terms" hidden>Замовлення, оплата та доставка</a></header><main><div id="product" class="container"><ul class="breadcrumb mobile"><li><a href="/">Головна</a></li><li>Суміші прянощів</li></ul><div class="row"><div id="content" class="col-sm-12"><div class="heading-h1"><h1>Часникова сіль з травами</h1></div><div class="row"><div class="product-page col-xs-12"><div class="row"><div class="product-page__image col-sm-6 col-lg-5"><div class="product-page__image-main uni-item"><div class="sticker"><div class="sticker__item lavka-hit" style="--lavka-sticker-bg:#fff100;background:#fff100;color:black">Хіт продажів</div></div><div class="product-page__image-main-carousel"><a class="product-page__image-main-a" href="/photo1"><img class="img-responsive" src='''+"'"+PHOTO+"'"+'''></a><a class="product-page__image-main-a" href="/photo2"><img class="img-responsive" src='''+"'"+PHOTO2+"'"+'''></a></div><button type="button" class="product-page__wishlist-btn wishlist" title="В обране" onclick="window.favorites++">♡</button></div><div class="product-page__image-addit owl-carousel"><img class="product-page__image-addit-img selected" data-thumb='''+"'"+PHOTO+"'"+''' data-full="/photo1" src='''+"'"+PHOTO+"'"+'''><img class="product-page__image-addit-img" data-thumb='''+"'"+PHOTO2+"'"+''' data-full="/photo2" src='''+"'"+PHOTO2+"'"+'''></div></div><div class="col-sm-6 col-lg-6 col-lg-push-1 product-block"><div class="product-page__rating rating"><i class="fa fa-star"></i><i class="fa fa-star"></i><i class="fa fa-star"></i><i class="fa fa-star"></i><i class="fa fa-star"></i> &nbsp; <a class="product-page__rating-a" onclick="$('a[href=\\'#tab-review\\']').click();scroll_to('#tab-review');return false;">Відгуки: 1</a><br></div><div class="prod_smalldescr">З нашою приправою дуже просто приготувати смачний соус: додайте чайну ложку в сметану. Підходить до свіжих овочів, печеної картоплі та домашніх грінок.</div><div class="product-data"><div class="product-data__item manufacturer"><div class="product-data__item-div"><span class="product-data__item-span">Виробник:</span></div><a href="/brand">Єгипет</a></div><div class="product-data__item stock"><div class="product-data__item-div"><span class="product-data__item-span">Наявність:</span></div>'''+('Немає в наявності' if disabled else 'В наявності')+'''</div></div><br><div class="product-page__price price" data-price="45" data-special="0" data-eurcurr="50">45 грн</div><div class="product-page__eur-price"><span class="eur-price">0.9 €</span> *</div>'''+option+'''<div class="product-page__cart"><input type="hidden" name="product_id" value="816"><div class="qty-switch"><input type="text" name="quantity" value="1" data-minimum="1" id="input-quantity" class="qty-switch__input form-control"><div><i class="qty-switch__btn fa fa-plus btn-default">+</i><i class="qty-switch__btn fa fa-minus btn-default">−</i></div></div><button type="button" class="product-page__add-to-cart add_to_cart btn btn-lg'''+(' disabled' if disabled else '')+'''" data-pid="816" id="button-cart"'''+(' disabled' if disabled else '')+'''><i>🛒</i><span>Купити</span></button></div><div class="product-page__share">Поділитися</div></div></div></div></div><ul class="nav nav-tabs"><li class="active"><a href="#tab-description" data-toggle="tab">Опис</a></li><li><a href="#tab-specification" data-toggle="tab">Характеристики</a></li><li><a class="tab-review" href="#tab-review" data-toggle="tab">Відгуки</a></li></ul><div class="tab-content"><div class="tab-pane active" id="tab-description" style="min-height:1300px"><p>Про товар. Повний опис і поради щодо використання.</p></div><div class="tab-pane" id="tab-specification" style="min-height:900px">Склад: прянощі.</div><div class="tab-pane" id="tab-review" style="min-height:900px"><div id="review"></div><form id="form-review">Штатна форма</form></div></div></div></div></div></main><footer style="height:150px">Лавка Спецій</footer></body></html>'''
 
 RUNTIME="""window.uniJsVars={currency:{decimal:0,decimal_p:'.',thousand_p:' ',symbol_l:'',symbol_r:' грн'},qty_switch_step:false,cart_popup_disable:true,cart_popup_autohide:false,cart_btn:{}};window.dataLayer=[];window.gaCalls=[];window.gtag=function(){gaCalls.push(Array.from(arguments));};window.favorites=0;window.popups=[];window.uniFlyAlert=function(){};window.uniModalWindow=function(){};$.magnificPopup={open:function(data){popups.push(data.items);}};"""
 
 
-def start(browser,width=390,kind='radio',extra=False,disabled=False,enhance=True,single=False):
+def start(browser,width=390,kind='radio',extra=False,disabled=False,enhance=True,single=False,merged=False):
     page=browser.new_page(viewport={'width':width,'height':844});page.set_default_timeout(7000)
     page.errors=[];page.posts=[];page.pending=[];page.terms_requests=[];page.review_requests=[]
     page.on('pageerror',lambda error:page.errors.append(str(error)))
@@ -57,7 +70,7 @@ def start(browser,width=390,kind='radio',extra=False,disabled=False,enhance=True
         page.terms_requests.append(route.request.url)
         route.fulfill(status=200,content_type='text/html; charset=utf-8',body='<div id="content"><div class="article_description"><h2>Доставка</h2><p>Чинні умови магазину.</p><ul><li>Нова пошта</li></ul><h2>Оплата</h2><p>Умови оплати з інформаційної сторінки.</p><script>window.unexpectedTermsScript=true</script><img src="/never-fetch-this" onerror="window.unexpectedTermsScript=true"></div></div>')
     page.route('https://fixture.invalid/terms',terms)
-    markup=html(kind,extra,disabled)
+    markup=html(kind,extra,disabled,css=merged_css(CSS) if merged else CSS)
     if single:
         markup=re.sub(r'<a class="product-page__image-main-a" href="/photo2">.*?</a>','',markup)
         markup=re.sub(r'<div class="product-page__image-addit owl-carousel">.*?</div>','',markup)
@@ -157,23 +170,28 @@ with sync_playwright() as p:
     page.locator('.lavka-product-dock').wait_for(state='visible')
     assert page.locator('.lavka-product-dock__price').inner_text()=='350 грн'
     page.screenshot(path='/tmp/lavka-product-dock-v3.png')
-    assert page.locator('.lavka-product-dock__quantity').count()==0,'Reference dock keeps quantity in main purchase area'
-    page.locator('.lavka-product-qty-button[data-direction=plus]').evaluate('(e)=>e.click()')
+    assert page.locator('.lavka-product-dock__count').inner_text()=='1'
+    assert page.locator('.lavka-product-dock__qty-button[data-direction=minus]').is_disabled()
+    page.locator('.lavka-product-dock__qty-button[data-direction=plus]').press('Enter')
     page.wait_for_function('document.querySelector(".lavka-product-dock__price").textContent==="700 грн"')
     assert page.locator('#input-quantity').input_value()=='2'
     assert 'за 2 × 500 г' in page.locator('.lavka-product-dock__price').get_attribute('aria-label')
-    page.locator('.lavka-product-qty-button[data-direction=minus]').evaluate('(e)=>e.click()')
+    assert page.locator('.lavka-product-dock__count').inner_text()=='2'
+    page.locator('.lavka-product-dock__qty-button[data-direction=minus]').click()
     page.wait_for_function('document.querySelector(".lavka-product-dock__price").textContent==="350 грн"')
-    page.locator('.lavka-product-dock__action[data-action=heart]').click()
-    assert page.evaluate('favorites')==1,'Dock wishlist invokes original control once'
+    assert not page.locator('.lavka-product-dock__actions').is_visible(),'Narrow dock prioritizes price, quantity and buy'
     page.locator('.lavka-product-dock__buy').click();page.wait_for_timeout(150)
     assert len(page.posts)==1 and page.posts[0]['option[70]']==['500'] and page.posts[0]['quantity']==['1'],page.posts
     assert page.locator('#button-cart').is_disabled()
+    assert page.locator('.lavka-product-dock__qty-button[data-direction=plus]').is_disabled()
+    page.evaluate('document.querySelector(".lavka-product-dock__qty-button[data-direction=plus]").click()')
+    assert page.locator('#input-quantity').input_value()=='1','Pending request locks both quantity controls'
     page.evaluate('document.getElementById("button-cart").click();document.querySelector(".lavka-product-dock__buy").click()')
     page.wait_for_timeout(5200);assert len(page.posts)==1
     page.pending.pop().fulfill(status=200,content_type='application/json',body='{"success":"Added","products":{}}')
     page.locator('#button-cart').wait_for(state='attached');page.wait_for_function('!document.getElementById("button-cart").disabled')
     assert page.locator('.lavka-product-status').inner_text()=='Додано до кошика'
+    assert page.locator('.lavka-product-dock__qty-button[data-direction=plus]').is_enabled()
     assert page.evaluate('gaCalls.filter(e=>e[1]==="add_to_cart").length')==1
     assert page.evaluate('dataLayer.filter(e=>e.ecommerce && e.ecommerce.add).length')==1
     # Network failure surfaces a check-cart message and never retries a purchase automatically.
@@ -297,7 +315,7 @@ with sync_playwright() as p:
     page.close()
     print('PASS delivery fetch failure/retry: product selection and cart untouched',flush=True)
 
-    for width in (320,390,432,767):
+    for width in (320,390,432,600,767):
         page=start(browser,width)
         page.evaluate('''var fly=document.createElement('div');fly.id='fly-menu';fly.className='fly-menu show';
           fly.innerHTML='<div class="container"><div class="row"><div class="fly-menu__block fly-menu__menu-m col-xs-3"><i class="fly-menu__icon fa fa-bars"></i></div><div class="fly-menu__block fly-menu__search-m col-xs-3"><i class="fly-menu__icon fa fa-search"></i></div><div class="fly-menu__block fly-menu__account col-xs-3"><i class="fly-menu__icon fa fa-user"></i></div><div class="fly-menu__block fly-menu__cart col-xs-3"><i class="fly-menu__icon fa fa-shopping-cart"></i></div></div></div>';
@@ -314,11 +332,16 @@ with sync_playwright() as p:
         assert page.locator('.lavka-product-nav').evaluate('(e)=>parseFloat(getComputedStyle(e).borderBottomLeftRadius)')==8
         assert page.locator('.lavka-product-nav').evaluate('(e)=>getComputedStyle(e).borderTopLeftRadius')=='0px','Docked top corners must be square'
         assert page.locator('.lavka-product-dock').evaluate('(e)=>getComputedStyle(e).borderRadius')=='16px 16px 0px 0px'
-        assert page.locator('.lavka-product-dock').evaluate('(e)=>parseFloat(getComputedStyle(e).paddingLeft)')==16
-        assert page.locator('.lavka-product-dock__buy').bounding_box()['height']==PANEL_REFERENCE['dock']['button_height']
-        assert page.locator('.lavka-product-dock__buy').evaluate('(e)=>parseFloat(getComputedStyle(e).paddingRight)')==PANEL_REFERENCE['dock']['button_padding_x']
+        assert page.locator('.lavka-product-dock__row').evaluate('(e)=>parseFloat(getComputedStyle(e).paddingLeft)')==16
+        assert page.locator('.lavka-product-dock__buy').bounding_box()['height']==48
+        price=page.locator('.lavka-product-dock__price').bounding_box();qty=page.locator('.lavka-product-dock__quantity').bounding_box();buy=page.locator('.lavka-product-dock__buy').bounding_box()
+        assert price['x']==16 and width-buy['x']-buy['width']==16,'Keep real left and right insets'
+        assert abs(buy['x']-qty['x']-qty['width']-8)<1,'Quantity belongs immediately left of buy'
+        if width>=480:
+            page.locator('.lavka-product-dock__action[data-action=heart]').click()
+            assert page.evaluate('favorites')==1,'Wide dock wishlist invokes original control once'
         assert page.locator('.lavka-product-dock__buy').evaluate('(e)=>getComputedStyle(e).backgroundColor')=='rgb(79, 127, 40)','Keep shop green'
-        centers=page.locator('.lavka-product-dock__totals,.lavka-product-dock__actions,.lavka-product-dock__buy').evaluate_all('(els)=>els.map(e=>e.getBoundingClientRect().y+e.getBoundingClientRect().height/2)')
+        centers=page.locator('.lavka-product-dock__totals,.lavka-product-dock__quantity,.lavka-product-dock__buy').evaluate_all('(els)=>els.map(e=>e.getBoundingClientRect().y+e.getBoundingClientRect().height/2)')
         assert max(centers)-min(centers)<1
         assert page.locator('.lavka-product-nav').evaluate('(e)=>getComputedStyle(e).backgroundColor')=='rgb(255, 255, 255)'
         assert page.locator('.lavka-product-dock').evaluate('(e)=>getComputedStyle(e).backgroundColor')=='rgb(255, 255, 255)'
@@ -349,7 +372,7 @@ with sync_playwright() as p:
     assert page.locator('.lavka-product-terms summary').all_text_contents()==['Доставка','Оплата',"Ми з вами на зв'язку:",'Як розмістити замовлення?']
     assert page.locator('.lavka-product-terms details[open] summary').all_text_contents()==['Доставка','Оплата']
     assert page.evaluate('document.querySelector(".lavka-product-terms")') is None,'Popup content must be isolated inside its shadow root'
-    assert page.locator('.lavka-product-delivery').get_attribute('data-lavka-product-version')=='6'
+    assert page.locator('.lavka-product-delivery').get_attribute('data-lavka-product-version')=='7'
     assert page.locator('.terms-section[data-kind=delivery] p').first.evaluate('(e)=>getComputedStyle(e).fontSize')=='14px','Theme styles cannot override popup paragraphs'
     page.locator('.terms-section[data-kind=contacts]>summary').click()
     assert page.locator('.terms-section[data-kind=contacts] p').first.is_visible(),'Contact information remains available on demand'
@@ -383,4 +406,51 @@ with sync_playwright() as p:
     assert not page.errors,page.errors
     page.close()
     print('PASS euro caption uses native special/quantity-discount totals and configured exchange rate',flush=True)
+
+    for width in (320,390,432,600,767):
+        page=start(browser,width,merged=True)
+        page.evaluate('window.scrollTo(0,document.body.scrollHeight)')
+        page.locator('.lavka-product-dock').wait_for(state='visible')
+        dock=page.locator('.lavka-product-dock').bounding_box()
+        price=page.locator('.lavka-product-dock__price').bounding_box()
+        quantity=page.locator('.lavka-product-dock__quantity').bounding_box()
+        buy=page.locator('.lavka-product-dock__buy').bounding_box()
+        assert price['x']==16 and width-buy['x']-buy['width']==16,'Merged CSS must retain both insets'
+        assert abs(price['y']+price['height']/2-quantity['y']-quantity['height']/2)<1
+        assert abs(quantity['y']-buy['y'])<1 and quantity['height']==buy['height']==48
+        assert abs(buy['x']-quantity['x']-quantity['width']-8)<1
+        assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'),'Merged layout must not overflow'
+        assert page.locator('body').evaluate('(e)=>parseFloat(getComputedStyle(e).paddingBottom)')>=dock['height']+8
+        assert page.locator('.lavka-product-dock__qty-button[data-direction=minus]').is_disabled()
+        page.locator('.lavka-product-dock__qty-button[data-direction=plus]').click()
+        page.wait_for_function('document.querySelector(".lavka-product-dock__price").textContent==="90 грн"')
+        assert page.locator('#input-quantity').input_value()=='2' and page.locator('.lavka-product-dock__count').inner_text()=='2'
+        page.locator('.lavka-product-qty-button[data-direction=plus]').evaluate('(e)=>e.click()')
+        assert page.locator('.lavka-product-dock__count').inner_text()=='3','Main quantity propagates to dock'
+        page.locator('.lavka-product-dock__qty-button[data-direction=minus]').click()
+        assert page.locator('#input-quantity').input_value()=='2'
+        page.wait_for_function('jQuery.timers.length===0 && document.querySelector(".lavka-product-dock__price").textContent==="90 грн"')
+        if width==390:
+            page.evaluate('$("#input-quantity").data("minimum",3).val(3).change();uniJsVars.qty_switch_step=true')
+            assert page.locator('.lavka-product-dock__qty-button[data-direction=minus]').is_disabled()
+            page.locator('.lavka-product-dock__qty-button[data-direction=plus]').click()
+            assert page.locator('#input-quantity').input_value()=='6','Dock must use native minimum/step rules'
+            page.wait_for_function('jQuery.timers.length===0 && document.querySelector(".lavka-product-dock__price").textContent==="270 грн"')
+            assert page.locator('.product-block input[name=quantity]').count()==1,'Native serialization keeps a single quantity field'
+            page.locator('.lavka-product-dock__buy').click();page.wait_for_timeout(80)
+            assert len(page.posts)==1 and page.posts[0]['quantity']==['6'],page.posts
+            page.pending.pop().fulfill(status=200,content_type='application/json',body='{"success":"Added","products":{}}')
+            page.wait_for_function('!document.getElementById("button-cart").disabled')
+        page.screenshot(path='/tmp/lavka-product-dock-v7-merged-'+str(width)+'.png')
+        if width==390:
+            page.add_style_tag(content='.lavka-product-dock{padding-bottom:34px}')
+            page.evaluate('window.dispatchEvent(new Event("resize"))')
+            assert page.locator('.lavka-product-dock').bounding_box()['height']==106
+            assert page.locator('body').evaluate('(e)=>parseFloat(getComputedStyle(e).paddingBottom)')==114,'Page clearance includes the bottom safe area'
+        page.set_viewport_size({'width':1280,'height':844});page.wait_for_timeout(100)
+        assert page.locator('.lavka-product-dock').count()==0
+        assert page.locator('body').evaluate('(e)=>e.style.getPropertyValue("--lavka-product-dock-clearance")')==''
+        assert not page.errors,page.errors
+        page.close()
+    print('PASS actual UniShop CSS compression: dock insets, centers, both quantity controls, native minimum/step/POST and desktop cleanup',flush=True)
     browser.close()
