@@ -87,23 +87,26 @@ class ProductPageRelease(unittest.TestCase):
         self.assertEqual((self.shop/self.controller).read_bytes(),b'enhanced\r\n')
 
     def test_real_previous_mobile_release_upgrades_and_rolls_back_exactly(self):
-        manifest=json.loads((ROOT/'docs/product-page-release.json').read_text())
-        manifest['required_sources']=[{'path':str(self.template.relative_to(self.shop)),'allowed_sha256':[release.store.sha(self.template)]}]
-        originals={}
-        for entry in manifest['files']:
-            path=entry['path']
-            raw=subprocess.check_output(['git','show','4c9719c:store/'+path],cwd=ROOT)
-            originals[path]=raw
-            target=self.shop/path;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(raw)
-            payload=self.repo/'store'/path;payload.parent.mkdir(parents=True,exist_ok=True);payload.write_bytes((ROOT/'store'/path).read_bytes())
-        (self.repo/'docs/product-page-release.json').write_text(json.dumps(manifest))
-        status,out=self.run_action('--check');self.assertEqual(status,0,out)
-        self.assertEqual(len(json.loads(out)['files_to_update']),3)
-        status,out=self.run_action('--apply');self.assertEqual(status,0,out)
-        backup=json.loads(out)['rollback_id']
-        for entry in manifest['files']:self.assertEqual(release.store.sha(self.shop/entry['path']),entry['after_sha256'])
-        status,out=self.run_action('--rollback',backup);self.assertEqual(status,0,out)
-        for path,raw in originals.items():self.assertEqual((self.shop/path).read_bytes(),raw)
+        for revision in ('4c9719c','f30a4fc'):
+            with self.subTest(revision=revision):
+                manifest=json.loads((ROOT/'docs/product-page-release.json').read_text())
+                manifest['required_sources']=[{'path':str(self.template.relative_to(self.shop)),'allowed_sha256':[release.store.sha(self.template)]}]
+                originals={}
+                for entry in manifest['files']:
+                    path=entry['path']
+                    raw=subprocess.check_output(['git','show',revision+':store/'+path],cwd=ROOT)
+                    originals[path]=raw
+                    target=self.shop/path;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(raw)
+                    payload=self.repo/'store'/path;payload.parent.mkdir(parents=True,exist_ok=True);payload.write_bytes((ROOT/'store'/path).read_bytes())
+                (self.repo/'docs/product-page-release.json').write_text(json.dumps(manifest))
+                status,out=self.run_action('--check');self.assertEqual(status,0,out)
+                self.assertEqual(len(json.loads(out)['files_to_update']),3)
+                status,out=self.run_action('--apply');self.assertEqual(status,0,out)
+                backup=json.loads(out)['rollback_id']
+                for entry in manifest['files']:self.assertEqual(release.store.sha(self.shop/entry['path']),entry['after_sha256'])
+                status,out=self.run_action('--rollback',backup);self.assertEqual(status,0,out)
+                for path,raw in originals.items():self.assertEqual((self.shop/path).read_bytes(),raw)
+
 
 
 class ProductPayload(unittest.TestCase):

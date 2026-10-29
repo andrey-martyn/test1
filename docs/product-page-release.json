@@ -9,17 +9,19 @@
       "path": "catalog/view/theme/unishop2/stylesheet/lavka-mobile-product.css",
       "before_sha256": null,
       "allowed_before_sha256": [
-        "6ac36346960c5106b0f3e4a3e2200494e230ece0e1a12e33d56baea914a79193"
+        "6ac36346960c5106b0f3e4a3e2200494e230ece0e1a12e33d56baea914a79193",
+        "e96c859641ec5f820b4e4da01a6eff6fde72869efef82929060405ae02f497b8"
       ],
-      "after_sha256": "e96c859641ec5f820b4e4da01a6eff6fde72869efef82929060405ae02f497b8"
+      "after_sha256": "db1d17a306de179dde65902c08a0bc3d5bd49c861b1cdf7ffd09d28d8ec83ba6"
     },
     {
       "path": "catalog/view/theme/unishop2/js/lavka-mobile-product.js",
       "before_sha256": null,
       "allowed_before_sha256": [
-        "4321871a611d0608683d92c9ec30195c6f1d5331f2b4f75cc014a9186f6f2586"
+        "4321871a611d0608683d92c9ec30195c6f1d5331f2b4f75cc014a9186f6f2586",
+        "f3c1c3e8918540c8050b520c06984c8d603b67101509135e1856445139504c01"
       ],
-      "after_sha256": "f3c1c3e8918540c8050b520c06984c8d603b67101509135e1856445139504c01"
+      "after_sha256": "19bf97ff132589284556019317be473388af9d7bc1a7dd33b5f124ca3aecda91"
     },
     {
       "path": "catalog/controller/product/product.php",
@@ -27,10 +29,12 @@
       "allowed_before_sha256": [
         "184f2b22b35b4335db441ae05c618e78deef33255d92783b80208eddb986176e",
         "1e0b9abdbc3cbf81040fec92be18284b35000b23178efbbab9ef2b8716bc5ef2",
+        "1f21af857b539175c1c4bb306f9eaff07d2ccf7166b84e68803f3f93ac1c1c39",
         "3a7ed64190a6b15d1d63731c7ff7a32c74bea62d59f598e03c6d993fc5c0310d",
+        "abb325599caad2754a60af278de1db133bbfd54f4d77ded3e5d6daf99850f0ff",
         "d01d560543676fc0de1dfee2f316f283b0f154a427adeb6b0e8ddb4c4f4ff94e"
       ],
-      "after_sha256": "1f21af857b539175c1c4bb306f9eaff07d2ccf7166b84e68803f3f93ac1c1c39"
+      "after_sha256": "d6b945a4ebbac60b73ce08b3f3dea8cdf3039e290a3a7ee24e4628a5648aa993"
     }
   ],
   "required_sources": [

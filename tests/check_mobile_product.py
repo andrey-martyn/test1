@@ -8,7 +8,8 @@ from playwright.sync_api import sync_playwright
 ROOT=Path(__file__).resolve().parents[1]
 THEME=ROOT/'store/catalog/view/theme/unishop2'
 TEMPLATE=Path(os.environ.get('LAVKA_TEST_PRODUCT_TWIG') or ROOT/'tests/fixtures/product_page_active.twig').read_text()
-BOOTSTRAP=Path(os.environ['LAVKA_TEST_BOOTSTRAP_JS']).read_text()
+NATIVE=Path(os.environ['LAVKA_TEST_BOOTSTRAP_JS']).resolve().parent.parent
+BOOTSTRAP=(NATIVE/'js/bootstrap.min.js').read_text()
 COMMON=(THEME/'js/common.js').read_text()
 SCROLL=COMMON[COMMON.index('function uniScrollTo('):COMMON.index('function uniChangeBtn(')]
 QTY=COMMON[COMMON.index("$('body').on('blur click', '.qty-switch__input"):COMMON.index("$('body').on('mouseenter touchstart', '.option__img'")]
@@ -21,7 +22,11 @@ VIEW=re.sub(r'\{\{\s*(.*?)\s*\}\}',lambda match:VIEW_VALUES[match.group(1)],VIEW
 HAS_VIEW='dataLayer.push' in VIEW
 GALLERY=TEMPLATE[TEMPLATE.index('let img_array = []'):TEMPLATE.index('</script>',TEMPLATE.index('let img_array = []'))]
 GALLERY=re.sub(r'\{%.*?%\}','',GALLERY,flags=re.S);GALLERY=re.sub(r'\{\{.*?\}\}','0',GALLERY,flags=re.S)
-CSS=''.join((THEME/'stylesheet'/name).read_text() for name in ('bootstrap.min.css','stylesheet.css','lavka-mobile-cards.css','lavka-product-tags.css','lavka-card-reviews.css','lavka-mobile-product.css'))
+REVIEW_START=TEMPLATE.index("$('.tab-review').on('click mouseover'")
+REVIEW=TEMPLATE[REVIEW_START:TEMPLATE.index("$('#review').on('click', '.pagination a'",REVIEW_START)].replace('{{ product_id }}','816')
+CSS=''.join((THEME/'stylesheet'/name).read_text() for name in ('bootstrap.min.css','stylesheet.css'))
+CSS+=(NATIVE/'stylesheet/font-awesome.min.css').read_text()+(NATIVE/'stylesheet/generated.0.css').read_text()
+CSS+=''.join((THEME/'stylesheet'/name).read_text() for name in ('lavka-mobile-cards.css','lavka-product-tags.css','lavka-card-reviews.css','lavka-mobile-product.css'))
 PHOTO='data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="600" height="600"%3E%3Crect width="600" height="600" fill="%23f1f4e9"/%3E%3C/svg%3E'
 PHOTO2=PHOTO.replace('f1f4e9','ede6d7')
 
@@ -34,16 +39,21 @@ def html(kind='radio',extra=False,disabled=False):
     option='<div class="product-page__option option row"><div class="option__group col-xs-12"><label class="option__group-name">* Фасовка:</label>'+fields+'</div>'
     if extra:option+='<div class="option__group col-xs-12"><label class="option__group-name">Напис</label><input type="text" name="option[71]" id="input-option71" class="form-control"></div>'
     option+='</div>'
-    return '''<!doctype html><html lang="uk"><head><meta charset="utf-8"><style>'''+CSS+'''</style></head><body><header style="height:64px;padding:16px;color:#4f7f28;border-bottom:1px solid #eee">☰　Лавка Спецій</header><main><div id="product" class="container"><ul class="breadcrumb mobile"><li><a href="/">Головна</a></li><li>Суміші прянощів</li></ul><div class="row"><div id="content" class="col-sm-12"><div class="heading-h1"><h1>Часникова сіль з травами</h1></div><div class="row"><div class="product-page col-xs-12"><div class="row"><div class="product-page__image col-sm-6 col-lg-5"><div class="product-page__image-main uni-item"><div class="sticker"><div class="sticker__item lavka-hit" style="--lavka-sticker-bg:#fff100;background:#fff100;color:black">Хіт продажів</div></div><div class="product-page__image-main-carousel"><a class="product-page__image-main-a" href="/photo1"><img class="img-responsive" src='''+"'"+PHOTO+"'"+'''></a><a class="product-page__image-main-a" href="/photo2"><img class="img-responsive" src='''+"'"+PHOTO2+"'"+'''></a></div><button type="button" class="product-page__wishlist-btn wishlist" title="В обране" onclick="window.favorites++">♡</button></div><div class="product-page__image-addit owl-carousel"><img class="product-page__image-addit-img selected" data-thumb='''+"'"+PHOTO+"'"+''' data-full="/photo1" src='''+"'"+PHOTO+"'"+'''><img class="product-page__image-addit-img" data-thumb='''+"'"+PHOTO2+"'"+''' data-full="/photo2" src='''+"'"+PHOTO2+"'"+'''></div></div><div class="col-sm-6 col-lg-6 col-lg-push-1 product-block"><div class="product-page__rating rating"><i class="fa fa-star"></i><i class="fa fa-star"></i><i class="fa fa-star"></i><i class="fa fa-star"></i><i class="fa fa-star"></i> &nbsp; <a class="product-page__rating-a" onclick="$('a[href=\\'#tab-review\\']').click();scroll_to('#tab-review');return false;">Відгуки: 1</a><br></div><div class="prod_smalldescr">З нашою приправою дуже просто приготувати смачний соус: додайте чайну ложку в сметану. Підходить до свіжих овочів, печеної картоплі та домашніх грінок.</div><div class="product-data"><div class="product-data__item manufacturer"><div class="product-data__item-div"><span class="product-data__item-span">Виробник:</span></div><a href="/brand">Лавка Спецій</a></div><div class="product-data__item stock"><div class="product-data__item-div"><span class="product-data__item-span">Наявність:</span></div>'''+('Немає в наявності' if disabled else 'В наявності')+'''</div></div><br><div class="product-page__price price" data-price="45" data-special="0" data-eurcurr="50">45 грн</div><div class="product-page__eur-price"><span class="eur-price">0.9 €</span> *</div>'''+option+'''<div class="product-page__cart"><input type="hidden" name="product_id" value="816"><div class="qty-switch"><input type="text" name="quantity" value="1" data-minimum="1" id="input-quantity" class="qty-switch__input form-control"><div><i class="qty-switch__btn fa fa-plus btn-default">+</i><i class="qty-switch__btn fa fa-minus btn-default">−</i></div></div><button type="button" class="product-page__add-to-cart add_to_cart btn btn-lg'''+(' disabled' if disabled else '')+'''" data-pid="816" id="button-cart"'''+(' disabled' if disabled else '')+'''><i>🛒</i><span>Купити</span></button></div><div class="product-page__share">Поділитися</div></div></div></div></div><ul class="nav nav-tabs"><li class="active"><a href="#tab-description" data-toggle="tab">Опис</a></li><li><a href="#tab-specification" data-toggle="tab">Характеристики</a></li><li><a class="tab-review" href="#tab-review" data-toggle="tab">Відгуки</a></li></ul><div class="tab-content"><div class="tab-pane active" id="tab-description" style="min-height:1300px"><p>Про товар. Повний опис і поради щодо використання.</p></div><div class="tab-pane" id="tab-specification" style="min-height:900px">Склад: прянощі.</div><div class="tab-pane" id="tab-review"><form id="form-review">Штатна форма</form></div></div></div></div></div></main><footer style="height:150px">Лавка Спецій</footer></body></html>'''
+    return '''<!doctype html><html lang="uk"><head><meta charset="utf-8"><style>'''+CSS+'''</style></head><body><header style="height:64px;padding:16px;color:#4f7f28;border-bottom:1px solid #eee">☰　Лавка Спецій<a href="/terms" hidden>Замовлення, оплата та доставка</a></header><main><div id="product" class="container"><ul class="breadcrumb mobile"><li><a href="/">Головна</a></li><li>Суміші прянощів</li></ul><div class="row"><div id="content" class="col-sm-12"><div class="heading-h1"><h1>Часникова сіль з травами</h1></div><div class="row"><div class="product-page col-xs-12"><div class="row"><div class="product-page__image col-sm-6 col-lg-5"><div class="product-page__image-main uni-item"><div class="sticker"><div class="sticker__item lavka-hit" style="--lavka-sticker-bg:#fff100;background:#fff100;color:black">Хіт продажів</div></div><div class="product-page__image-main-carousel"><a class="product-page__image-main-a" href="/photo1"><img class="img-responsive" src='''+"'"+PHOTO+"'"+'''></a><a class="product-page__image-main-a" href="/photo2"><img class="img-responsive" src='''+"'"+PHOTO2+"'"+'''></a></div><button type="button" class="product-page__wishlist-btn wishlist" title="В обране" onclick="window.favorites++">♡</button></div><div class="product-page__image-addit owl-carousel"><img class="product-page__image-addit-img selected" data-thumb='''+"'"+PHOTO+"'"+''' data-full="/photo1" src='''+"'"+PHOTO+"'"+'''><img class="product-page__image-addit-img" data-thumb='''+"'"+PHOTO2+"'"+''' data-full="/photo2" src='''+"'"+PHOTO2+"'"+'''></div></div><div class="col-sm-6 col-lg-6 col-lg-push-1 product-block"><div class="product-page__rating rating"><i class="fa fa-star"></i><i class="fa fa-star"></i><i class="fa fa-star"></i><i class="fa fa-star"></i><i class="fa fa-star"></i> &nbsp; <a class="product-page__rating-a" onclick="$('a[href=\\'#tab-review\\']').click();scroll_to('#tab-review');return false;">Відгуки: 1</a><br></div><div class="prod_smalldescr">З нашою приправою дуже просто приготувати смачний соус: додайте чайну ложку в сметану. Підходить до свіжих овочів, печеної картоплі та домашніх грінок.</div><div class="product-data"><div class="product-data__item manufacturer"><div class="product-data__item-div"><span class="product-data__item-span">Виробник:</span></div><a href="/brand">Єгипет</a></div><div class="product-data__item stock"><div class="product-data__item-div"><span class="product-data__item-span">Наявність:</span></div>'''+('Немає в наявності' if disabled else 'В наявності')+'''</div></div><br><div class="product-page__price price" data-price="45" data-special="0" data-eurcurr="50">45 грн</div><div class="product-page__eur-price"><span class="eur-price">0.9 €</span> *</div>'''+option+'''<div class="product-page__cart"><input type="hidden" name="product_id" value="816"><div class="qty-switch"><input type="text" name="quantity" value="1" data-minimum="1" id="input-quantity" class="qty-switch__input form-control"><div><i class="qty-switch__btn fa fa-plus btn-default">+</i><i class="qty-switch__btn fa fa-minus btn-default">−</i></div></div><button type="button" class="product-page__add-to-cart add_to_cart btn btn-lg'''+(' disabled' if disabled else '')+'''" data-pid="816" id="button-cart"'''+(' disabled' if disabled else '')+'''><i>🛒</i><span>Купити</span></button></div><div class="product-page__share">Поділитися</div></div></div></div></div><ul class="nav nav-tabs"><li class="active"><a href="#tab-description" data-toggle="tab">Опис</a></li><li><a href="#tab-specification" data-toggle="tab">Характеристики</a></li><li><a class="tab-review" href="#tab-review" data-toggle="tab">Відгуки</a></li></ul><div class="tab-content"><div class="tab-pane active" id="tab-description" style="min-height:1300px"><p>Про товар. Повний опис і поради щодо використання.</p></div><div class="tab-pane" id="tab-specification" style="min-height:900px">Склад: прянощі.</div><div class="tab-pane" id="tab-review" style="min-height:900px"><div id="review"></div><form id="form-review">Штатна форма</form></div></div></div></div></div></main><footer style="height:150px">Лавка Спецій</footer></body></html>'''
 
 RUNTIME="""window.uniJsVars={currency:{decimal:0,decimal_p:'.',thousand_p:' ',symbol_l:'',symbol_r:' грн'},qty_switch_step:false,cart_popup_disable:true,cart_popup_autohide:false,cart_btn:{}};window.dataLayer=[];window.gaCalls=[];window.gtag=function(){gaCalls.push(Array.from(arguments));};window.favorites=0;window.popups=[];window.uniFlyAlert=function(){};window.uniModalWindow=function(){};$.magnificPopup={open:function(data){popups.push(data.items);}};"""
 
 
 def start(browser,width=390,kind='radio',extra=False,disabled=False,enhance=True,single=False):
     page=browser.new_page(viewport={'width':width,'height':844});page.set_default_timeout(7000)
-    page.errors=[];page.posts=[];page.pending=[]
+    page.errors=[];page.posts=[];page.pending=[];page.terms_requests=[];page.review_requests=[]
     page.on('pageerror',lambda error:page.errors.append(str(error)))
-    page.route('https://fixture.invalid/**',lambda route:route.abort())
+    page.route('**/*',lambda route:route.abort())
+    page.route('https://fixture.invalid/fonts/*',lambda route:route.fulfill(status=200,content_type='font/woff2',body=(NATIVE/'fonts'/route.request.url.rsplit('/',1)[-1]).read_bytes()))
+    def terms(route):
+        page.terms_requests.append(route.request.url)
+        route.fulfill(status=200,content_type='text/html; charset=utf-8',body='<div id="content"><div class="article_description"><h2>Доставка</h2><p>Чинні умови магазину.</p><ul><li>Нова пошта</li></ul><h2>Оплата</h2><p>Умови оплати з інформаційної сторінки.</p><script>window.unexpectedTermsScript=true</script><img src="/never-fetch-this" onerror="window.unexpectedTermsScript=true"></div></div>')
+    page.route('https://fixture.invalid/terms',terms)
     markup=html(kind,extra,disabled)
     if single:
         markup=re.sub(r'<a class="product-page__image-main-a" href="/photo2">.*?</a>','',markup)
@@ -52,9 +62,14 @@ def start(browser,width=390,kind='radio',extra=False,disabled=False,enhance=True
     def cart(route):page.posts.append(parse_qs(route.request.post_data));page.pending.append(route)
     page.route('**/index.php?route=checkout/cart/add',cart)
     page.route('**/index.php?route=common/cart/info',lambda route:route.fulfill(status=200,body='<div></div>'))
+    def reviews(route):
+        page.review_requests.append(route.request.url)
+        route.fulfill(status=200,content_type='text/html',body='<p>Опубліковані відгуки.</p>')
+    page.route('**/index.php?route=product/product/review&product_id=816',reviews)
     page.goto('https://fixture.invalid/product')
-    for script in ((THEME/'js/jquery-2.2.4.min.js').read_text(),BOOTSTRAP,RUNTIME,VIEW,(THEME/'js/owl.carousel.min.js').read_text(),QTY,SCROLL,CART,GALLERY,(THEME/'js/live-price.js').read_text(),(THEME/'js/lavka-card-reviews.js').read_text()):page.add_script_tag(content=script)
+    for script in ((THEME/'js/jquery-2.2.4.min.js').read_text(),BOOTSTRAP,RUNTIME,VIEW,(THEME/'js/owl.carousel.min.js').read_text(),QTY,SCROLL,CART,REVIEW,GALLERY,(THEME/'js/live-price.js').read_text(),(THEME/'js/lavka-card-reviews.js').read_text()):page.add_script_tag(content=script)
     page.wait_for_timeout(80)
+    page.evaluate('document.fonts.ready')
     page.evaluate('document.querySelector(".product-page__image-main").dispatchEvent(new CustomEvent("lavka:review-summary",{bubbles:true,detail:{enabled:true,summary:{total:12,rating:4.8}}}))')
     page.before=page.locator('#product').evaluate('(el)=>el.outerHTML')
     if enhance:
@@ -78,18 +93,27 @@ with sync_playwright() as p:
             assert page.locator('#button-cart').bounding_box()['y']<page.locator('.prod_smalldescr').bounding_box()['y']
             assert page.locator('.product-page__add-to-cart').bounding_box()['height']>=48
             assert page.locator('input[value="50"]').is_checked()
-            boxes=page.locator('.lavka-product-choice').evaluate_all('(els)=>els.map(e=>({x:e.getBoundingClientRect().x,y:e.getBoundingClientRect().y,width:e.offsetWidth}))')
-            assert len(boxes)==5 and len({round(b['y']) for b in boxes})==1,'Five pack buttons must fit one photo row'
+            boxes=page.locator('.lavka-product-choice').evaluate_all('(els)=>els.map(e=>({x:e.getBoundingClientRect().x,y:e.getBoundingClientRect().y,width:e.offsetWidth,height:e.offsetHeight}))')
+            assert len(boxes)==5 and max(b['y'] for b in boxes)-min(b['y'] for b in boxes)<=1.5,'Five pack buttons must fit one photo row'
             assert min(b['width'] for b in boxes)>=44
+            assert all(abs(b['width']-b['height'])<1 for b in boxes),'Pack controls must be circles'
+            colors=page.locator('.lavka-product-choice').evaluate_all('(els)=>els.map(e=>getComputedStyle(e).backgroundColor)')
+            assert colors[0]=='rgba(61, 100, 29, 0.82)' and colors[1]=='rgba(255, 255, 255, 0.4)','Same transparency as approved category'
             assert page.locator('.owl-item .lavka-product-choice').count()==0,'Owl must not clone pack controls'
             assert page.locator('.product-page__image-main .lavka-product-packs').count()==1
             assert page.locator('.product-page__rating-a').get_attribute('data-lavka-review-count')=='12'
             meta=page.locator('.lavka-product-meta').evaluate('(e)=>Array.from(e.children).map(n=>n.getBoundingClientRect().y+n.getBoundingClientRect().height/2)')
-            assert abs(meta[0]-meta[1])<1,'Rating and stock vertical centers must agree'
+            if width>=360:assert abs(meta[0]-meta[1])<1,'Rating and stock vertical centers must agree'
+            facts=page.locator('.lavka-product-facts').evaluate('(e)=>Array.from(e.children).map(n=>n.getBoundingClientRect().y+n.getBoundingClientRect().height/2)')
+            assert abs(facts[0]-facts[1])<1,'Stock and manufacturer must share one baseline'
             line=page.locator('.lavka-product-totals,.product-page__cart>.qty-switch,#button-cart').evaluate_all('(els)=>els.map(n=>n.getBoundingClientRect().y+n.getBoundingClientRect().height/2)')
             assert max(line)-min(line)<1,'Price, quantity and buy button must share a center line'
             manufacturer=page.locator('.manufacturer').evaluate('(e)=>e.lastElementChild.getBoundingClientRect().x-e.firstElementChild.getBoundingClientRect().right')
             assert 0<=manufacturer<=10,'Manufacturer value must be adjacent to its label'
+            assert page.locator('.product-block .manufacturer').count()==0
+            assert page.locator('.lavka-product-nav button').all_text_contents()==['Про товар','Відгуки','Доставка й оплата']
+            assert page.locator('.breadcrumb').bounding_box()['x']==page.locator('.heading-h1').bounding_box()['x'],'Breadcrumb and product title left edges must agree'
+            assert page.locator('#button-cart').evaluate('(e)=>getComputedStyle(e).fontWeight')=='700'
             page.get_by_role('button',name='200 г',exact=True).click();page.wait_for_function('document.querySelector(".product-page__price").textContent.trim()==="160 грн"')
             page.locator('.lavka-product-qty-button[data-direction=plus]').press('Enter');page.wait_for_function('document.querySelector(".product-page__price").textContent.trim()==="320 грн"')
             assert page.locator('.lavka-product-pack-caption').inner_text()=='за 2 × 200 г'
@@ -100,7 +124,8 @@ with sync_playwright() as p:
             assert page.locator('#input-quantity').input_value()=='2','Leaving qty button must not change quantity again'
             page.locator('.product-page__rating-a').click();assert page.locator('#tab-review').is_visible();page.wait_for_timeout(500)
             page.evaluate('$("a[href=\\"#tab-description\\"]").tab("show");window.scrollTo(0,0)')
-            page.wait_for_timeout(150);page.screenshot(path='/tmp/lavka-mobile-product-'+str(width)+'.png',full_page=True)
+            page.evaluate("$('html, body').stop(true);window.scrollTo({top:0,behavior:'instant'})");page.wait_for_timeout(150)
+            page.screenshot(path='/tmp/lavka-mobile-product-'+str(width)+'.png',full_page=True)
             # Returning to desktop restores original wrappers, positions and the SAME native fields.
             page.set_viewport_size({'width':1280,'height':844});page.wait_for_timeout(80)
             assert page.locator('.lavka-product-buy,.lavka-product-meta,.lavka-product-dock').count()==0
@@ -119,10 +144,17 @@ with sync_playwright() as p:
     page.evaluate('window.scrollTo(0,document.querySelector("#button-cart").getBoundingClientRect().bottom+scrollY+80)')
     page.locator('.lavka-product-dock').wait_for(state='visible')
     assert page.locator('.lavka-product-dock__price').inner_text()=='350 грн'
-    page.locator('.lavka-product-dock button').click();page.wait_for_timeout(150)
+    page.screenshot(path='/tmp/lavka-product-dock-v3.png')
+    page.locator('.lavka-product-dock__quantity [data-direction=plus]').click()
+    page.wait_for_function('document.querySelector(".lavka-product-dock__price").textContent==="700 грн"')
+    assert page.locator('#input-quantity').input_value()=='2'
+    assert page.locator('.lavka-product-dock__value').inner_text()=='2'
+    page.locator('.lavka-product-dock__quantity [data-direction=minus]').click()
+    page.wait_for_function('document.querySelector(".lavka-product-dock__price").textContent==="350 грн"')
+    page.locator('.lavka-product-dock__buy').click();page.wait_for_timeout(150)
     assert len(page.posts)==1 and page.posts[0]['option[70]']==['500'] and page.posts[0]['quantity']==['1'],page.posts
     assert page.locator('#button-cart').is_disabled()
-    page.evaluate('document.getElementById("button-cart").click();document.querySelector(".lavka-product-dock button").click()')
+    page.evaluate('document.getElementById("button-cart").click();document.querySelector(".lavka-product-dock__buy").click()')
     page.wait_for_timeout(5200);assert len(page.posts)==1
     page.pending.pop().fulfill(status=200,content_type='application/json',body='{"success":"Added","products":{}}')
     page.locator('#button-cart').wait_for(state='attached');page.wait_for_function('!document.getElementById("button-cart").disabled')
@@ -130,7 +162,7 @@ with sync_playwright() as p:
     assert page.evaluate('gaCalls.filter(e=>e[1]==="add_to_cart").length')==1
     assert page.evaluate('dataLayer.filter(e=>e.ecommerce && e.ecommerce.add).length')==1
     # Network failure surfaces a check-cart message and never retries a purchase automatically.
-    page.locator('.lavka-product-dock button').click();page.wait_for_timeout(80)
+    page.locator('.lavka-product-dock__buy').click();page.wait_for_timeout(80)
     page.pending.pop().abort();page.wait_for_function('!document.getElementById("button-cart").disabled')
     assert page.locator('.lavka-product-status').get_attribute('data-error')=='true'
     assert len(page.posts)==2
@@ -162,7 +194,7 @@ with sync_playwright() as p:
             page.wait_for_function('!document.getElementById("button-cart").disabled')
             assert page.locator('.text-danger').inner_text()=='Оберіть фасовку'
         if disabled:
-            assert page.locator('#button-cart').is_disabled();assert page.locator('.lavka-product-dock button').is_disabled()
+            assert page.locator('#button-cart').is_disabled();assert page.locator('.lavka-product-dock__buy').is_disabled()
         assert not page.errors,page.errors
         page.close()
     print('PASS native select, extra required options, unavailable products and single-photo overlay',flush=True)
@@ -175,11 +207,11 @@ with sync_playwright() as p:
     assert page.locator('.lavka-review-stars__fill').get_attribute('style')=='width: 92%;'
     page.evaluate('var fly=document.createElement("div");fly.id="fly-menu";fly.className="show";fly.style="position:fixed;top:0;left:0;right:0;height:40px;z-index:999;background:white";document.body.appendChild(fly);window.scrollTo(0,350)')
     page.wait_for_timeout(150)
-    assert abs(page.locator('#content>.nav-tabs').bounding_box()['y']-40)<1,'Sticky tabs must sit below the actual floating shop menu'
+    assert abs(page.locator('.lavka-product-nav').bounding_box()['y']-40)<1,'Sticky tabs must sit below the actual floating shop menu'
     page.locator('.nav-tabs a[href="#tab-specification"]').click();page.wait_for_timeout(700)
     assert page.locator('#tab-specification').is_visible()
-    assert page.locator('#tab-specification').bounding_box()['y']>=page.locator('.nav-tabs').bounding_box()['y']+44,'Tab content must not be hidden behind navigation'
-    page.locator('.nav-tabs a[href="#tab-description"]').click();page.wait_for_timeout(700)
+    assert page.locator('#tab-specification').bounding_box()['y']>=page.locator('.lavka-product-nav').bounding_box()['y']+44,'Tab content must not be hidden behind navigation'
+    page.locator('.lavka-product-nav [data-section=about]').click();page.wait_for_timeout(700)
     assert page.locator('#tab-description').is_visible()
     page.set_viewport_size({'width':1280,'height':844});page.wait_for_timeout(80)
     assert page.locator('.lavka-product-packs').count()==0
@@ -188,4 +220,57 @@ with sync_playwright() as p:
     assert not page.errors,page.errors
     page.close()
     print('PASS sticky native sections below shop menu, live review counts, zero-review hiding and desktop restoration',flush=True)
+
+    page=start(browser)
+    page.locator('.lavka-product-nav [data-section=reviews]').click();page.wait_for_timeout(700)
+    assert page.locator('#tab-review').is_visible() and page.evaluate('scrollY')>400
+    assert len(page.review_requests)==1,'Top review navigation invokes the native loader once'
+    assert page.locator('.lavka-product-nav [data-section=reviews]').get_attribute('aria-current')=='true'
+    page.set_viewport_size({'width':1280,'height':844});page.wait_for_timeout(80)
+    assert page.locator('.nav-tabs li.active a').get_attribute('href')=='#tab-review'
+    assert page.locator('#tab-review').is_visible(),'Resizing preserves the active native tab'
+    page.set_viewport_size({'width':390,'height':844});page.wait_for_timeout(80)
+    page.locator('.lavka-product-nav [data-section=about]').click();page.wait_for_timeout(700)
+    page.get_by_role('button',name='200 г',exact=True).click();page.wait_for_timeout(350)
+    page.locator('.lavka-product-nav [data-section=delivery]').click()
+    page.locator('.lavka-product-delivery').wait_for(state='visible')
+    page.wait_for_function('document.querySelector(".lavka-product-delivery__body").textContent.includes("Чинні умови")')
+    page.screenshot(path='/tmp/lavka-product-delivery-v3.png')
+    assert page.url=='https://fixture.invalid/product' and len(page.terms_requests)==1,'Delivery opens current public terms without leaving product'
+    assert page.locator('.lavka-product-delivery li').inner_text()=='Нова пошта'
+    assert page.evaluate('window.unexpectedTermsScript') is None,'Fetched page scripts and handlers must not run'
+    assert page.locator('.lavka-product-delivery script,.lavka-product-delivery img').count()==0
+    assert not page.locator('.lavka-product-dock').is_visible()
+    page.keyboard.press('Escape');page.locator('.lavka-product-delivery').wait_for(state='hidden')
+    assert page.locator('input[value="200"]').is_checked() and page.locator('.product-page__price').inner_text()=='160 грн'
+    assert page.locator('.lavka-product-nav [data-section=delivery]').evaluate('(e)=>document.activeElement===e'),'Dialog restores focus to opener'
+    page.locator('.lavka-product-nav [data-section=delivery]').click();page.wait_for_timeout(80)
+    assert len(page.terms_requests)==1,'Reopening reuses current page terms'
+    page.locator('.lavka-product-delivery__close').click()
+    page.evaluate('window.scrollTo(0,500)');page.wait_for_timeout(100)
+    scroll_before=page.evaluate('scrollY')
+    page.locator('.lavka-product-nav [data-section=delivery]').click();page.keyboard.press('Escape')
+    assert abs(page.evaluate('scrollY')-scroll_before)<1,'Reading terms retains the product scroll position'
+    page.locator('.lavka-product-nav [data-section=delivery]').click()
+    page.set_viewport_size({'width':1280,'height':844});page.wait_for_timeout(100)
+    assert page.locator('.lavka-product-delivery,.lavka-product-nav').count()==0
+    assert page.evaluate('document.body.style.overflow')==''
+    assert not page.errors,page.errors
+    page.close()
+    print('PASS delivery bottom sheet: current same-origin terms, safe formatting, retained pack, focus/close/cache and desktop cleanup',flush=True)
+
+    page=start(browser)
+    page.route('https://fixture.invalid/terms',lambda route:route.fulfill(status=503,body='Unavailable'))
+    page.locator('.lavka-product-nav [data-section=delivery]').click()
+    page.locator('.lavka-product-delivery__retry').wait_for(state='visible')
+    assert page.url=='https://fixture.invalid/product' and len(page.posts)==0
+    page.unroute('https://fixture.invalid/terms')
+    page.route('https://fixture.invalid/terms',lambda route:route.fulfill(status=200,content_type='text/html',body='<div id="content"><div class="article_description"><p>Умови магазину</p></div></div>'))
+    page.locator('.lavka-product-delivery__retry').click()
+    page.wait_for_function('document.querySelector(".lavka-product-delivery__body").textContent==="Умови магазину"')
+    page.locator('.lavka-product-delivery__close').click()
+    assert page.locator('#input-quantity').input_value()=='1' and page.locator('input[value="50"]').is_checked()
+    assert not page.errors,page.errors
+    page.close()
+    print('PASS delivery fetch failure/retry: product selection and cart untouched',flush=True)
     browser.close()
