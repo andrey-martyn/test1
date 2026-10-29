@@ -4,10 +4,10 @@
     var states=new WeakMap(), active=new Set(), mobile=matchMedia('(max-width:519px)');
     var language=(document.documentElement.lang || 'uk').toLowerCase();
     var text=language.indexOf('ru')===0 ? {
-        add:'Добавить',review:'отзыв',reviews:'Отзывы',score:'Оценка',of:'из',average:'Средняя оценка'
+        reviews:'Отзывы',score:'Оценка',of:'из',average:'Средняя оценка'
     } : language.indexOf('en')===0 ? {
-        add:'Add',review:'review',reviews:'Reviews',score:'Rating',of:'of',average:'Average rating'
-    } : {add:'Додати',review:'відгук',reviews:'Відгуки',score:'Оцінка',of:'з',average:'Середня оцінка'};
+        reviews:'Reviews',score:'Rating',of:'of',average:'Average rating'
+    } : {reviews:'Відгуки',score:'Оцінка',of:'з',average:'Середня оцінка'};
     var resize=window.ResizeObserver ? new ResizeObserver(function (entries) {
         entries.forEach(function (entry) {
             var state=states.get(entry.target);
@@ -37,7 +37,7 @@
         if (!detail || !detail.enabled || !data || !Number.isFinite(Number(data.total)) || !Number.isFinite(Number(data.rating))) return null;
         return {total:Math.max(0,Math.floor(Number(data.total))),rating:Math.max(0,Math.min(5,Number(data.rating)))};
     }
-    function productLink(card,write) {
+    function productLink(card) {
         var link=card.querySelector('.product-thumb__name[href],.product-thumb__image>a[href]'), url;
         try {
             url=new URL(link ? link.href : '',document.baseURI);
@@ -46,7 +46,7 @@
                 if (!field || !/^[1-9][0-9]*$/.test(field.dataset.pid || '')) return null;
                 url=new URL('index.php?route=product/product&product_id='+field.dataset.pid,document.baseURI);
             }
-            url.hash=write ? 'form-review' : 'tab-review'; return url.href;
+            url.hash='tab-review'; return url.href;
         } catch (_) { return null; }
     }
     function measure(element) {
@@ -80,9 +80,11 @@
     }
     function cardSummary(card,data) {
         var state=states.get(card);
-        if (!data) { if (state) destroy(state); return; }
+        var nativeRating=card.querySelector('.product-thumb__rating');
+        if (nativeRating) nativeRating.hidden=!data || !data.total;
+        if (!data || !data.total) { if (state) destroy(state); return; }
         if (!card.classList.contains('lavka-mobile-card')) return;
-        var href=productLink(card,!data.total);
+        var href=productLink(card);
         if (!href) return;
         if (!state) {
             var link=document.createElement('a'); link.className='lavka-card-reviews';
@@ -97,17 +99,10 @@
         }
         var anchor=state.link, line=document.createElement('span');
         while (anchor.firstChild) anchor.removeChild(anchor.firstChild);
-        anchor.href=href; anchor.classList.toggle('lavka-card-reviews--empty',!data.total);
-        if (data.total) {
-            anchor.appendChild(stars(data.rating)); line.className='lavka-card-reviews__count'; line.appendChild(chat());
-            var count=document.createElement('span'); count.textContent=String(data.total); line.appendChild(count); anchor.appendChild(line);
-            anchor.setAttribute('aria-label',text.score+' '+score(data.rating)+' '+text.of+' 5; '+text.reviews+': '+data.total);
-        } else {
-            line.className='lavka-card-reviews__add'; line.appendChild(chat());
-            var add=document.createElement('span'); add.textContent=text.add; line.appendChild(add); anchor.appendChild(line);
-            var label=document.createElement('span'); label.textContent=text.review; anchor.appendChild(label);
-            anchor.setAttribute('aria-label',text.add+' '+text.review);
-        }
+        anchor.href=href;
+        anchor.appendChild(stars(data.rating)); line.className='lavka-card-reviews__count'; line.appendChild(chat());
+        var count=document.createElement('span'); count.textContent=String(data.total); line.appendChild(count); anchor.appendChild(line);
+        anchor.setAttribute('aria-label',text.score+' '+score(data.rating)+' '+text.of+' 5; '+text.reviews+': '+data.total);
         anchor.title=anchor.getAttribute('aria-label'); schedule(state);
     }
     function replaceStars(block,data) {
@@ -119,22 +114,11 @@
     function mainSummary(image,data) {
         var page=image.closest('.product-page'); if (!page) return;
         page.querySelectorAll('.product-page__rating,.review-info__rating').forEach(function (block) {
-            block.hidden=!data; if (data) replaceStars(block,data);
+            block.hidden=!data || !data.total; if (data && data.total) replaceStars(block,data);
         });
         if (!data) return;
         var anchor=page.querySelector('.product-page__rating-a');
-        if (anchor) {
-            anchor.textContent=data.total ? text.reviews+': '+data.total : text.add+' '+text.review;
-            anchor.dataset.lavkaReviewCount=data.total;
-            if (!anchor.dataset.lavkaReviewLink) {
-                anchor.dataset.lavkaReviewLink='1';
-                anchor.addEventListener('click',function (event) {
-                    if (Number(this.dataset.lavkaReviewCount)!==0) return;
-                    event.preventDefault();
-                    if (location.hash==='#form-review') openTarget(); else location.hash='form-review';
-                });
-            }
-        }
+        if (anchor) anchor.textContent=text.reviews+': '+data.total;
         var scoreBlock=page.querySelector('.review-info__score'), total=page.querySelector('.review-info__total');
         if (scoreBlock) scoreBlock.textContent=text.average+': '+score(data.rating);
         if (total) total.textContent=text.reviews+': '+data.total;

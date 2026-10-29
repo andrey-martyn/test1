@@ -1,8 +1,10 @@
 .sticker__item{opacity:1!important;background-color:var(--lavka-sticker-bg,initial)}
 .sticker__item::before{border-top-color:var(--lavka-sticker-bg);border-right-color:var(--lavka-sticker-bg)}
 .product-thumb__image,.product-page__image-main{position:relative}
-.product-thumb__image>.sticker,.product-page__image-main>.sticker{left:-6px!important;top:6px;display:flex;flex-direction:column;align-items:flex-start;gap:3px;max-width:calc(100% - 44px);pointer-events:none}
+.product-thumb__image>.sticker,.product-page__image-main>.sticker{left:-6px!important;top:6px;display:flex;flex-direction:column;align-items:flex-start;gap:4px;max-width:calc(100% - 44px);pointer-events:none}
 .product-thumb__image>.sticker[hidden],.product-page__image-main>.sticker[hidden]{display:none}
-.product-thumb__image>.sticker>.sticker__item,.product-page__image-main>.sticker>.sticker__item{float:none;clear:none;max-width:100%;margin:0;overflow-wrap:anywhere}
-@media(max-width:519px){.lavka-mobile-card .product-thumb__image{overflow:visible}.lavka-mobile-card .product-thumb__image>a{overflow:hidden;border-radius:inherit}.lavka-mobile-card .sticker{top:6px;gap:2px}.lavka-mobile-card .sticker__item{font-size:9px;line-height:12px;padding:2px 12px 2px 5px;border-radius:0;clip-path:polygon(0 0,100% 0,calc(100% - 7px) 100%,0 100%)}.lavka-mobile-card .sticker__item::before,.lavka-mobile-card .sticker__item::after{display:none}}
+.product-thumb__image>.sticker>.sticker__item,.product-page__image-main>.sticker>.sticker__item{float:none;clear:none;max-width:100%;margin:0;padding-left:11px;padding-right:8px;border-radius:0;clip-path:none;isolation:isolate;overflow-wrap:anywhere}
+.product-thumb__image>.sticker>.sticker__item::before,.product-page__image-main>.sticker>.sticker__item::before{display:block;position:absolute;left:0;top:100%;content:'';border-width:2px;border-style:solid;border-bottom-color:transparent;border-left-color:transparent}
+.product-thumb__image>.sticker>.sticker__item::after,.product-page__image-main>.sticker>.sticker__item::after{display:block;position:absolute;z-index:-1;top:0;right:-5px;content:'';width:10px;height:100%;transform:skew(-25deg);background:inherit}
+@media(max-width:519px){.lavka-mobile-card .product-thumb__image{overflow:visible}.lavka-mobile-card .product-thumb__image>a{overflow:hidden;border-radius:inherit}.lavka-mobile-card .sticker__item{font-size:9px;line-height:12px;padding-top:2px;padding-bottom:2px}}
 @media(max-width:519px){.lavka-mobile-card .lavka-tags-expanded img{object-fit:cover}}

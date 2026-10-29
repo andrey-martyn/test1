@@ -13,7 +13,8 @@ CSS=scope['CSS']+(THEME/'stylesheet/lavka-card-reviews.css').read_text()
 
 
 def content(width,language='uk'):
-    return '<html lang="'+language+'"><head><base href="https://fixture.invalid/"><style>'+CSS+'</style></head><body><main><div class="container"><div id="content"><div class="products-block row">'+scope['card'](816)+scope['card'](817)+'</div></div></div></main></body></html>'
+    cards=(scope['card'](816)+scope['card'](817)).replace('<div class="product-thumb__row">','<div class="product-thumb__rating rating"><i class="fa fa-star"></i></div><div class="product-thumb__row">')
+    return '<html lang="'+language+'"><head><base href="https://fixture.invalid/"><style>'+CSS+'</style></head><body><main><div class="container"><div id="content"><div class="products-block row">'+cards+'</div></div></div></main></body></html>'
 
 
 def scripts(page):
@@ -35,13 +36,14 @@ with sync_playwright() as p:
         page.on('pageerror',lambda error:errors.append(str(error)))
         page.set_content(content(width));scripts(page)
         answer(page,{816:[],817:[]},{816:{'total':12,'rating':4.8},817:{'total':0,'rating':0}})
-        links=page.locator('.lavka-card-reviews');page.wait_for_function('document.querySelectorAll(".lavka-card-reviews").length===2')
+        links=page.locator('.lavka-card-reviews');page.wait_for_function('document.querySelectorAll(".lavka-card-reviews").length===1')
         assert links.first.locator('.lavka-review-stars svg path').count()==10
         assert links.first.locator('.lavka-card-reviews__count').inner_text()=='12'
-        assert links.nth(1).locator('.lavka-review-stars').count()==0
-        assert links.nth(1).evaluate('(el)=>Array.from(el.children).map(child=>child.textContent)')==['Додати','відгук']
+        empty=page.locator('.product-thumb').nth(1)
+        assert empty.locator('.lavka-card-reviews,.lavka-review-chat').count()==0
+        assert not empty.evaluate('(el)=>el.classList.contains("lavka-has-reviews")')
+        assert not empty.locator('.product-thumb__rating').is_visible()
         assert urlsplit(links.first.get_attribute('href')).fragment=='tab-review'
-        assert urlsplit(links.nth(1).get_attribute('href')).fragment=='form-review'
         if width<520:
             links.first.wait_for(state='visible');page.wait_for_timeout(80)
             ratio=links.first.locator('.lavka-review-stars').evaluate('(el)=>el.lastChild.getBoundingClientRect().width/el.getBoundingClientRect().width')
@@ -52,11 +54,9 @@ with sync_playwright() as p:
             assert cart['width']==36 and cart['height']==36
             if width>=390:
                 assert price['x']+price['width']<=box['x'] and box['x']+box['width']<=cart['x'],(width,price,box,cart)
-                assert abs(box['y']-cart['y'])<1 and abs(price['y']-cart['y'])<1
+                assert abs(box['y']+box['height']/2-cart['y']-cart['height']/2)<1
                 assert abs((box['x']+box['width']/2)-(price['x']+price['width']+cart['x'])/2)<1
-                empty=page.locator('.product-thumb').nth(1)
-                empty_box=links.nth(1).bounding_box();empty_buy=empty.locator('.product-thumb__add-to-cart').bounding_box()
-                assert abs(empty_box['y']-empty_buy['y'])<1
+                assert abs(price['y']-cart['y'])<1
             else: assert box['y']+box['height']<=price['y']
             page.screenshot(path='/tmp/lavka-card-reviews-'+str(width)+'.png',full_page=True)
             card.locator('.product-thumb__price').evaluate('(el)=>el.textContent="123456789 грн"')
@@ -64,25 +64,31 @@ with sync_playwright() as p:
             card.locator('.product-thumb__price').evaluate('(el)=>el.textContent="25 грн"')
             if width>=390: page.wait_for_function('document.querySelector(".product-thumb").classList.contains("lavka-reviews-inline")')
             page.wait_for_timeout(120);assert page.evaluate('requests.length')==1,'Price/layout changes must not request metadata again'
-        else: assert not links.first.is_visible(),'Desktop list keeps native rating'
+        else:
+            assert not links.first.is_visible(),'Desktop list keeps native rating'
+            assert page.locator('.product-thumb__rating').first.is_visible()
         page.evaluate('(html)=>document.querySelector(".products-block").insertAdjacentHTML("beforeend",html)',scope['card'](818))
         answer(page,{818:[]},{818:{'total':7,'rating':3.5}},index=1)
-        assert page.locator('.lavka-card-reviews').count()==3
+        assert page.locator('.lavka-card-reviews').count()==2
         assert page.locator('.lavka-card-reviews__count').last.inner_text()=='7'
         assert page.evaluate('requests[1].options.data.product_ids')==[818]
         page.evaluate('window.dispatchEvent(new Event("focus"))')
-        answer(page,{816:[],817:[],818:[]},{},index=2,enabled=False)
+        answer(page,{816:[],817:[],818:[]},{816:{'total':0,'rating':0},817:{'total':0,'rating':0},818:{'total':7,'rating':3.5}},index=2)
+        assert page.locator('.lavka-card-reviews').count()==1,'Removing the last published review removes its widget'
+        page.evaluate('window.dispatchEvent(new Event("focus"))')
+        answer(page,{816:[],817:[],818:[]},{},index=3,enabled=False)
         assert page.locator('.lavka-card-reviews').count()==0
         assert not errors,errors
-        print('PASS reviews: %spx, two rows, continuous 96%% fill, empty CTA, layout/price changes and disabled reviews'%width,flush=True)
+        print('PASS reviews: %spx, two rows, continuous 96%% fill, empty gap, layout/price changes and disabled reviews'%width,flush=True)
         page.close()
 
-    for language,expected in (('ru','Добавить\nотзыв'),('en','Add\nreview')):
+    for language in ('ru','uk','en'):
         page=browser.new_page(viewport={'width':390,'height':900});page.set_content(content(390,language));scripts(page)
         answer(page,{816:[],817:[]},{816:{'total':0,'rating':0},817:{'total':0,'rating':0}})
-        assert page.locator('.lavka-card-reviews').first.inner_text()==expected
+        assert page.locator('.lavka-card-reviews,.lavka-review-chat').count()==0
+        assert page.locator('.lavka-has-reviews').count()==0
         page.close()
-    print('PASS reviews: RU/UA/EN empty-state labels',flush=True)
+    print('PASS reviews: no empty CTA or chat icon in RU/UA/EN',flush=True)
 
     html='<html lang="uk"><head><base href="https://fixture.invalid/"><style>'+CSS+'</style></head><body><div class="product-page"><div class="product-page__image-main"><div class="sticker" data-lavka-product-id="818" hidden></div></div><div class="product-page__rating rating">'+('<i class="fa fa-star"></i>'*5)+'<a class="product-page__rating-a" onclick="$(\'.tab-review\').click();return false;">Відгуки: 0</a></div><ul class="nav nav-tabs"><li class="active"><a href="#tab-description" data-toggle="tab">Опис</a></li><li><a href="#tab-review" class="tab-review" data-toggle="tab">Відгуки</a></li></ul><div class="tab-content"><div class="tab-pane active" id="tab-description">Опис</div><div class="tab-pane" id="tab-review"><div class="review-info__score"></div><div class="review-info__total"></div><div class="review-info__rating rating">'+('<i class="fa fa-star"></i>'*5)+'</div><form id="form-review" class="collapse"><input name="name"><textarea name="text"></textarea><button type="button" id="button-review">Додати</button></form></div></div></div></body></html>'
     for fragment in ('form-review','tab-review'):
@@ -96,6 +102,12 @@ with sync_playwright() as p:
         if fragment=='form-review': page.locator('#form-review').wait_for(state='visible')
         else: assert not page.locator('#form-review').is_visible()
         assert page.evaluate('requests.length')==1,'Opening reviews must not submit a review'
+        page.evaluate('window.dispatchEvent(new Event("focus"))')
+        answer(page,{818:[]},{818:{'total':0,'rating':0}},index=1)
+        assert not page.locator('.product-page__rating').is_visible()
+        assert not page.locator('.review-info__rating').is_visible()
+        assert page.locator('.lavka-review-chat').count()==0
+        assert page.locator('#form-review').count()==1,'Native form remains available'
         page.close()
-    print('PASS product: native Bootstrap review tab/form open, matching fractional rating/count, no review submission',flush=True)
+    print('PASS product: native Bootstrap review tab/form open, matching fractional rating/count, zero summary hidden, no review submission',flush=True)
     browser.close()

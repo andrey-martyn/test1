@@ -3,7 +3,7 @@
   "database": "lavkasp_test",
   "store_id": 0,
   "source_commit": "647cb88a41cd5a66e3524f576b28c8c897f7f2d1",
-  "upgrade_from_commit": "6487db4b40f65c6fb8bf96d8cbffb04f763350f9",
+  "upgrade_from_commit": "9cd448d40e403f3d2552340dec96cc4cc507749f",
   "files": [
     {
       "path": "system/library/lavka_product_tags.php",
@@ -140,7 +140,7 @@
         "dc38c86eadb6719cfcbb136d8106ccd3f3f26f2f98166e4ca1022de38e0e1a6b",
         "f287c33a935d34410ff012dab252dbd80b1fc97b6f591453d0558678f68651fd"
       ],
-      "after_sha256": "4dddcf09ded820e3ccc6dfc4e743073c83fbf6ef7d3d941bd1c50098215dc4f3"
+      "after_sha256": "34d8547aaa70352ae9b9b803925f1fbef926e65e150692cf4a5e397b0da047a2"
     },
     {
       "path": "catalog/view/theme/unishop2/js/lavka-card-reviews.js",
@@ -149,16 +149,18 @@
         "85d31e0d644171a387ee24a189212f5b777665e403157002081d891791ab9c21",
         "ea3a198f0f86ef73b98280d31854b56651fd63739acdfd92e4c4149798e6fffa"
       ],
-      "after_sha256": "ea3a198f0f86ef73b98280d31854b56651fd63739acdfd92e4c4149798e6fffa"
+      "after_sha256": "eda1822d8d103a1e095502736e0cd2f815afe49fcec5681507b930f5f5d5a3ff"
     },
     {
       "path": "catalog/view/theme/unishop2/stylesheet/lavka-card-reviews.css",
       "before_sha256": null,
       "allowed_before_sha256": [
+        "0b580fbf027d868adbb88b504f7d4e99aa4c59bcd20bcea4f6c2720fe58c58d9",
         "1aaecbdf0307618a7666451df0bce7c0f2a777a239e336eddded58d278a8b845",
+        "81433da46d33122a7c240fd1f65bb3dc458e13b94d61e41bd2406bfd18f052c2",
         "eaaaad24206cc7b4dc05020f94c3e881b2108cc4a01f48b2d5bf25662c166a5b"
       ],
-      "after_sha256": "0b580fbf027d868adbb88b504f7d4e99aa4c59bcd20bcea4f6c2720fe58c58d9"
+      "after_sha256": "490164e3a491fe485096a8ac0c4485c5a0c3f60c5a253ac29e8d3defddd0e627"
     },
     {
       "path": "catalog/view/theme/unishop2/stylesheet/lavka-mobile-cards.css",
@@ -246,11 +248,13 @@
       "path": "catalog/controller/extension/module/uni_new_data.php",
       "before_sha256": "1eee34b7e2069869419e63af017d090a6b755002e6ef308779b077ebc16cff74",
       "allowed_before_sha256": [
+        "03c5b2a34bcfec331a6b7613e9a39fec9871aba96cbb3d6c421c994786f926c6",
         "0d6df32e5949cc98cb8cbfa54fffaa2c255d32d624300a8b6edf1e84614004e0",
         "14c5ebbc2b005aee64fb48b8de1e298d689731ba2b60896d0361119db93db74f",
         "18357a092fdef766f83903a78edfcf477a3c44d50110c8f13e5e79edd231a7eb",
         "1eee34b7e2069869419e63af017d090a6b755002e6ef308779b077ebc16cff74",
         "2537633f60b45d1c6b49b01d5341836e1a4d49d32ff2f89d903c0c0ba0b2331c",
+        "3451f9e301d91a58d69fe806597289784a123aac9ea5bd228ef1099c9926c9e0",
         "408fb3cce294fada03d77f6c7b931ad8725a26e5cad22b822e5307e37691c127",
         "5081de2fe7b1b04cd1afd2d44a5bf93726d419e34a4ac4cfb2ccec62643b29a3",
         "550a8de443d88b3cea8d9f0ddbc83b22044456f7d1e2aec07cc0ba024f152cf7",
@@ -259,7 +263,7 @@
         "b7c4eb55c8142e6f4c9c78eb5d7dfb9ab21db3a72f275dccc47de56911249a78",
         "d1ef60fd57dc268b0b2ec22687694eefbe4ccfc3b89c5ac9a40e7b653aaa754e"
       ],
-      "after_sha256": "3451f9e301d91a58d69fe806597289784a123aac9ea5bd228ef1099c9926c9e0"
+      "after_sha256": "450c16e982cf1c6159edebd0c727aaa17c84c8d4949aac6273b98335855604d0"
     }
   ],
   "deleted_files": [],

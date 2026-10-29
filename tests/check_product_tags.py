@@ -38,8 +38,8 @@ with sync_playwright() as p:
         assert page.locator('.lavka-fresh').first.evaluate('(e)=>getComputedStyle(e).backgroundColor')=='rgb(79, 127, 40)'
         assert page.locator('.lavka-fresh').first.evaluate('(e)=>getComputedStyle(e).opacity')=='1'
         if width<520:
-            shape=page.locator('.lavka-fresh').first.evaluate('(e)=>({radius:getComputedStyle(e).borderRadius,clip:getComputedStyle(e).clipPath})')
-            assert shape['radius']=='0px' and shape['clip'].startswith('polygon('),shape
+            shape=page.locator('.lavka-fresh').first.evaluate('(e)=>({radius:getComputedStyle(e).borderRadius,clip:getComputedStyle(e).clipPath,padding:getComputedStyle(e).paddingLeft,fold:getComputedStyle(e,"::before").display,slant:getComputedStyle(e,"::after").transform})')
+            assert shape['radius']=='0px' and shape['clip']=='none' and shape['padding']=='11px' and shape['fold']=='block' and shape['slant']!='none',shape
             page.wait_for_timeout(80)
             bounds=page.locator('.lavka-mobile-card').first.evaluate('''card=>{var tags=card.querySelector('.sticker').getBoundingClientRect(),packs=card.querySelector('.product-thumb__option').getBoundingClientRect(),image=card.querySelector('.product-thumb__image').getBoundingClientRect(),heart=card.querySelector('.product-thumb__wishlist').getBoundingClientRect();return {tagsBottom:tags.bottom,packsTop:packs.top,tagsRight:tags.right,heartLeft:heart.left,imageBottom:image.bottom,packsBottom:packs.bottom};}''')
             assert bounds['tagsBottom']<bounds['packsTop'],bounds
@@ -48,6 +48,8 @@ with sync_playwright() as p:
             picture=page.locator('.lavka-mobile-card').first.locator('.product-thumb__image img').bounding_box()
             assert picture['y']+picture['height']>=bounds['packsBottom']-1,'Weights must stay on the image'
             page.screenshot(path='/tmp/lavka-product-tags-'+str(width)+'.png',full_page=True)
+        ribbon=page.locator('.lavka-fresh').first.evaluate('e=>{const image=e.closest(".product-thumb__image").getBoundingClientRect(),box=e.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(e);return {left:box.left-image.left,top:e.parentElement.getBoundingClientRect().top-image.top,text:range.getBoundingClientRect().left-image.left};}')
+        assert ribbon['left']==-6 and ribbon['top']==6 and ribbon['text']>=5,ribbon
         page.wait_for_timeout(180)
         assert page.evaluate('requests.length')==1,'Mutation/resize must not trigger request loops'
         page.evaluate('(html)=>document.querySelector(".products-block").insertAdjacentHTML("beforeend",html)',card(817))
