@@ -210,6 +210,8 @@ try {
     }
     $r = $db->query("SELECT COUNT(*) AS n FROM `".$p."theme` WHERE route LIKE '%product/category%' OR route LIKE '%common/header%' OR route LIKE '%uni_options%'");
     $out['relevant_template_overrides'] = $r ? (int)$r->fetch_assoc()['n'] : null;
+    $r = $db->query("SELECT COUNT(*) AS n FROM `".$p."theme` WHERE store_id = ".$store_id." AND route LIKE '%product/product%'");
+    $out['product_template_overrides'] = $r ? (int)$r->fetch_assoc()['n'] : null;
     $db->close();
     echo json_encode($out);
 } catch (Exception $e) { fail_probe('DATABASE_PROBE_FAILED'); }

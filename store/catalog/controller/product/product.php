@@ -463,6 +463,10 @@ class ControllerProductProduct extends Controller {
 			$data['content_top'] = $this->load->controller('common/content_top');
 			$data['content_bottom'] = $this->load->controller('common/content_bottom');
 			$data['footer'] = $this->load->controller('common/footer');
+			// Mobile detail enhancement; native product template and desktop remain unchanged.
+			$this->document->addStyle('catalog/view/theme/unishop2/stylesheet/lavka-mobile-product.css?v=1');
+			$this->document->addScript('catalog/view/theme/unishop2/js/lavka-mobile-product.js?v=1');
+
 			$data['header'] = $this->load->controller('common/header');
 
 			$this->response->setOutput($this->load->view('product/product', $data));

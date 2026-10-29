@@ -42,7 +42,7 @@ class ProbeSql(unittest.TestCase):
                 'CREATE TABLE `oc_setting` (`store_id` INT, `code` VARCHAR(100), `key` VARCHAR(100), `value` VARCHAR(4096), `serialized` INT) ENGINE=MEMORY;',
                 'CREATE TABLE `oc_modification` (`code` VARCHAR(100), `name` VARCHAR(100), `version` VARCHAR(32), `xml` VARCHAR(4096), `status` INT) ENGINE=MEMORY;',
                 'CREATE TABLE `oc_uni_setting` (`store_id` INT, `data` VARCHAR(4096)) ENGINE=MEMORY;',
-                'CREATE TABLE `oc_theme` (`route` VARCHAR(100)) ENGINE=MEMORY;'
+                'CREATE TABLE `oc_theme` (`store_id` INT DEFAULT 0, `route` VARCHAR(100)) ENGINE=MEMORY;'
             ]
             sql = '\n'.join(setup+[query.rstrip(';')+';' for query in queries])+'\n'
             command = [MARIADB,'--no-defaults','--bootstrap','--skip-networking','--skip-innodb','--default-storage-engine=MEMORY','--skip-log-bin','--datadir='+directory,'--log-error='+str(root/'error.log'),'--open-files-limit=1024']

@@ -10,8 +10,8 @@ import sys
 import test_store as store
 
 
-def release():
-    manifest=json.loads((store.REPO/'docs/product-tags-release.json').read_text())
+def release(manifest_path='docs/product-tags-release.json'):
+    manifest=json.loads((store.REPO/manifest_path).read_text())
     if (manifest['target'],manifest['database'],manifest['store_id'])!=(store.HOSTNAME,store.DATABASE,0): raise ValueError('Unexpected target')
     changed=[]; current=[]
     for entry in manifest['files']:

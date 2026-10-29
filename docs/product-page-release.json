@@ -1,0 +1,41 @@
+{
+  "feature": "mobile-product",
+  "target": "test.lavka-speciy.com",
+  "database": "lavkasp_test",
+  "store_id": 0,
+  "source_commit": "e3e565d79bee4ac24ac81633ecb0e54d97f60936",
+  "files": [
+    {
+      "path": "catalog/view/theme/unishop2/stylesheet/lavka-mobile-product.css",
+      "before_sha256": null,
+      "allowed_before_sha256": [],
+      "after_sha256": "6ac36346960c5106b0f3e4a3e2200494e230ece0e1a12e33d56baea914a79193"
+    },
+    {
+      "path": "catalog/view/theme/unishop2/js/lavka-mobile-product.js",
+      "before_sha256": null,
+      "allowed_before_sha256": [],
+      "after_sha256": "4321871a611d0608683d92c9ec30195c6f1d5331f2b4f75cc014a9186f6f2586"
+    },
+    {
+      "path": "catalog/controller/product/product.php",
+      "before_sha256": "184f2b22b35b4335db441ae05c618e78deef33255d92783b80208eddb986176e",
+      "allowed_before_sha256": [
+        "184f2b22b35b4335db441ae05c618e78deef33255d92783b80208eddb986176e",
+        "1e0b9abdbc3cbf81040fec92be18284b35000b23178efbbab9ef2b8716bc5ef2"
+      ],
+      "after_sha256": "d01d560543676fc0de1dfee2f316f283b0f154a427adeb6b0e8ddb4c4f4ff94e"
+    }
+  ],
+  "required_sources": [
+    {
+      "path": "catalog/view/theme/unishop2/template/product/product.twig",
+      "allowed_sha256": [
+        "0085dea393eca7b86797835f891fc1e7105c183168c142b485ab50263c637272",
+        "140fc91da1bc48d0e207eb72b04017d5ed2bb04ad25d1c925a7211542929eaf8"
+      ]
+    }
+  ],
+  "deleted_files": [],
+  "database_changes": []
+}
