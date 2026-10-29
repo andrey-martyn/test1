@@ -87,7 +87,7 @@ class ProductPageRelease(unittest.TestCase):
         self.assertEqual((self.shop/self.controller).read_bytes(),b'enhanced\r\n')
 
     def test_real_previous_mobile_release_upgrades_and_rolls_back_exactly(self):
-        for revision in ('4c9719c','f30a4fc'):
+        for revision in ('4c9719c','f30a4fc','75c5e5f'):
             with self.subTest(revision=revision):
                 manifest=json.loads((ROOT/'docs/product-page-release.json').read_text())
                 manifest['required_sources']=[{'path':str(self.template.relative_to(self.shop)),'allowed_sha256':[release.store.sha(self.template)]}]

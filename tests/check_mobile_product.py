@@ -26,6 +26,7 @@ REVIEW_START=TEMPLATE.index("$('.tab-review').on('click mouseover'")
 REVIEW=TEMPLATE[REVIEW_START:TEMPLATE.index("$('#review').on('click', '.pagination a'",REVIEW_START)].replace('{{ product_id }}','816')
 CSS=''.join((THEME/'stylesheet'/name).read_text() for name in ('bootstrap.min.css','stylesheet.css'))
 CSS+=(NATIVE/'stylesheet/font-awesome.min.css').read_text()+(NATIVE/'stylesheet/generated.0.css').read_text()
+CSS+=(NATIVE/'stylesheet/flymenu.css').read_text()
 CSS+=''.join((THEME/'stylesheet'/name).read_text() for name in ('lavka-mobile-cards.css','lavka-product-tags.css','lavka-card-reviews.css','lavka-mobile-product.css'))
 PHOTO='data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="600" height="600"%3E%3Crect width="600" height="600" fill="%23f1f4e9"/%3E%3C/svg%3E'
 PHOTO2=PHOTO.replace('f1f4e9','ede6d7')
@@ -255,6 +256,7 @@ with sync_playwright() as p:
     page.set_viewport_size({'width':1280,'height':844});page.wait_for_timeout(100)
     assert page.locator('.lavka-product-delivery,.lavka-product-nav').count()==0
     assert page.evaluate('document.body.style.overflow')==''
+    assert page.evaluate('document.documentElement.style.overflow')==''
     assert not page.errors,page.errors
     page.close()
     print('PASS delivery bottom sheet: current same-origin terms, safe formatting, retained pack, focus/close/cache and desktop cleanup',flush=True)
@@ -273,4 +275,57 @@ with sync_playwright() as p:
     assert not page.errors,page.errors
     page.close()
     print('PASS delivery fetch failure/retry: product selection and cart untouched',flush=True)
+
+    for width in (320,390,432,767):
+        page=start(browser,width)
+        page.evaluate('''var fly=document.createElement('div');fly.id='fly-menu';fly.className='fly-menu show';
+          fly.innerHTML='<div class="container"><div class="row"><div class="fly-menu__block fly-menu__menu-m col-xs-3"><i class="fly-menu__icon fa fa-bars"></i></div><div class="fly-menu__block fly-menu__search-m col-xs-3"><i class="fly-menu__icon fa fa-search"></i></div><div class="fly-menu__block fly-menu__account col-xs-3"><i class="fly-menu__icon fa fa-user"></i></div><div class="fly-menu__block fly-menu__cart col-xs-3"><i class="fly-menu__icon fa fa-shopping-cart"></i></div></div></div>';
+          document.body.appendChild(fly);document.querySelector('footer').style.height='900px';window.scrollTo(0,document.body.scrollHeight);''')
+        page.wait_for_timeout(600)
+        nav=page.locator('.lavka-product-nav').bounding_box();fly=page.locator('#fly-menu').bounding_box();dock=page.locator('.lavka-product-dock').bounding_box()
+        assert abs(nav['y']-fly['y']-fly['height'])<1,'Navigation stays glued below shop menu even beyond product/footer'
+        assert nav['x']==fly['x']==dock['x']==0
+        assert nav['width']==fly['width']==dock['width']==width
+        assert page.locator('.lavka-product-nav,.lavka-product-dock,.lavka-product-dock__quantity,.lavka-product-dock__buy').evaluate_all('(els)=>els.every(e=>getComputedStyle(e).borderRadius==="0px")'),'Straight strips, no rounded corners'
+        centers=page.locator('.lavka-product-dock__totals,.lavka-product-dock__quantity,.lavka-product-dock__buy').evaluate_all('(els)=>els.map(e=>e.getBoundingClientRect().y+e.getBoundingClientRect().height/2)')
+        assert max(centers)-min(centers)<1
+        assert page.locator('.lavka-product-dock__buy').evaluate('(e)=>getComputedStyle(e).fontSize')=='16px','Buy label remains readable on narrow screens'
+        assert page.locator('.lavka-product-nav').evaluate('(e)=>getComputedStyle(e).backgroundColor')==page.locator('.lavka-product-dock').evaluate('(e)=>getComputedStyle(e).backgroundColor')
+        page.screenshot(path='/tmp/lavka-product-bars-v4-'+str(width)+'.png')
+        footer_scroll=page.evaluate('scrollY')
+        page.locator('.lavka-product-nav [data-section=delivery]').click();page.locator('.lavka-product-terms').wait_for(state='visible')
+        page.locator('.lavka-product-delivery__close').click();page.wait_for_timeout(80)
+        assert abs(page.evaluate('scrollY')-footer_scroll)<1,'Modal close restores the exact footer position, including dock clearance'
+        assert page.locator('.lavka-product-dock').is_visible()
+        # Follow the visible lower edge while the native shop menu slides away/in.
+        page.evaluate("var fly=document.getElementById('fly-menu');fly.style.transition='top 180ms linear';fly.style.top='-40px'")
+        for sample in range(6):
+            page.wait_for_timeout(35)
+            gap=page.evaluate("document.querySelector('.lavka-product-nav').getBoundingClientRect().top-Math.max(0,document.getElementById('fly-menu').getBoundingClientRect().bottom)")
+            assert abs(gap)<5,'Stack follows the moving shop header'
+        page.evaluate("document.getElementById('fly-menu').style.top='0px'");page.wait_for_timeout(250)
+        assert abs(page.locator('.lavka-product-nav').bounding_box()['y']-40)<1
+        assert not page.errors,page.errors
+        page.close()
+    print('PASS full-width square header/footer strips, exact stacked edges, footer persistence, centered purchase and native-header transition',flush=True)
+
+    page=start(browser)
+    noisy=(ROOT/'tests/fixtures/product_delivery_editor.html').read_text()
+    page.route('https://fixture.invalid/terms',lambda route:route.fulfill(status=200,content_type='text/html; charset=utf-8',body=noisy))
+    page.locator('.lavka-product-nav [data-section=delivery]').click()
+    page.locator('.lavka-product-terms').wait_for(state='visible')
+    assert page.locator('.lavka-product-terms h3').all_text_contents()==["Ми з вами на зв'язку:",'Як розмістити замовлення?','Оплата']
+    assert page.locator('.lavka-product-terms').evaluate('(e)=>!Array.from(e.querySelectorAll("p,li,ul,ol")).some(n=>!n.textContent.trim())'),'No editor spacer paragraphs/lists'
+    assert page.locator('.lavka-product-terms div,.lavka-product-terms span,.lavka-product-terms [style]').count()==0,'Editor layout and inline styling do not leak into popup'
+    assert page.locator('.lavka-product-terms ul').count()==2 and page.locator('.lavka-product-terms li').count()==3,'Manual bullet paragraphs form a real compact list'
+    assert page.locator('.lavka-product-terms a').get_attribute('href')=='mailto:store@example.invalid'
+    assert page.locator('.lavka-product-terms table').inner_text().replace('\t',' ').replace('\n',' ').strip()=='Спосіб Умови Перевізник За чинними тарифами.'
+    metrics=page.locator('.lavka-product-terms').evaluate('(e)=>({padding:getComputedStyle(e).paddingLeft,first:e.firstElementChild.getBoundingClientRect().x-e.getBoundingClientRect().x,paragraphMargins:Array.from(e.querySelectorAll("p")).map(n=>parseFloat(getComputedStyle(n).marginBottom))})')
+    assert metrics['padding']=='20px' and metrics['first']>=20 and max(metrics['paragraphMargins'])<=12
+    assert page.locator('.lavka-product-terms').evaluate('(e)=>e.scrollWidth<=e.clientWidth')
+    assert page.evaluate('window.unexpectedTermsScript') is None
+    page.screenshot(path='/tmp/lavka-product-delivery-v4.png')
+    assert not page.errors,page.errors
+    page.close()
+    print('PASS editor-rich delivery terms: headings, paragraphs, real lists, tables and links retained; empty lines and desktop layout removed',flush=True)
     browser.close()

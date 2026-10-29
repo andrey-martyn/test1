@@ -91,8 +91,18 @@
         state.ratingLink.setAttribute('aria-label',label);
     }
     function topOffset() {
-        var fly=document.querySelector('#fly-menu.show');
-        return fly ? Math.ceil(fly.getBoundingClientRect().height) : 0;
+        var fly=document.querySelector('#fly-menu'), box=fly && fly.getBoundingClientRect();
+        return box ? Math.max(0,Math.min(box.height,box.bottom)) : 0;
+    }
+    function followChrome(event) {
+        if (!state || !state.mounted || event.target.id!=='fly-menu') return;
+        var current=state;current.chromeUntil=performance.now()+550;
+        if (current.chromeFrame) return;
+        function frame() {
+            current.chromeFrame=0;if (!current.mounted) return;
+            dockVisibility();if (performance.now()<current.chromeUntil) current.chromeFrame=requestAnimationFrame(frame);
+        }
+        current.chromeFrame=requestAnimationFrame(frame);
     }
     function scrollToSection(target) {
         if (!state || !state.mounted || !target) return;
@@ -136,9 +146,9 @@
         function copy(node,parent) {
             if (node.nodeType===3) { parent.appendChild(document.createTextNode(node.textContent)); return; }
             if (node.nodeType!==1 || omit.test(node.tagName)) return;
-            var next=parent;
-            if (allowed.test(node.tagName)) {
-                next=document.createElement(node.tagName.toLowerCase());
+            var next=parent, boldInline=/^(SPAN|FONT)$/.test(node.tagName) && (node.style.fontWeight==='bold' || Number(node.style.fontWeight)>=600) && !node.querySelector('p,div,ul,ol,table,h2,h3,h4');
+            if (allowed.test(node.tagName) || boldInline) {
+                next=document.createElement(boldInline ? 'strong' : node.tagName.toLowerCase());
                 if (node.tagName==='A') {
                     try {
                         var url=new URL(node.getAttribute('href'),document.baseURI);
@@ -150,7 +160,61 @@
             Array.from(node.childNodes).forEach(function (child) { copy(child,next); });
         }
         Array.from(source.childNodes).forEach(function (node) { copy(node,fragment); });
-        return fragment;
+        return formatTerms(fragment);
+    }
+    function formatTerms(fragment) {
+        var host=document.createElement('div');host.appendChild(fragment);
+        var block=/^(P|UL|OL|LI|H2|H3|H4|H5|H6|TABLE|THEAD|TBODY|TR|TD|TH|CAPTION|HR)$/;
+        var wrappers=/^(DIV|SECTION|ARTICLE)$/;
+        function empty(node) { return !node.textContent.replace(/[\s\u00a0\u200b]/g,'') && !node.querySelector('table,hr'); }
+        function runs(container) {
+            var paragraph=null;
+            Array.from(container.childNodes).forEach(function (node) {
+                if (node.nodeType===1 && block.test(node.tagName)) { paragraph=null;return; }
+                if (node.nodeType===1 && node.tagName==='BR') { node.remove();paragraph=null;return; }
+                if (node.nodeType===3 && !node.textContent.trim() && !paragraph) { node.remove();return; }
+                if (!paragraph) { paragraph=document.createElement('p');container.insertBefore(paragraph,node); }
+                paragraph.appendChild(node);
+            });
+        }
+        function tidy(container) {
+            Array.from(container.childNodes).forEach(function (node) {
+                if (node.nodeType===3) { node.textContent=node.textContent.replace(/[\s\u00a0\u200b]+/g,' ');return; }
+                if (node.nodeType!==1) { node.remove();return; }
+                tidy(node);
+                if (node.tagName==='SPAN') { node.replaceWith.apply(node,Array.from(node.childNodes));return; }
+                if (wrappers.test(node.tagName)) {
+                    if (empty(node)) { node.remove();return; }
+                    runs(node);node.replaceWith.apply(node,Array.from(node.childNodes));return;
+                }
+                if (node.tagName!=='BR' && node.tagName!=='HR' && empty(node)) node.remove();
+            });
+            if (/^(P|LI|H2|H3|H4|H5|H6)$/.test(container.tagName)) {
+                var last=null;
+                Array.from(container.childNodes).forEach(function (node) {
+                    if (node.nodeType===3 && !node.textContent.trim()) return;
+                    if (node.nodeName==='BR' && (!last || last.nodeName==='BR')) node.remove();else last=node;
+                });
+                if (last && last.nodeName==='BR') last.remove();
+            }
+        }
+        tidy(host);runs(host);
+        // Rich-text editors often encode section headings as a bold paragraph.
+        host.querySelectorAll('p').forEach(function (paragraph) {
+            var label=paragraph.textContent.trim(), bold=paragraph.querySelector('strong,b');
+            if (paragraph.parentElement===host && bold && label.length<90 && !/\d/.test(label) && bold.textContent.trim()===label && /^(?:оплата|доставка|способи оплати|способы оплаты|як .*замовлення|как .*заказ|ми .*зв.язку|мы .*связи|payment|delivery|shipping)/i.test(label)) {
+                var heading=document.createElement('h3');heading.textContent=label;paragraph.replaceWith(heading);
+            }
+        });
+        var bullets=null;
+        Array.from(host.children).forEach(function (node) {
+            if (node.tagName!=='P' || !/^[\s\u00a0]*[•●▪]/.test(node.textContent)) { bullets=null;return; }
+            var walker=document.createTreeWalker(node,NodeFilter.SHOW_TEXT), first;
+            while ((first=walker.nextNode())) { if (first.textContent.trim()) { first.textContent=first.textContent.replace(/^[\s\u00a0]*[•●▪]\s*/,'');break; } }
+            if (!bullets) { bullets=document.createElement('ul');host.insertBefore(bullets,node); }
+            var li=document.createElement('li');while (node.firstChild) li.appendChild(node.firstChild);bullets.appendChild(li);node.remove();
+        });
+        host.className='lavka-product-terms';return host;
     }
     function loadDelivery(current) {
         if (current.deliveryLoaded || current.deliveryLoading) return;
@@ -158,9 +222,10 @@
         current.deliveryLoading=true;body.textContent=sections.loading;body.setAttribute('aria-busy','true');
         function failed() {
             if (!current.mounted) return;
-            current.deliveryLoading=false;body.removeAttribute('aria-busy');body.textContent=sections.failed;
+            current.deliveryLoading=false;body.removeAttribute('aria-busy');body.textContent='';
+            var message=document.createElement('div'), paragraph=document.createElement('p');message.className='lavka-product-terms';paragraph.textContent=sections.failed;message.appendChild(paragraph);body.appendChild(message);
             var retry=document.createElement('button');retry.type='button';retry.className='lavka-product-delivery__retry';retry.textContent=sections.retry;
-            retry.addEventListener('click',function () { loadDelivery(current); });body.appendChild(retry);
+            retry.addEventListener('click',function () { loadDelivery(current); });message.appendChild(retry);
         }
         if (!sources.length) { failed(); return; }
         current.deliveryRequests=sources.map(function (item) { return $.ajax({url:item.url,type:'GET',dataType:'html',timeout:12000}); });
@@ -177,6 +242,14 @@
             body.textContent='';body.appendChild(content);body.removeAttribute('aria-busy');current.deliveryLoaded=true;current.deliveryLoading=false;
         }).catch(failed);
     }
+    function restoreDelivery(current) {
+        if (current.rootOverflow===undefined) return;
+        document.documentElement.style.overflow=current.rootOverflow;current.rootOverflow=undefined;
+        if (current.mounted) {
+            document.body.classList.toggle('lavka-product-dock-visible',current.dockBeforeDelivery);
+            window.scrollTo(current.deliveryScroll.x,current.deliveryScroll.y);dockVisibility();
+        }
+    }
     function openDelivery() {
         if (!state || !state.mounted) return;
         var current=state;
@@ -189,11 +262,12 @@
             header.appendChild(heading);header.appendChild(close);dialog.appendChild(header);dialog.appendChild(body);document.body.appendChild(dialog);
             close.addEventListener('click',function () { dialog.close(); });
             dialog.addEventListener('click',function (event) { if (event.target===dialog) { var box=dialog.getBoundingClientRect();if (event.clientX<box.left || event.clientX>box.right || event.clientY<box.top || event.clientY>box.bottom) dialog.close(); } });
-            dialog.addEventListener('close',function () { document.body.style.overflow=current.bodyOverflow;dockVisibility(); });
+            dialog.addEventListener('close',function () { restoreDelivery(current); });
             current.delivery=dialog;current.deliveryBody=body;current.generated.push(dialog);
         }
         if (current.delivery.open) return;
-        current.bodyOverflow=document.body.style.overflow;document.body.style.overflow='hidden';
+        current.rootOverflow=document.documentElement.style.overflow;current.deliveryScroll={x:scrollX,y:scrollY};current.dockBeforeDelivery=document.body.classList.contains('lavka-product-dock-visible');
+        document.documentElement.style.overflow='hidden';
         current.delivery.showModal();loadDelivery(current);dockVisibility();
     }
     function setupNavigation() {
@@ -213,7 +287,8 @@
             });
         });
         if (!tabs.querySelector('li:not(.lavka-product-primary-source)')) tabs.classList.add('lavka-product-only-primary');
-        heading.before(nav);state.nav=nav;state.generated.push(nav);
+        var slot=document.createElement('div');slot.className='lavka-product-nav-slot';heading.before(slot);slot.appendChild(nav);
+        state.nav=nav;state.navSlot=slot;state.generated.push(slot);
         var active=tabs.querySelector('li.active>a');markSection(active && active.getAttribute('href')==='#tab-review' ? 'reviews' : 'about');
         $(tabs).on('click.lavkaMobileProductNav','a[data-toggle="tab"]',nativeSection);
     }
@@ -221,6 +296,7 @@
         if (!state || !state.mounted) return;
         var offset=topOffset();
         root.style.setProperty('--lavka-product-top',offset+'px');
+        if (state.nav) state.nav.classList.toggle('lavka-product-nav--fixed',state.navSlot.getBoundingClientRect().top<=offset);
         var visible=state.buy.getBoundingClientRect().bottom<offset;
         var focused=document.activeElement;
         if (focused && (focused.matches('textarea,select,[contenteditable=true]') || (focused.tagName==='INPUT' && !/^(radio|checkbox|button|submit|hidden)$/.test(focused.type)))) visible=false;
@@ -321,9 +397,10 @@
         if (!state || !state.mounted) return;
         state.mounted=false;state.observer.disconnect();if (state.intersection) state.intersection.disconnect();
         if (state.reviewObserver) state.reviewObserver.disconnect();
+        if (state.chromeFrame) cancelAnimationFrame(state.chromeFrame);
         if (state.tabs) { $(state.tabs).off('.lavkaMobileProductNav');state.tabs.classList.remove('lavka-product-only-primary'); }
         (state.sourceItems || []).forEach(function (item) { item.node.classList.remove('lavka-product-primary-source');if (!item.hadClass && !item.node.className) item.node.removeAttribute('class'); });
-        if (state.delivery && state.delivery.open) { state.delivery.close();document.body.style.overflow=state.bodyOverflow; }
+        if (state.delivery && state.delivery.open) { state.delivery.close();restoreDelivery(state); }
         (state.deliveryRequests || []).forEach(function (xhr) { if (xhr.readyState!==4) xhr.abort(); });
         state.emptyData.forEach(function (data) { data.classList.remove('lavka-product-empty-data'); });
         state.moves.slice().reverse().forEach(function (item) { item.marker.replaceWith(item.node); });
@@ -371,6 +448,7 @@
         if (media.addEventListener) media.addEventListener('change',responsive); else media.addListener(responsive);
         $(block).on('change.lavkaMobileProduct','.option input,.option select,.qty-switch__input',function () { sync(); });
         window.addEventListener('scroll',dockVisibility,{passive:true});window.addEventListener('resize',dockVisibility);
+        document.addEventListener('transitionrun',followChrome);document.addEventListener('transitionend',followChrome);
         document.addEventListener('focusin',dockVisibility);document.addEventListener('focusout',function () { setTimeout(dockVisibility,0); });
     });
 })(jQuery);
