@@ -135,9 +135,19 @@ function hosting_inventory(string $root,?string $cronText=null): array
             }
         }
     }
-    $frontend=dirname($real).'/lavka-frontend-work';
+    $frontendLocations=[];
+    foreach(['legacy'=>dirname($real).'/lavka-frontend-work','organized'=>$real.'/apps/lavka-frontend'] as $layout=>$path){
+        $state=is_link($path)?'symlink':(is_dir($path)?(realpath($path)===$path?'present':'redirected'):'not_found');
+        $frontendLocations[$layout]=['path'=>$path,'state'=>$state];
+    }
+    $present=array_keys(array_filter($frontendLocations,function($entry){return $entry['state']==='present';}));
+    $unsafe=count(array_filter($frontendLocations,function($entry){return in_array($entry['state'],['symlink','redirected'],true);}))>0;
+    $frontendLayout=count($present)===1?$present[0]:null;
+    $frontend=['path'=>$frontendLayout!==null?$frontendLocations[$frontendLayout]['path']:null,
+        'state'=>$unsafe?'unsafe_path':(count($present)>1?'conflict':(count($present)===1?'present':'not_found')),
+        'layout'=>$frontendLayout,'locations'=>$frontendLocations];
     return ['mode'=>'inventory_only','root'=>$real,'root_entries'=>hosting_inventory_listing($real),
-        'frontend_work'=>['path'=>$frontend,'state'=>is_link($frontend)?'symlink':(is_dir($frontend)?'present':'not_found')],
+        'frontend_work'=>$frontend,
         'analytics_manifests'=>$manifests,'review_manifests'=>$reviewManifests,'opencart_config_paths'=>$stores,'public_launchers'=>$launchers,
         'cron'=>['state'=>$cronState,'jobs'=>hosting_inventory_cron($cronText,$real),'note'=>'Только пути, без команд, расписаний, переменных и реквизитов. Задания панели могут потребовать отдельной проверки.'],
         'changes_made'=>false,'databases_opened'=>false,

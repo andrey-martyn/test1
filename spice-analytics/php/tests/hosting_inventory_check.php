@@ -54,6 +54,15 @@ try{
     inventory_expect($folders['review-harvester-private']['immediate_entries']===0,'Empty folders are reported without declaring them redundant');
     inventory_expect(in_array('competitors.sqlite3',$folders['analytics-private-test']['sample_names'],true),'Only shallow filenames, never database contents, identify data directories');
     inventory_expect(inventory_tree($fixture)===$before,'All original files, modes and modification dates unchanged');
+    mkdir($root.'/apps',0700);
+    rename($fixture.'/lavka-frontend-work',$root.'/apps/lavka-frontend');
+    $moved=inventory_tree($fixture);$report=hosting_inventory($root,'');
+    inventory_expect($report['frontend_work']['layout']==='organized'&&$report['frontend_work']['path']===$root.'/apps/lavka-frontend','Relocated frontend clone is detected');
+    inventory_expect(inventory_tree($fixture)===$moved,'Detecting relocated frontend changes no files');
+    mkdir($fixture.'/lavka-frontend-work',0700);
+    inventory_expect(hosting_inventory($root,'')['frontend_work']['state']==='conflict','Two frontend clones are never silently selected');
+    rmdir($fixture.'/lavka-frontend-work');symlink($root.'/apps/lavka-frontend',$fixture.'/lavka-frontend-work');
+    inventory_expect(hosting_inventory($root,'')['frontend_work']['state']==='unsafe_path','Frontend aliases are visible as unsafe, never followed');
     symlink($root.'/analytics-private-test',$root.'/analytics-private');
     $report=hosting_inventory($root,'');inventory_expect($report['analytics_manifests'][0]['state']==='symlink_directory_not_read','Symlinked data directories are not followed');
     try{hosting_inventory($root.'/missing','');throw new RuntimeException('Missing root accepted');}catch(InvalidArgumentException $expected){}

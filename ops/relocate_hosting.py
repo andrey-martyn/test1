@@ -114,12 +114,21 @@ def json_bytes(value):
     return (json.dumps(value, ensure_ascii=False, indent=2) + '\n').encode('utf-8')
 
 
+def frontend_repository(root):
+    legacy = root.parent / 'lavka-frontend-work'
+    organized = root / 'apps/lavka-frontend'
+    for path in (legacy, organized):
+        require(path.resolve() == path and (not path.exists() or path.is_dir()), 'frontend_path_redirected')
+    require(not (legacy.exists() and organized.exists()), 'frontend_repository_conflict')
+    return organized if organized.exists() else legacy
+
+
 class Relocation:
     def __init__(self, root, checkpointer=None):
         self.root = Path(root)
         require(self.root.is_absolute() and self.root.resolve() == self.root and self.root.is_dir(), 'root_invalid')
         self.repository = self.root / 'analytics-app'
-        self.frontend = self.root.parent / 'lavka-frontend-work'
+        self.frontend = frontend_repository(self.root)
         self.ops = self.root / 'ops'
         self.handles = []
         # Test-only dependency injection; the CLI always uses installed PHP 8.2

@@ -182,6 +182,16 @@ class RelocateTest(unittest.TestCase):
         connection = sqlite3.connect(str(self.root / 'analytics-private-test/analytics.sqlite3'))
         self.assertEqual(connection.execute('SELECT count(*) FROM manual_links').fetchone()[0], 2);connection.close()
 
+    def test_module_move_and_rollback_accept_frontend_already_inside_apps(self):
+        old=self.base/'lavka-frontend-work';new=self.root/'apps/lavka-frontend'
+        new.parent.mkdir();old.rename(new)
+        r=tool.Relocation(self.root,checkpoint)
+        self.assertEqual(r.frontend,new)
+        result=r.apply(True)
+        self.assertTrue(new.is_dir());self.assertFalse(old.exists())
+        self.assertEqual(r.rollback(result['journal_id'],True)['state'],'rolled_back')
+        self.assertTrue(new.is_dir());self.assertFalse(old.exists())
+
     def test_failure_after_configuration_write_restores_original_paths(self):
         original=tool.atomic
         configs={p:(self.root / p).read_bytes() for p in tool.CONFIGS}

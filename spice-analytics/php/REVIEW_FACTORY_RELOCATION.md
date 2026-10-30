@@ -2,7 +2,7 @@
 
 Сначала прочитать единый корневой контракт
 [HOSTING_PATHS.md](../../HOSTING_PATHS.md) и общий порядок
-[HOSTING_MIGRATION.md](../../HOSTING_MIGRATION.md), версия `2026-10-30.1`.
+[HOSTING_MIGRATION.md](../../HOSTING_MIGRATION.md), версия `2026-10-30.2`.
 Он также находится в рабочих ветках витрины. Здесь — детали Review Factory.
 
 Подготовленная общая команда `ops/relocate_hosting.py` в `analytics-demo`

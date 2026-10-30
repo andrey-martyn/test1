@@ -44,3 +44,15 @@ php ops/tests/relocation_sqlite_check.php
 `lavka-php-dev`: `LAVKA_RELOCATION_PHP_DOCKER=1` для Python-набора выше.
 Docker на хостинге не нужен. Python-тесты используют инъекцию SQLite-проверки
 только как тестовый интерфейс; CLI всегда выбирает штатный PHP 8.2.
+
+## Отдельно: Git-клон витрины
+
+`python3 ops/relocate_frontend.py --plan`, затем `--apply` перемещают только
+`/home/lavkasp/lavka-frontend-work` в
+`/home/lavkasp/lavka-speciy.com/apps/lavka-frontend`. Сохраняются вся `.git`,
+ветка, локальная работа и права. Новый клон/ветка не создаются; магазины,
+SQLite, MySQL, настройки, фоновые задачи и backup-папки не перенастраиваются.
+Git lock, старые пути в активной Git-конфигурации или конфликт папок блокируют
+применение. Сбой возвращает клон обратно. Журнал `frontend-...` позволяет
+выполнить `--rollback ID` после обрыва, сохраняя новые локальные файлы.
+Полный блок — [HOSTING_MIGRATION.md](../HOSTING_MIGRATION.md#перенос-клона-витрины-в-apps).
