@@ -3,7 +3,10 @@
 Общий контракт **2026-10-30.2** — [HOSTING_PATHS.md](../HOSTING_PATHS.md),
 [hosting-paths.json](../hosting-paths.json). Координация и отчёт готовности —
 [HOSTING_MIGRATION.md](../HOSTING_MIGRATION.md).
-Физический перенос хостинга ещё не подтверждён.
+Перенос клона витрины подтверждён SSH-отчётом 30.10.2026: `completed`,
+`shop_files: unchanged`. Журнал: `frontend-20261030T104233.152166Z`.
+Действующий клон — `/home/lavkasp/lavka-speciy.com/apps/lavka-frontend`.
+Результат не заменяет отдельную проверку кабинетов и новых cron аналитики/отзывов.
 
 ## Границы этой задачи
 
