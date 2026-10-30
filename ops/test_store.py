@@ -19,10 +19,23 @@ from urllib.parse import urlsplit
 REPO = Path(__file__).resolve().parents[1]
 SHOP = Path('/home/lavkasp/lavka-speciy.com/test')
 STORAGE = Path('/home/lavkasp/lavka-speciy.com/test_storage')
-BACKUPS = Path('/home/lavkasp/lavka-speciy.com/test_frontend_backups')
 DATABASE = 'lavkasp_test'
 HOSTNAME = 'test.lavka-speciy.com'
 LEGACY_ISSUE = 'Legacy custom mobile code detected. Review/migrate it before installation.'
+
+
+def hosting_backup_directory(legacy, organized):
+    # Hosting layout v1: two closed backup roots; never split rollback history.
+    for path in (legacy, organized):
+        if path.resolve() != path or (path.exists() and not path.is_dir()):
+            raise ValueError('Unsafe hosting backup path')
+    if legacy.exists() and organized.exists():
+        raise ValueError('Both hosting backup layouts exist; finish relocation first')
+    return organized if organized.is_dir() else legacy
+
+
+BACKUPS = hosting_backup_directory(
+    SHOP.parent/'test_frontend_backups', SHOP.parent/'backups/frontend/test')
 
 
 class ReleaseCheckError(ValueError):
