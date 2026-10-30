@@ -4,7 +4,7 @@
   "phase": 1,
   "activation_status": "pending",
   "last_verified_layout": "legacy",
-  "last_verified_on": "2026-10-28",
+  "last_verified_on": "2026-10-30",
   "target_layout": "organized",
   "purpose": "Documentation contract; not an application configuration or proof of live relocation",
   "hosting_root": "/home/lavkasp/lavka-speciy.com",
@@ -45,9 +45,10 @@
     "public_url": "https://test.lavka-speciy.com/analytics",
     "review_public_url": "https://test.lavka-speciy.com/review-workshop"
   },
-  "new_locations_not_yet_verified": {
-    "ops": "/home/lavkasp/lavka-speciy.com/ops",
-    "review_backups": "/home/lavkasp/lavka-speciy.com/backups/review-factory/test"
+  "operational_locations": {
+    "ops": {"path": "/home/lavkasp/lavka-speciy.com/ops", "existence_verified": false},
+    "review_backups": {"path": "/home/lavkasp/lavka-speciy.com/backups/review-factory/test", "existence_verified": true},
+    "retired_review_export_archive": {"path": "/home/lavkasp/lavka-speciy.com/private/exports/review-harvester", "existence_verified": false}
   },
   "retired_export": {
     "directory": "/home/lavkasp/lavka-speciy.com/review-harvester-private",
