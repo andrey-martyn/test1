@@ -63,7 +63,7 @@ JSON-поля. При сбое после записи выполняется в
 Полная цепочка для теста:
 
 ```bash
-cd /home/lavkasp/lavka-frontend-work &&
+cd /home/lavkasp/lavka-speciy.com/apps/lavka-frontend &&
 git pull --ff-only origin codex/mobile-category &&
 python3 ops/migrate_legacy.py --check &&
 python3 ops/migrate_legacy.py --apply &&
