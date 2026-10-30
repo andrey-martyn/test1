@@ -114,7 +114,7 @@
 Уже установленную ветку обновить так:
 
 ```bash
-cd /home/lavkasp/lavka-frontend-work &&
+cd /home/lavkasp/lavka-speciy.com/apps/lavka-frontend &&
 git pull --ff-only origin codex/product-tags &&
 python3 ops/product_tags.py --check &&
 python3 ops/product_tags.py --apply
@@ -134,7 +134,7 @@ python3 ops/product_tags.py --apply
 Используется ранее настроенный ключ GitHub, ввод пароля в переписку не нужен.
 
 ```bash
-cd /home/lavkasp/lavka-frontend-work &&
+cd /home/lavkasp/lavka-speciy.com/apps/lavka-frontend &&
 git remote set-branches --add origin codex/product-tags &&
 git fetch origin &&
 git checkout codex/product-tags &&
@@ -334,7 +334,7 @@ LiteSpeed для товаров/категорий. Отсутствие LSCache
 выпуска:
 
 ```bash
-cd /home/lavkasp/lavka-frontend-work &&
+cd /home/lavkasp/lavka-speciy.com/apps/lavka-frontend &&
 python3 ops/product_tags.py --rollback ID_ИЗ_ОТЧЁТА
 ```
 

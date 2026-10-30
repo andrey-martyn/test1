@@ -1,5 +1,13 @@
 # Мобильная категория «Лавка Спецій»
 
+**Путь клона после отдельного переноса:**
+`/home/lavkasp/lavka-speciy.com/apps/lavka-frontend`.
+До переноса существует `/home/lavkasp/lavka-frontend-work`; не клонировать второй
+экземпляр. Команда перемещения и откат —
+[HOSTING_MIGRATION.md](HOSTING_MIGRATION.md#перенос-клона-витрины-в-apps).
+Пути в актуальных командах ниже относятся к клону после переноса. Магазин,
+БД и backup-папки остаются теми же.
+
 ## Общий этап: подготовка переноса каталогов
 
 Перед изменением путей прочитать [единый контракт](HOSTING_PATHS.md),
@@ -74,7 +82,7 @@ UniShop2 CSS и браузерный кэш. БД этим обновление�
 Для версии, уже установленной из `f006edb`, выполнить:
 
 ```bash
-cd /home/lavkasp/lavka-frontend-work &&
+cd /home/lavkasp/lavka-speciy.com/apps/lavka-frontend &&
 git pull --ff-only origin codex/mobile-category &&
 python3 ops/test_store.py --check --manifest docs/title-weight-update.json &&
 python3 ops/test_store.py --apply --manifest docs/title-weight-update.json
@@ -91,9 +99,10 @@ python3 ops/test_store.py --apply --manifest docs/title-weight-update.json
 Если SSH-доступ хостинга к приватному GitHub уже настроен, выполнить в терминале:
 
 ```bash
-cd /home/lavkasp
-git clone --branch codex/mobile-category --single-branch git@github.com:andrey-martyn/test1.git lavka-frontend-work
-cd /home/lavkasp/lavka-frontend-work
+mkdir -p /home/lavkasp/lavka-speciy.com/apps
+cd /home/lavkasp/lavka-speciy.com/apps
+git clone --branch codex/mobile-category --single-branch git@github.com:andrey-martyn/test1.git lavka-frontend
+cd /home/lavkasp/lavka-speciy.com/apps/lavka-frontend
 python3 ops/test_store.py --audit
 ```
 
@@ -121,7 +130,7 @@ SELECT для проверки фактической БД, темы и моди
 Для уже клонированной ветки обновление и повторный аудит:
 
 ```bash
-cd /home/lavkasp/lavka-frontend-work
+cd /home/lavkasp/lavka-speciy.com/apps/lavka-frontend
 git pull --ff-only origin codex/mobile-category
 python3 ops/test_store.py --audit
 ```
@@ -145,7 +154,7 @@ python3 ops/test_store.py --audit
 Установка на тест после обновления ветки:
 
 ```bash
-cd /home/lavkasp/lavka-frontend-work &&
+cd /home/lavkasp/lavka-speciy.com/apps/lavka-frontend &&
 git pull --ff-only origin codex/mobile-category &&
 python3 ops/migrate_legacy.py --check &&
 python3 ops/migrate_legacy.py --apply &&
