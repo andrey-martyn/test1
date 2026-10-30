@@ -128,7 +128,7 @@ POST нет. Цены в гривнах, скидки и остатки не в�
 в существующем репозитории вне публичной папки магазина.
 
 ```bash
-cd /home/lavkasp/lavka-frontend-work &&
+cd /home/lavkasp/lavka-speciy.com/apps/lavka-frontend &&
 git remote set-branches --add origin codex/mobile-product &&
 git fetch origin &&
 git checkout codex/mobile-product &&
@@ -176,7 +176,7 @@ store_id=0, пути и ссылки, тему, включённый штатн�
 Короткая диагностика без записи в магазин или БД:
 
 ```bash
-cd /home/lavkasp/lavka-frontend-work &&
+cd /home/lavkasp/lavka-speciy.com/apps/lavka-frontend &&
 git pull --ff-only origin codex/mobile-product &&
 python3 ops/product_page.py --diagnose
 ```
@@ -313,7 +313,7 @@ python3 tests/check_mobile_product.py
 ## Откат
 
 ```bash
-cd /home/lavkasp/lavka-frontend-work &&
+cd /home/lavkasp/lavka-speciy.com/apps/lavka-frontend &&
 python3 ops/product_page.py --rollback ID_ИЗ_ОТЧЁТА
 ```
 
