@@ -2,8 +2,9 @@
   "schema_version": 1,
   "contract_version": "2026-10-30.2",
   "phase": 1,
-  "activation_status": "pending",
+  "activation_status": "partially_verified",
   "last_verified_layout": "legacy",
+  "last_verified_layout_scope": "Last full data inventory before relocation; confirmed component paths are recorded separately below",
   "last_verified_on": "2026-10-30",
   "target_layout": "organized",
   "ftp_observation": "Organized root groups are visible; complete application and cron verification not yet provided",
@@ -48,11 +49,22 @@
   "frontend_repository": {
     "legacy": "/home/lavkasp/lavka-frontend-work",
     "organized": "/home/lavkasp/lavka-speciy.com/apps/lavka-frontend",
-    "activation_status": "pending",
+    "activation_status": "completed",
+    "current": "/home/lavkasp/lavka-speciy.com/apps/lavka-frontend",
+    "verified_on": "2026-10-30",
+    "journal_id": "frontend-20261030T104233.152166Z",
+    "shop_files": "unchanged",
+    "mysql_connections": 0,
     "migration_tool": "ops/relocate_frontend.py"
   },
+  "modules_repository_verification": {
+    "current": "/home/lavkasp/lavka-speciy.com/apps/lavka-modules",
+    "verified_on": "2026-10-30",
+    "evidence": "SSH cd and successful git pull in the organized repository",
+    "application_and_cron_verification": "pending"
+  },
   "operational_locations": {
-    "ops": {"path": "/home/lavkasp/lavka-speciy.com/ops", "existence_verified": false},
+    "ops": {"path": "/home/lavkasp/lavka-speciy.com/ops", "existence_verified": true},
     "review_backups": {"path": "/home/lavkasp/lavka-speciy.com/backups/review-factory/test", "existence_verified": true},
     "retired_review_export_archive": {"path": "/home/lavkasp/lavka-speciy.com/private/exports/review-harvester", "existence_verified": false}
   },
