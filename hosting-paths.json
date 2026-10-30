@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "contract_version": "2026-10-30.1",
+  "phase": 1,
+  "activation_status": "pending",
+  "last_verified_layout": "legacy",
+  "last_verified_on": "2026-10-28",
+  "target_layout": "organized",
+  "purpose": "Documentation contract; not an application configuration or proof of live relocation",
+  "hosting_root": "/home/lavkasp/lavka-speciy.com",
+  "canonical_document": "https://github.com/andrey-martyn/test1/blob/master/HOSTING_PATHS.md",
+  "php_cli": "/usr/local/php82/bin/php",
+  "test_database": "lavkasp_test",
+  "layouts": {
+    "legacy": {
+      "repository": "/home/lavkasp/lavka-speciy.com/analytics-app",
+      "application_root": "/home/lavkasp/lavka-speciy.com/analytics-app/spice-analytics/php",
+      "previous_data_dir": "/home/lavkasp/lavka-speciy.com/analytics-private",
+      "data_dir": "/home/lavkasp/lavka-speciy.com/analytics-private-test",
+      "review_code": "/home/lavkasp/lavka-speciy.com/analytics-app/review-factory/php",
+      "review_data": "/home/lavkasp/lavka-speciy.com/review-factory-private-test",
+      "analytics_backups": "/home/lavkasp/lavka-speciy.com/analytics-backups",
+      "frontend_backups": "/home/lavkasp/lavka-speciy.com/test_frontend_backups"
+    },
+    "organized": {
+      "repository": "/home/lavkasp/lavka-speciy.com/apps/lavka-modules",
+      "application_root": "/home/lavkasp/lavka-speciy.com/apps/lavka-modules/spice-analytics/php",
+      "previous_data_dir": "/home/lavkasp/lavka-speciy.com/private/analytics/previous",
+      "data_dir": "/home/lavkasp/lavka-speciy.com/private/analytics/test",
+      "review_code": "/home/lavkasp/lavka-speciy.com/apps/lavka-modules/review-factory/php",
+      "review_data": "/home/lavkasp/lavka-speciy.com/private/review-factory/test",
+      "analytics_backups": "/home/lavkasp/lavka-speciy.com/backups/analytics",
+      "frontend_backups": "/home/lavkasp/lavka-speciy.com/backups/frontend/test"
+    }
+  },
+  "unchanged": {
+    "frontend_repository": "/home/lavkasp/lavka-frontend-work",
+    "production_shop_root": "/home/lavkasp/lavka-speciy.com/www",
+    "shop_root": "/home/lavkasp/lavka-speciy.com/test",
+    "document_root": "/home/lavkasp/lavka-speciy.com/test/analytics",
+    "review_webroot": "/home/lavkasp/lavka-speciy.com/test/review-workshop",
+    "legacy_public_root": "/home/lavkasp/lavka-speciy.com/analytics",
+    "production_storage": "/home/lavkasp/lavka-speciy.com/lavka_storage",
+    "test_storage": "/home/lavkasp/lavka-speciy.com/test_storage",
+    "public_url": "https://test.lavka-speciy.com/analytics",
+    "review_public_url": "https://test.lavka-speciy.com/review-workshop"
+  },
+  "new_locations_not_yet_verified": {
+    "ops": "/home/lavkasp/lavka-speciy.com/ops",
+    "review_backups": "/home/lavkasp/lavka-speciy.com/backups/review-factory/test"
+  },
+  "retired_export": {
+    "directory": "/home/lavkasp/lavka-speciy.com/review-harvester-private",
+    "filename": "confirmed-product-pages.json",
+    "deletion_authorized": true,
+    "deletion_confirmed": false,
+    "recreate": false
+  },
+  "working_branches": [
+    "analytics-demo",
+    "codex/mobile-category",
+    "codex/mobile-product",
+    "codex/product-tags"
+  ]
+}
